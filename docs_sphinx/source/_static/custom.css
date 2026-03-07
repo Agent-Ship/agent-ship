@@ -1,4 +1,157 @@
-/* Hide right sidebar (table of contents) - navigation only via left sidebar */
+/* ═══════════════ AgentShip Docs Theme ═══════════════ */
+
+/* ─── Dark mode (default) ─── */
+body[data-theme="dark"],
+body:not([data-theme]) {
+    --color-brand-primary: #818cf8;
+    --color-brand-content: #a78bfa;
+
+    --color-foreground-primary: #f1f5f9;
+    --color-foreground-secondary: #cbd5e1;
+    --color-foreground-muted: #64748b;
+    --color-foreground-border: rgba(148, 163, 184, 0.12);
+
+    --color-background-primary: #0b0f1a;
+    --color-background-secondary: #0f1629;
+    --color-background-hover: #1a1f35;
+    --color-background-hover--transparent: rgba(26, 31, 53, 0);
+    --color-background-border: rgba(148, 163, 184, 0.1);
+
+    --color-sidebar-background: #0f1629;
+    --color-sidebar-background-border: rgba(148, 163, 184, 0.08);
+    --color-sidebar-brand-text: #f1f5f9;
+    --color-sidebar-search-background: rgba(30, 41, 59, 0.5);
+    --color-sidebar-search-background--focus: rgba(30, 41, 59, 0.8);
+    --color-sidebar-search-border: rgba(148, 163, 184, 0.12);
+    --color-sidebar-link-text: #cbd5e1;
+    --color-sidebar-link-text--top-level: #f1f5f9;
+    --color-sidebar-item-background--current: rgba(124, 58, 237, 0.1);
+    --color-sidebar-item-background--hover: rgba(124, 58, 237, 0.06);
+    --color-sidebar-item-expander-background--hover: rgba(124, 58, 237, 0.1);
+
+    --color-admonition-background: rgba(124, 58, 237, 0.06);
+    --color-card-background: rgba(15, 23, 42, 0.7);
+    --color-card-border: rgba(148, 163, 184, 0.08);
+
+    --color-highlight-on-target: rgba(124, 58, 237, 0.12);
+    --color-inline-code-background: rgba(124, 58, 237, 0.08);
+
+    --color-link: #818cf8;
+    --color-link--hover: #a78bfa;
+    --color-link-underline: rgba(129, 140, 248, 0.3);
+    --color-link-underline--hover: rgba(129, 140, 248, 0.6);
+}
+
+/* ─── Light mode ─── */
+body[data-theme="light"] {
+    --color-brand-primary: #7c3aed;
+    --color-brand-content: #6d28d9;
+
+    --color-foreground-primary: #1a1726;
+    --color-foreground-secondary: #3d3a50;
+    --color-foreground-muted: #706c88;
+    --color-foreground-border: rgba(0, 0, 0, 0.1);
+
+    --color-background-primary: #f5f4f8;
+    --color-background-secondary: #eceaf2;
+    --color-background-hover: #e4e2ec;
+    --color-background-hover--transparent: rgba(228, 226, 236, 0);
+    --color-background-border: rgba(0, 0, 0, 0.08);
+
+    --color-sidebar-background: #eceaf2;
+    --color-sidebar-background-border: rgba(0, 0, 0, 0.06);
+    --color-sidebar-brand-text: #0e0c1a;
+    --color-sidebar-search-background: rgba(255, 255, 255, 0.55);
+    --color-sidebar-search-background--focus: rgba(255, 255, 255, 0.8);
+    --color-sidebar-search-border: rgba(0, 0, 0, 0.08);
+    --color-sidebar-link-text: #3d3a50;
+    --color-sidebar-link-text--top-level: #0e0c1a;
+    --color-sidebar-item-background--current: rgba(124, 58, 237, 0.08);
+    --color-sidebar-item-background--hover: rgba(124, 58, 237, 0.05);
+    --color-sidebar-item-expander-background--hover: rgba(124, 58, 237, 0.08);
+
+    --color-admonition-background: rgba(124, 58, 237, 0.04);
+    --color-card-background: rgba(255, 255, 255, 0.72);
+    --color-card-border: rgba(0, 0, 0, 0.07);
+
+    --color-highlight-on-target: rgba(124, 58, 237, 0.08);
+    --color-inline-code-background: rgba(124, 58, 237, 0.06);
+
+    --color-link: #7c3aed;
+    --color-link--hover: #6d28d9;
+    --color-link-underline: rgba(124, 58, 237, 0.25);
+    --color-link-underline--hover: rgba(124, 58, 237, 0.5);
+}
+
+/* ─── Typography ─── */
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    font-weight: 700;
+    letter-spacing: -0.015em;
+}
+
+code, pre {
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', Menlo, monospace;
+}
+
+/* ─── Code blocks ─── */
+.highlight pre {
+    border-radius: 8px;
+    border: 1px solid var(--color-background-border);
+}
+
+body[data-theme="dark"] .highlight pre,
+body:not([data-theme]) .highlight pre {
+    background: #0f1629 !important;
+}
+
+/* ─── Inline code ─── */
+code.literal {
+    border-radius: 4px;
+    padding: 0.1em 0.35em;
+    font-size: 0.88em;
+}
+
+/* ─── Sidebar brand ─── */
+.sidebar-brand-text {
+    font-weight: 800;
+    letter-spacing: -0.03em;
+}
+
+/* ─── Admonitions ─── */
+.admonition {
+    border-radius: 8px;
+    border-left-width: 3px;
+}
+
+.admonition.note {
+    border-left-color: #818cf8;
+}
+
+.admonition.tip {
+    border-left-color: #34d399;
+}
+
+.admonition.warning {
+    border-left-color: #fbbf24;
+}
+
+.admonition.danger {
+    border-left-color: #f87171;
+}
+
+/* ─── Content cards (toctree items) ─── */
+.toctree-wrapper .toctree-l1 > a {
+    border-radius: 6px;
+    transition: background 0.15s;
+}
+
+/* ─── Hide right sidebar ─── */
 input[name="__toc"],
 label[for="__toc"],
 label.toc-overlay,
@@ -10,14 +163,19 @@ aside.toc-drawer {
     display: none !important;
 }
 
-/* Adjust main content area to use full width when TOC is hidden */
 .furo-main-content {
     margin-right: 0 !important;
     max-width: 100% !important;
 }
 
-/* Ensure content takes full available width */
 article {
     max-width: 100% !important;
 }
 
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+    background: var(--color-foreground-border);
+    border-radius: 3px;
+}

@@ -35,6 +35,7 @@ services:
       - ./src:/app/src
       - ./tests:/app/tests
       - ./studio:/app/studio
+      - ./docs_sphinx/build:/app/docs_sphinx/build
       - ./.mcp.settings.json:/app/.mcp.settings.json
     depends_on:
       postgres:

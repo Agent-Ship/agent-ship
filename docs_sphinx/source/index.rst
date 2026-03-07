@@ -3,7 +3,7 @@
 .. raw:: html
 
    <div style="text-align: center; margin: 2rem 0;">
-       <img src="/docs/_static/docs-header@3x.png" alt="AgentShip Documentation" style="width: 100%; max-width: 960px;" />
+       <img src="_static/docs-header@3x.png" alt="AgentShip Documentation" style="width: 100%; max-width: 960px; border-radius: 8px;" />
    </div>
 
 AgentShip
