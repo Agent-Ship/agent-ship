@@ -24,6 +24,7 @@ class MCPTransport(str, Enum):
     STDIO = "stdio"
     SSE = "sse"
     HTTP = "http"
+    UVX = "uvx"
 
 
 class MCPAuthType(str, Enum):

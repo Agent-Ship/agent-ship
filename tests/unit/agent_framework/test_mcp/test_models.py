@@ -15,6 +15,7 @@ def test_mcp_transport_enum():
     assert MCPTransport.STDIO.value == "stdio"
     assert MCPTransport.SSE.value == "sse"
     assert MCPTransport.HTTP.value == "http"
+    assert MCPTransport.UVX.value == "uvx"
 
 
 def test_mcp_auth_type_enum():

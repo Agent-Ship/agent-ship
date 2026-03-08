@@ -151,7 +151,19 @@ class MCPServerRegistry:
             normalized["transport"] = "sse"  # SSE for remote servers
             normalized["url"] = raw["url"]
         elif "command" in raw:
-            normalized["transport"] = "stdio"
+            # Auto-detect uvx vs stdio based on command
+            cmd = raw["command"]
+            cmd_name = cmd[0] if isinstance(cmd, list) else cmd
+            if cmd_name == "uvx":
+                normalized["transport"] = "uvx"
+            else:
+                normalized["transport"] = "stdio"
+
+        # For uvx transport without explicit command, build command from args
+        if normalized.get("transport") == "uvx" and "command" not in raw:
+            args = raw.get("args", [])
+            cmd_list = ["uvx"] + (args if isinstance(args, list) else [])
+            normalized["command"] = [self._resolve_env_var_str(a) for a in cmd_list]
 
         # Handle command field (always normalize command + args if present)
         if "command" in raw:

@@ -33,8 +33,8 @@ class StdioMCPClient(BaseMCPClient):
     """
 
     def __init__(self, config: MCPServerConfig) -> None:
-        if config.transport != MCPTransport.STDIO or not config.command:
-            raise ValueError("StdioMCPClient requires transport=stdio and command")
+        if config.transport not in (MCPTransport.STDIO, MCPTransport.UVX) or not config.command:
+            raise ValueError("StdioMCPClient requires transport=stdio or transport=uvx, and command")
         super().__init__(config)
         self._session = None  # The actual session returned from __aenter__
         self._session_cm = None  # The ClientSession context manager

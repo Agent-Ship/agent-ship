@@ -31,6 +31,14 @@
         "BRAVE_API_KEY": "${BRAVE_API_KEY}"
       }
     },
+    "sqlite": {
+      "transport": "uvx",
+      "args": ["mcp-server-sqlite", "--db-path", "${SQLITE_DB_PATH}"]
+    },
+    "docling": {
+      "transport": "uvx",
+      "args": ["--from=docling-mcp", "docling-mcp-server"]
+    },
     "github": {
       "transport": "http",
       "url": "https://api.githubcopilot.com/mcp/",

@@ -38,7 +38,7 @@ class MCPToolDiscovery:
         Use this when discovery runs on a different event loop (e.g. a worker thread)
         so the main loop can create its own client when the tool is invoked.
         """
-        if server_config.transport == MCPTransport.STDIO:
+        if server_config.transport in (MCPTransport.STDIO, MCPTransport.UVX):
             from src.agent_framework.mcp.clients.stdio import StdioMCPClient
             client = StdioMCPClient(server_config)
             try:

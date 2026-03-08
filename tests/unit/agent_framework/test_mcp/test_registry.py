@@ -140,3 +140,85 @@ def test_registry_nonexistent_path_empty():
     reg = MCPServerRegistry(config_path="/nonexistent/path/mcp.json")
     assert reg.list_server_ids() == []
     assert reg.get_server("any") is None
+
+
+def test_registry_uvx_explicit_transport(tmp_path):
+    """Explicit transport=uvx with args builds correct command."""
+    config_file = tmp_path / "mcp.json"
+    config_file.write_text(
+        json.dumps({
+            "servers": {
+                "sqlite": {
+                    "transport": "uvx",
+                    "args": ["mcp-server-sqlite", "--db-path", "test.db"],
+                }
+            }
+        }),
+        encoding="utf-8",
+    )
+    reg = MCPServerRegistry(config_path=str(config_file))
+    srv = reg.get_server("sqlite")
+    assert srv is not None
+    assert srv.transport == MCPTransport.UVX
+    assert srv.command == ["uvx", "mcp-server-sqlite", "--db-path", "test.db"]
+
+
+def test_registry_uvx_auto_detect_from_command_string(tmp_path):
+    """command='uvx' auto-detects transport as uvx."""
+    config_file = tmp_path / "mcp.json"
+    config_file.write_text(
+        json.dumps({
+            "servers": {
+                "sqlite": {
+                    "command": "uvx",
+                    "args": ["mcp-server-sqlite", "--db-path", "test.db"],
+                }
+            }
+        }),
+        encoding="utf-8",
+    )
+    reg = MCPServerRegistry(config_path=str(config_file))
+    srv = reg.get_server("sqlite")
+    assert srv is not None
+    assert srv.transport == MCPTransport.UVX
+    assert srv.command == ["uvx", "mcp-server-sqlite", "--db-path", "test.db"]
+
+
+def test_registry_uvx_auto_detect_from_command_list(tmp_path):
+    """command=['uvx', ...] auto-detects transport as uvx."""
+    config_file = tmp_path / "mcp.json"
+    config_file.write_text(
+        json.dumps({
+            "servers": {
+                "sqlite": {
+                    "command": ["uvx", "mcp-server-sqlite", "--db-path", "test.db"],
+                }
+            }
+        }),
+        encoding="utf-8",
+    )
+    reg = MCPServerRegistry(config_path=str(config_file))
+    srv = reg.get_server("sqlite")
+    assert srv is not None
+    assert srv.transport == MCPTransport.UVX
+    assert srv.command == ["uvx", "mcp-server-sqlite", "--db-path", "test.db"]
+
+
+def test_registry_uvx_env_var_resolution(tmp_path, monkeypatch):
+    """uvx config resolves ${VAR} in args."""
+    monkeypatch.setenv("TEST_DB_PATH", "/data/test.db")
+    config_file = tmp_path / "mcp.json"
+    config_file.write_text(
+        json.dumps({
+            "servers": {
+                "sqlite": {
+                    "transport": "uvx",
+                    "args": ["mcp-server-sqlite", "--db-path", "${TEST_DB_PATH}"],
+                }
+            }
+        }),
+        encoding="utf-8",
+    )
+    reg = MCPServerRegistry(config_path=str(config_file))
+    srv = reg.get_server("sqlite")
+    assert srv.command == ["uvx", "mcp-server-sqlite", "--db-path", "/data/test.db"]

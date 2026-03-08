@@ -43,7 +43,7 @@ class MCPClientManager:
 
     def _create_client(self, config: MCPServerConfig) -> BaseMCPClient:
         """Create a new client for the given config (by transport)."""
-        if config.transport == MCPTransport.STDIO:
+        if config.transport in (MCPTransport.STDIO, MCPTransport.UVX):
             return StdioMCPClient(config)
         if config.transport in (MCPTransport.SSE, MCPTransport.HTTP):
             from src.agent_framework.mcp.clients.sse import SSEMCPClient

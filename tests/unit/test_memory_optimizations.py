@@ -117,3 +117,39 @@ class TestHealthEndpoint:
             # psutil not installed - just check basic status
             pass
 
+
+class TestVerifyModelKeysOnLaunch:
+    """Very small tests for LLM API key verification helper."""
+
+    def test_returns_false_when_only_placeholder_key_set(self):
+        """If only placeholder-style keys are set, verification should fail."""
+        from src.service.main import _verify_model_keys_on_launch
+
+        with patch.dict(
+            "os.environ",
+            {
+                "OPENAI_API_KEY": "your-openai-key",
+                "ANTHROPIC_API_KEY": "",
+                "GEMINI_API_KEY": "",
+                "GOOGLE_API_KEY": "",
+            },
+            clear=True,
+        ):
+            assert _verify_model_keys_on_launch() is False
+
+    def test_returns_true_when_real_looking_key_set(self):
+        """If a non-placeholder key is set, verification should pass."""
+        from src.service.main import _verify_model_keys_on_launch
+
+        with patch.dict(
+            "os.environ",
+            {
+                "OPENAI_API_KEY": "sk-real-key-123",
+                "ANTHROPIC_API_KEY": "",
+                "GEMINI_API_KEY": "",
+                "GOOGLE_API_KEY": "",
+            },
+            clear=True,
+        ):
+            assert _verify_model_keys_on_launch() is True
+

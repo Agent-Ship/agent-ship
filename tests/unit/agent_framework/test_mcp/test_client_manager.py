@@ -108,3 +108,25 @@ def test_stdio_client_accepts_valid_config():
     )
     client = StdioMCPClient(config)
     assert client is not None
+
+
+def test_get_client_uvx_returns_stdio_client():
+    config = MCPServerConfig(
+        id="sqlite",
+        transport=MCPTransport.UVX,
+        command=["uvx", "mcp-server-sqlite", "--db-path", "test.db"],
+    )
+    manager = MCPClientManager.get_instance()
+    client = manager.get_client(config)
+    assert client is not None
+    assert isinstance(client, StdioMCPClient)
+
+
+def test_uvx_client_accepts_valid_config():
+    config = MCPServerConfig(
+        id="sqlite",
+        transport=MCPTransport.UVX,
+        command=["uvx", "mcp-server-sqlite"],
+    )
+    client = StdioMCPClient(config)
+    assert client is not None

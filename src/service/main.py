@@ -5,6 +5,7 @@ import asyncio
 import logging
 import os
 import uvicorn
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
@@ -18,6 +19,22 @@ load_dotenv()
 
 # logger
 logger = logging.getLogger(__name__)
+
+# Placeholder patterns that indicate keys are not configured
+_KEY_PLACEHOLDERS = ("your-", "your_", "your ", "<", "sk-placeholder", "xai-")
+
+
+def _verify_model_keys_on_launch() -> bool:
+    """Verify at least one LLM API key is configured. Returns True if OK, False otherwise."""
+    keys = [
+        ("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY", "")),
+        ("ANTHROPIC_API_KEY", os.getenv("ANTHROPIC_API_KEY", "")),
+        ("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or ""),
+    ]
+    for name, val in keys:
+        if val and not any(p in (val or "").lower() for p in _KEY_PLACEHOLDERS):
+            return True
+    return False
 
 
 def _mcp_gc_exception_handler(loop: asyncio.AbstractEventLoop, context: dict) -> None:
@@ -55,7 +72,24 @@ project_root = os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(_
 # Mount branding assets EARLY (before FastAPI app creation to ensure images are available)
 branding_path = os.path.abspath(os.path.join(project_root, "branding"))
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup and shutdown logic. Replaces deprecated on_event handlers."""
+    # Startup
+    asyncio.get_running_loop().set_exception_handler(_mcp_gc_exception_handler)
+    if not _verify_model_keys_on_launch():
+        logger.warning(
+            "⚠️  No valid LLM API key found. Set at least one of: OPENAI_API_KEY, "
+            "ANTHROPIC_API_KEY, GEMINI_API_KEY (or GOOGLE_API_KEY). "
+            "Agent chat will fail until configured."
+        )
+    yield
+    # Shutdown (nothing to clean up currently)
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title="AgentShip API",
     description="AgentShip - An Agent Shipping Kit. Production-ready AI Agent framework with multiple agent patterns and observability.",
     version="1.0.0",
@@ -199,12 +233,6 @@ if os.path.exists(branding_path):
         logger.error(f"❌ Failed to mount branding assets: {e}")
 else:
     logger.warning(f"⚠️  Branding assets not found at {branding_path}")
-
-@app.on_event("startup")
-async def _install_exception_handler() -> None:
-    """Reinstall the MCP GC exception handler on the ASGI event loop."""
-    asyncio.get_event_loop().set_exception_handler(_mcp_gc_exception_handler)
-
 
 # Ensure agents are discovered (idempotent)
 # Uses AGENT_DIRECTORIES env var or defaults to framework agents only
