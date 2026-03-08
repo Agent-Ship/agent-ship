@@ -5,7 +5,8 @@ help: ## Show this help message
 	@echo ""
 	@echo "🐳 Docker (Local Development):"
 	@echo "  make docker-setup     - First-time setup (builds + starts)"
-	@echo "  make docker-up        - Start everything (API, Swagger, Docs at :7001)"
+	@echo "  make docker-up        - Start everything (API, Swagger, Docs, Tax demo at :7001)"
+	@echo "  make docker-wait      - Wait for API to be ready (run after docker-up)"
 	@echo "  make docker-down      - Stop containers"
 	@echo "  make docker-restart   - Restart containers (quick restart)"
 	@echo "  make docker-reload    - Hard reload (rebuilds image + restarts)"
@@ -52,7 +53,20 @@ docker-up: ## Start Docker containers (API, Swagger, Docs - everything at :7001)
 	@echo "   - Swagger: http://localhost:7001/swagger"
 	@echo "   - Docs: http://localhost:7001/docs (Sphinx docs built automatically)"
 	@echo "   - Studio: http://localhost:7001/studio"
+	@echo "   - Tax demo: http://localhost:7001/tax"
+	@echo ""
+	@echo "⏳ API may take 30-60s to be ready. Run 'make docker-wait' to block until ready."
 	@DOCKER_BUILDKIT=1 docker compose up -d --build || DOCKER_BUILDKIT=1 docker-compose up -d --build
+
+docker-wait: ## Wait for API to be ready (run after docker-up)
+	@echo "⏳ Waiting for API at http://localhost:7001/health..."
+	@for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do \
+		if curl -sf http://localhost:7001/health >/dev/null 2>&1; then \
+			echo "✅ API is ready at http://localhost:7001"; exit 0; \
+		fi; \
+		echo "   attempt $$i/20..."; sleep 3; \
+	done; \
+	echo "❌ API did not become ready. Check: make docker-logs"; exit 1
 
 docker-down: ## Stop Docker containers
 	@echo "🛑 Stopping AgentShip containers..."

@@ -13,6 +13,8 @@ services:
     environment:
       - ENVIRONMENT=docker
       - LOG_LEVEL=INFO
+      # OPIK log must be writable by app user (non-root)
+      - OPIK_LOGGING_FILE=/tmp/opik.log
       # Override localhost -> postgres for Docker networking
       - AGENT_SESSION_STORE_URI=postgresql://agentship_user:agentship_password@postgres:5432/agentship_session_store
       # Auth database (separate from session store) - for MCP OAuth tokens

@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TaxBot — 2024 Federal Tax Filing</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg:        #07090f;
+      --surface:   #0d1117;
+      --card:      #131820;
+      --card2:     #191f2a;
+      --border:    rgba(255,255,255,0.07);
+      --accent:    #6366f1;
+      --accent-lo: rgba(99,102,241,0.12);
+      --green:     #22c55e;
+      --green-lo:  rgba(34,197,94,0.12);
+      --red:       #f43f5e;
+      --red-lo:    rgba(244,63,94,0.12);
+      --gold:      #f59e0b;
+      --gold-lo:   rgba(245,158,11,0.12);
+      --text:      #e2e8f0;
+      --muted:     #64748b;
+      --subtle:    #161c27;
+      --radius:    14px;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Header ──────────────────────────────────────────────────────────── */
+    header {
+      position: sticky; top: 0; z-index: 50;
+      padding: 14px 32px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(7,9,15,0.85);
+      backdrop-filter: blur(16px);
+      display: flex; align-items: center; gap: 14px;
+    }
+    .logo {
+      width: 36px; height: 36px; border-radius: 9px; flex-shrink: 0;
+      background: linear-gradient(135deg,#6366f1,#8b5cf6);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; box-shadow: 0 0 20px rgba(99,102,241,0.35);
+    }
+    header h1 {
+      font-size: 1.1rem; font-weight: 800; letter-spacing: -0.02em;
+      background: linear-gradient(120deg,#e2e8f0 40%,#818cf8);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .header-badge {
+      margin-left: auto; font-size: 0.7rem; font-weight: 600;
+      color: var(--muted); background: var(--subtle);
+      border: 1px solid var(--border); padding: 4px 10px; border-radius: 20px;
+    }
+    .header-link {
+      font-size: 0.78rem; color: var(--muted); text-decoration: none;
+      padding: 5px 12px; border-radius: 8px; border: 1px solid var(--border);
+      transition: all .2s;
+    }
+    .header-link:hover { color: var(--accent); border-color: var(--accent); }
+
+    /* ── Main ────────────────────────────────────────────────────────────── */
+    main {
+      max-width: 740px; margin: 0 auto; padding: 44px 20px 100px;
+    }
+
+    /* ── Step indicator ──────────────────────────────────────────────────── */
+    .steps { display: flex; align-items: center; margin-bottom: 44px; }
+    .step { display: flex; align-items: center; gap: 9px; }
+    .step-num {
+      width: 30px; height: 30px; border-radius: 50%;
+      border: 2px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.75rem; font-weight: 700; color: var(--muted);
+      flex-shrink: 0; transition: all .35s;
+    }
+    .step-label { font-size: 0.78rem; font-weight: 600; color: var(--muted); transition: color .35s; white-space: nowrap; }
+    .step.active .step-num { border-color: var(--accent); background: var(--accent); color: #fff; box-shadow: 0 0 12px rgba(99,102,241,.5); }
+    .step.active .step-label { color: var(--text); }
+    .step.done .step-num { border-color: var(--green); background: var(--green); color: #fff; }
+    .step.done .step-label { color: var(--green); }
+    .step-connector { flex: 1; height: 1px; background: var(--border); margin: 0 14px; }
+
+    /* ── Cards ───────────────────────────────────────────────────────────── */
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 28px 32px; margin-bottom: 18px;
+    }
+    .card-title { font-size: 1.15rem; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 6px; }
+    .card-sub { font-size: 0.85rem; color: var(--muted); margin-bottom: 24px; }
+
+    /* ── Upload zone ─────────────────────────────────────────────────────── */
+    .upload-zone {
+      border: 2px dashed var(--border); border-radius: 12px;
+      padding: 52px 32px; text-align: center; cursor: pointer;
+      background: var(--subtle); transition: all .25s; position: relative;
+    }
+    .upload-zone:hover, .upload-zone.drag-over {
+      border-color: var(--accent); background: var(--accent-lo);
+    }
+    .upload-icon { font-size: 2.8rem; margin-bottom: 14px; display: block; }
+    .upload-title { font-size: 1rem; font-weight: 700; margin-bottom: 6px; }
+    .upload-hint { font-size: 0.8rem; color: var(--muted); }
+    .file-badges { display: flex; gap: 7px; justify-content: center; flex-wrap: wrap; margin-top: 18px; }
+    .badge {
+      font-size: 0.68rem; font-weight: 700; padding: 3px 9px;
+      border-radius: 5px; background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+    }
+    .badge.hi { border-color: var(--accent); color: var(--accent); background: var(--accent-lo); }
+
+    /* ── File preview chip ───────────────────────────────────────────────── */
+    .file-chip {
+      display: flex; align-items: center; gap: 12px;
+      background: var(--subtle); border: 1px solid var(--border);
+      border-radius: 10px; padding: 12px 16px; margin-top: 16px;
+    }
+    .file-chip-icon { font-size: 1.4rem; }
+    .file-chip-name { font-size: 0.85rem; font-weight: 600; }
+    .file-chip-size { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+    .file-chip-remove {
+      margin-left: auto; background: none; border: none;
+      color: var(--muted); cursor: pointer; font-size: 1rem; padding: 4px 6px;
+      border-radius: 6px; transition: all .2s;
+    }
+    .file-chip-remove:hover { background: var(--red-lo); color: var(--red); }
+
+    /* ── Buttons ─────────────────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 11px 22px; border-radius: 10px; font-size: 0.875rem;
+      font-weight: 700; cursor: pointer; border: none; transition: all .2s;
+      font-family: inherit;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { filter: brightness(1.12); transform: translateY(-1px); box-shadow: 0 6px 22px rgba(99,102,241,.35); }
+    .btn-primary:disabled { opacity: .35; cursor: not-allowed; transform: none; box-shadow: none; filter: none; }
+    .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+    .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+    .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 26px; }
+
+    /* ── Loading ─────────────────────────────────────────────────────────── */
+    .loading-wrap {
+      display: flex; flex-direction: column; align-items: center;
+      padding: 56px 20px; gap: 20px;
+    }
+    .spinner-ring {
+      width: 48px; height: 48px; border-radius: 50%;
+      border: 3px solid var(--border); border-top-color: var(--accent);
+      animation: spin .75s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-label { font-size: 0.9rem; font-weight: 600; color: var(--muted); }
+    .stream-preview {
+      max-width: 480px; font-size: 0.75rem; color: var(--muted);
+      opacity: .65; text-align: center; max-height: 72px; overflow: hidden;
+      line-height: 1.5;
+    }
+
+    /* ── Doc summary ─────────────────────────────────────────────────────── */
+    .doc-row { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 20px; }
+    .doc-icon-wrap {
+      width: 44px; height: 44px; border-radius: 10px; flex-shrink: 0;
+      background: var(--accent-lo); border: 1px solid var(--accent);
+      display: flex; align-items: center; justify-content: center; font-size: 1.3rem;
+    }
+    .doc-title { font-size: 0.95rem; font-weight: 700; }
+    .doc-desc { font-size: 0.8rem; color: var(--muted); margin-top: 3px; }
+    .extracted-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .ext-item {
+      background: var(--subtle); border-radius: 9px; padding: 12px;
+      border: 1px solid var(--border);
+    }
+    .ext-label { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 4px; }
+    .ext-value { font-size: 0.92rem; font-weight: 700; }
+    .ext-value.money { color: var(--green); }
+
+    /* ── Form ────────────────────────────────────────────────────────────── */
+    .section-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .section-icon {
+      width: 30px; height: 30px; border-radius: 8px;
+      background: var(--accent-lo); border: 1px solid var(--accent);
+      display: flex; align-items: center; justify-content: center; font-size: 0.85rem;
+    }
+    .section-title { font-size: 0.95rem; font-weight: 800; }
+    .form-group { margin-bottom: 18px; }
+    label { display: block; font-size: 0.82rem; font-weight: 600; margin-bottom: 7px; color: var(--text); }
+    label .req { color: var(--accent); margin-left: 2px; }
+    input[type="number"], input[type="text"], select {
+      width: 100%; padding: 10px 14px; border-radius: 9px;
+      background: var(--surface); border: 1px solid var(--border);
+      color: var(--text); font-size: 0.875rem; font-family: inherit;
+      outline: none; transition: border-color .2s; appearance: none;
+    }
+    input[type="number"]:focus, input[type="text"]:focus, select:focus { border-color: var(--accent); }
+    input::placeholder { color: var(--muted); }
+    .select-wrap { position: relative; }
+    .select-wrap::after {
+      content: '▾'; position: absolute; right: 13px; top: 50%;
+      transform: translateY(-50%); color: var(--muted); font-size: 0.75rem; pointer-events: none;
+    }
+    .form-hint { font-size: 0.72rem; color: var(--muted); margin-top: 5px; }
+
+    /* ── Results ─────────────────────────────────────────────────────────── */
+    .result-hero {
+      border-radius: var(--radius); padding: 44px 32px; text-align: center;
+      margin-bottom: 18px; position: relative; overflow: hidden;
+    }
+    .result-hero.refund { background: radial-gradient(ellipse at center, rgba(34,197,94,.13) 0%, transparent 70%); border: 1px solid rgba(34,197,94,.25); }
+    .result-hero.owe    { background: radial-gradient(ellipse at center, rgba(244,63,94,.13) 0%, transparent 70%);  border: 1px solid rgba(244,63,94,.25); }
+    .result-glow {
+      position: absolute; width: 320px; height: 320px; border-radius: 50%;
+      filter: blur(90px); opacity: .18; top: 50%; left: 50%;
+      transform: translate(-50%,-50%); pointer-events: none;
+    }
+    .result-hero.refund .result-glow { background: var(--green); }
+    .result-hero.owe    .result-glow { background: var(--red); }
+    .result-eyebrow {
+      font-size: 0.7rem; font-weight: 800; letter-spacing: .14em;
+      text-transform: uppercase; margin-bottom: 12px; position: relative;
+    }
+    .result-hero.refund .result-eyebrow { color: var(--green); }
+    .result-hero.owe    .result-eyebrow { color: var(--red); }
+    .result-amount {
+      font-size: 3.8rem; font-weight: 900; letter-spacing: -0.04em;
+      margin-bottom: 8px; position: relative;
+    }
+    .result-hero.refund .result-amount { color: var(--green); }
+    .result-hero.owe    .result-amount { color: var(--red); }
+    .result-meta { font-size: 0.82rem; color: var(--muted); position: relative; }
+
+    /* Summary tiles */
+    .tiles { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-bottom: 18px; }
+    .tile {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 11px; padding: 16px 18px;
+    }
+    .tile-label { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: 6px; }
+    .tile-value { font-size: 1.05rem; font-weight: 800; }
+
+    /* Bracket chart */
+    .bracket-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+    .bracket-pct { width: 32px; font-size: 0.72rem; font-weight: 800; color: var(--accent); text-align: right; flex-shrink: 0; }
+    .bracket-track { flex: 1; height: 18px; background: var(--subtle); border-radius: 5px; overflow: hidden; }
+    .bracket-fill {
+      height: 100%; border-radius: 5px;
+      background: linear-gradient(90deg, #6366f1, #8b5cf6, #a78bfa);
+      width: 0; transition: width .8s cubic-bezier(.34,1.56,.64,1);
+    }
+    .bracket-tax { width: 72px; font-size: 0.72rem; color: var(--muted); text-align: right; flex-shrink: 0; }
+
+    /* Breakdown table */
+    .breakdown { width: 100%; border-collapse: collapse; }
+    .breakdown tr { border-bottom: 1px solid var(--border); }
+    .breakdown tr:last-child { border-bottom: none; }
+    .breakdown td { padding: 11px 0; font-size: 0.85rem; }
+    .breakdown td:last-child { text-align: right; font-weight: 700; }
+    .breakdown .total td { padding-top: 18px; font-size: 1rem; font-weight: 800; }
+    .breakdown .deduction td:last-child { color: var(--muted); }
+
+    /* Disclaimer */
+    .disclaimer {
+      background: var(--gold-lo); border: 1px solid rgba(245,158,11,.25);
+      border-radius: 10px; padding: 14px 18px; font-size: 0.78rem; color: var(--gold);
+      margin-top: 20px; line-height: 1.6;
+    }
+
+    /* Reset link */
+    .reset-row { text-align: center; margin-top: 28px; }
+    .reset-btn {
+      background: none; border: none; color: var(--muted);
+      font-size: 0.82rem; cursor: pointer; text-decoration: underline;
+      text-decoration-style: dashed; text-underline-offset: 3px;
+    }
+    .reset-btn:hover { color: var(--text); }
+
+    /* Error toast */
+    .toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: var(--card); border: 1px solid var(--red);
+      color: var(--red); padding: 12px 22px; border-radius: 10px;
+      font-size: 0.85rem; font-weight: 600; z-index: 999;
+      box-shadow: 0 8px 32px rgba(0,0,0,.5); max-width: 90vw; text-align: center;
+      animation: fadeInUp .3s ease;
+    }
+
+    /* Animations */
+    .fade-in { animation: fadeInUp .4s ease; }
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(18px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Responsive */
+    @media (max-width: 600px) {
+      main { padding: 28px 14px 80px; }
+      .card { padding: 20px 18px; }
+      .tiles { grid-template-columns: 1fr 1fr; }
+      .result-amount { font-size: 2.8rem; }
+      .extracted-grid { grid-template-columns: 1fr; }
+      header { padding: 12px 18px; }
+      header h1 { font-size: 1rem; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🧾</div>
+  <h1>TaxBot</h1>
+  <a href="/studio" class="header-link">← Studio</a>
+  <span class="header-badge">2024 US Federal Taxes</span>
+</header>
+
+<main>
+  <!-- Step indicator -->
+  <div class="steps" id="steps">
+    <div class="step active" id="s1">
+      <div class="step-num">1</div>
+      <span class="step-label">Upload</span>
+    </div>
+    <div class="step-connector"></div>
+    <div class="step" id="s2">
+      <div class="step-num">2</div>
+      <span class="step-label">Questions</span>
+    </div>
+    <div class="step-connector"></div>
+    <div class="step" id="s3">
+      <div class="step-num">3</div>
+      <span class="step-label">Results</span>
+    </div>
+  </div>
+
+  <!-- ── STEP 1: Upload ──────────────────────────────────────────────────── -->
+  <div id="sec-upload" class="fade-in">
+    <div class="card">
+      <div class="card-title">Upload Your Tax Documents</div>
+      <div class="card-sub">Drop a W-2, 1099-NEC, 1099-INT, or any IRS tax form. We'll read it and guide you from there.</div>
+
+      <div class="upload-zone" id="drop-zone">
+        <span class="upload-icon">📄</span>
+        <div class="upload-title">Drag &amp; drop your document here</div>
+        <div class="upload-hint">or click to browse files</div>
+        <div class="file-badges">
+          <span class="badge hi">W-2</span>
+          <span class="badge hi">1099-NEC</span>
+          <span class="badge hi">1099-INT</span>
+          <span class="badge hi">1099-DIV</span>
+          <span class="badge">PDF</span>
+          <span class="badge">TXT</span>
+        </div>
+      </div>
+      <input type="file" id="file-input" accept=".pdf,.txt,.text" style="display:none" />
+
+      <div id="file-chip" class="file-chip" style="display:none">
+        <span class="file-chip-icon" id="chip-icon">📄</span>
+        <div>
+          <div class="file-chip-name" id="chip-name">—</div>
+          <div class="file-chip-size" id="chip-size">—</div>
+        </div>
+        <button class="file-chip-remove" onclick="removeFile()" title="Remove file">✕</button>
+      </div>
+
+      <div class="actions">
+        <button class="btn btn-primary" id="btn-analyze" disabled onclick="startAnalysis()">
+          Analyze Document →
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── LOADING ─────────────────────────────────────────────────────────── -->
+  <div id="sec-loading" style="display:none">
+    <div class="card">
+      <div class="loading-wrap">
+        <div class="spinner-ring"></div>
+        <div class="loading-label" id="loading-label">Reading your document…</div>
+        <div class="stream-preview" id="stream-preview"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── STEP 2: Questionnaire ───────────────────────────────────────────── -->
+  <div id="sec-q" style="display:none">
+    <!-- Document summary (populated by JS) -->
+    <div class="card fade-in" id="doc-card"></div>
+
+    <!-- Questions form -->
+    <div class="card fade-in">
+      <div class="section-head">
+        <div class="section-icon">❓</div>
+        <div class="section-title">A Few Quick Questions</div>
+      </div>
+      <p style="font-size:.82rem;color:var(--muted);margin-bottom:22px;">
+        We need a bit more info to calculate your exact 2024 federal tax.
+      </p>
+      <form id="q-form"></form>
+      <div class="actions">
+        <button class="btn btn-ghost" onclick="goBack()">← Back</button>
+        <button class="btn btn-primary" onclick="submitAnswers()">
+          Calculate My Taxes →
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── STEP 3: Results ────────────────────────────────────────────────── -->
+  <div id="sec-results" style="display:none"></div>
+
+</main>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   STATE
+═══════════════════════════════════════════════════════════════════════════ */
+const S = {
+  sessionId: null,
+  userId: localStorage.getItem('tax_uid') || ('u-' + Math.random().toString(36).slice(2,9)),
+  file: null,
+  agentData: null,   // phase:"questionnaire" response
+  extractedData: {},  // for reuse in results
+};
+localStorage.setItem('tax_uid', S.userId);
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   FILE HANDLING
+═══════════════════════════════════════════════════════════════════════════ */
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', ()  => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag-over');
+  if (e.dataTransfer.files[0]) applyFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', e => { if (e.target.files[0]) applyFile(e.target.files[0]); });
+
+function applyFile(f) {
+  S.file = f;
+  const ext = f.name.split('.').pop().toLowerCase();
+  document.getElementById('chip-icon').textContent = ext === 'pdf' ? '📄' : '📝';
+  document.getElementById('chip-name').textContent = f.name;
+  document.getElementById('chip-size').textContent = fmtSize(f.size);
+  document.getElementById('file-chip').style.display = 'flex';
+  document.getElementById('btn-analyze').disabled = false;
+}
+
+function removeFile() {
+  S.file = null; fileInput.value = '';
+  document.getElementById('file-chip').style.display = 'none';
+  document.getElementById('btn-analyze').disabled = true;
+}
+
+function fmtSize(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1048576) return (n/1024).toFixed(1) + ' KB';
+  return (n/1048576).toFixed(1) + ' MB';
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   STEP 1 → AGENT: analyse document
+═══════════════════════════════════════════════════════════════════════════ */
+async function startAnalysis() {
+  showLoading('Reading your tax document…');
+  try {
+    // 1. Upload file → extract text
+    const fd = new FormData();
+    fd.append('file', S.file);
+    const uRes = await fetch('/api/tax/upload', { method: 'POST', body: fd });
+    if (!uRes.ok) {
+      const err = await uRes.json().catch(() => ({ detail: 'Upload failed' }));
+      throw new Error(err.detail || 'Upload failed');
+    }
+    const { extracted_text } = await uRes.json();
+
+    // 2. New session for this filing
+    S.sessionId = 'tax-' + Date.now();
+
+    // 3. Send to agent
+    setLoadLabel('TaxBot is analyzing your document…');
+    const query = `Please analyze this tax document and extract the relevant information:\n\n${extracted_text}`;
+    const raw = await streamChat(query, tok => appendPreview(tok));
+
+    // 4. Parse JSON from agent response
+    const data = parseJson(raw);
+    if (!data || data.phase !== 'questionnaire') throw new Error('Unexpected agent response. Try again.');
+    S.agentData = data;
+    S.extractedData = data.extracted || {};
+    renderQuestionnaire(data);
+
+  } catch (e) {
+    showError(e.message);
+    showSection('upload');
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   STEP 2 → AGENT: calculate taxes
+═══════════════════════════════════════════════════════════════════════════ */
+async function submitAnswers() {
+  const answers = collectAnswers();
+  if (!answers) return; // validation failed
+
+  showLoading('TaxBot is calculating your 2024 federal taxes…');
+  try {
+    const query = `Here are my answers:\n\n${JSON.stringify(answers, null, 2)}\n\nPlease calculate my 2024 federal taxes now.`;
+    const raw = await streamChat(query, tok => appendPreview(tok));
+    const data = parseJson(raw);
+    if (!data || data.phase !== 'results') throw new Error('Could not get tax calculation. Try again.');
+    renderResults(data);
+  } catch (e) {
+    showError(e.message);
+    showSection('q');
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   STREAMING
+═══════════════════════════════════════════════════════════════════════════ */
+function streamChat(query, onToken) {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify({
+      agent_name: 'tax_filing_agent',
+      user_id: S.userId,
+      session_id: S.sessionId,
+      message: query,
+    });
+
+    let full = '';
+    fetch('/api/debug/chat/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    }).then(res => {
+      if (!res.ok) return reject(new Error('Agent API error ' + res.status));
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+
+      (function pump() {
+        reader.read().then(({ done, value }) => {
+          if (done) { resolve(full); return; }
+          buf += dec.decode(value, { stream: true });
+
+          // SSE events separated by \n\n
+          const parts = buf.split('\n\n');
+          buf = parts.pop();
+
+          for (const part of parts) {
+            const dataLine = part.split('\n').find(l => l.startsWith('data:'));
+            if (!dataLine) {
+              if (part.startsWith('event: done') || part.includes('event: done')) resolve(full);
+              continue;
+            }
+            const raw = dataLine.slice(5).trim();
+            if (raw === '[DONE]') { resolve(full); return; }
+            try {
+              const ev = JSON.parse(raw);
+              if (ev.type === 'content' && ev.text) { full += ev.text; onToken(ev.text); }
+              if (ev.type === 'done') { resolve(full); return; }
+            } catch { /* skip parse errors */ }
+          }
+          pump();
+        }).catch(reject);
+      })();
+    }).catch(reject);
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   JSON PARSER  (handles ```json blocks and raw objects)
+═══════════════════════════════════════════════════════════════════════════ */
+function parseJson(text) {
+  // ```json ... ``` block
+  const m = text.match(/```json\s*([\s\S]*?)\s*```/);
+  if (m) { try { return JSON.parse(m[1]); } catch { /* fall through */ } }
+  // Largest raw { } block
+  const blocks = [...text.matchAll(/\{[\s\S]*?\}/g)];
+  for (const b of blocks.reverse()) {
+    try { const o = JSON.parse(b[0]); if (o.phase) return o; } catch { /* skip */ }
+  }
+  return null;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   QUESTIONNAIRE RENDERING
+═══════════════════════════════════════════════════════════════════════════ */
+function renderQuestionnaire(data) {
+  const ex = data.extracted || {};
+  const types = (ex.document_types || ['Tax Document']).join(', ');
+
+  // Doc summary card
+  let extItems = '';
+  if (ex.taxpayer_name) extItems += extItem('Taxpayer', ex.taxpayer_name);
+  if (ex.employer_name)  extItems += extItem('Employer', ex.employer_name);
+  if (ex.wages != null)          extItems += extItem('Wages / Income', money(ex.wages), true);
+  if (ex.federal_withheld != null) extItems += extItem('Fed. Tax Withheld', money(ex.federal_withheld), true);
+
+  document.getElementById('doc-card').innerHTML = `
+    <div class="doc-row">
+      <div class="doc-icon-wrap">📋</div>
+      <div>
+        <div class="doc-title">${esc(types)} Detected</div>
+        <div class="doc-desc">${esc(data.document_summary || 'Document analyzed successfully')}</div>
+      </div>
+    </div>
+    ${extItems ? `<div class="extracted-grid">${extItems}</div>` : ''}
+  `;
+
+  // Questions
+  const form = document.getElementById('q-form');
+  form.innerHTML = (data.questions || []).map(q => renderQ(q)).join('');
+  form.addEventListener('change', () => updateVisibility(data.questions));
+  updateVisibility(data.questions);
+
+  showSection('q');
+}
+
+function extItem(label, value, isMoney = false) {
+  return `<div class="ext-item">
+    <div class="ext-label">${esc(label)}</div>
+    <div class="ext-value${isMoney ? ' money' : ''}">${esc(String(value))}</div>
+  </div>`;
+}
+
+function renderQ(q) {
+  const req = q.required ? '<span class="req">*</span>' : '';
+  let control = '';
+  if (q.type === 'select') {
+    const opts = (q.options || []).map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join('');
+    control = `<div class="select-wrap"><select data-id="${q.id}"><option value="">— Select —</option>${opts}</select></div>`;
+  } else {
+    const def = q.default != null ? q.default : '';
+    const ph  = q.placeholder || (def !== '' ? String(def) : '0.00');
+    control = `<input type="number" data-id="${q.id}" value="${def}" placeholder="${ph}" min="0" step="any" />`;
+  }
+  return `<div class="form-group" data-qid="${q.id}" ${q.show_if ? 'style="display:none"' : ''}>
+    <label>${esc(q.label)}${req}</label>
+    ${control}
+  </div>`;
+}
+
+function updateVisibility(questions) {
+  for (const q of (questions || [])) {
+    if (!q.show_if) continue;
+    const wrap = document.querySelector(`[data-qid="${q.id}"]`);
+    if (!wrap) continue;
+    const m = q.show_if.match(/(\w+)\s*==\s*['"](.+)['"]/);
+    if (!m) continue;
+    const dep = document.querySelector(`[data-id="${m[1]}"]`);
+    if (!dep) continue;
+    wrap.style.display = dep.value === m[2] ? '' : 'none';
+  }
+}
+
+function collectAnswers() {
+  const out = {};
+  let valid = true;
+  document.querySelectorAll('#q-form [data-id]').forEach(el => {
+    const wrap = el.closest('[data-qid]');
+    if (wrap && wrap.style.display === 'none') return; // hidden
+    const val = el.value.trim();
+    if (el.tagName === 'SELECT' && !val) {
+      // check if required
+      const qid = wrap ? wrap.dataset.qid : el.dataset.id;
+      const q = (S.agentData?.questions || []).find(x => x.id === qid);
+      if (q?.required) { showError(`Please answer: "${q.label}"`); valid = false; }
+      return;
+    }
+    out[el.dataset.id] = el.type === 'number' ? (parseFloat(val) || 0) : val;
+  });
+  return valid ? out : null;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   RESULTS RENDERING
+═══════════════════════════════════════════════════════════════════════════ */
+function renderResults(data) {
+  const c = data.calculation || {};
+  const refund  = c.result_type === 'refund';
+  const amount  = refund ? c.refund_amount : c.amount_owed;
+  const fsLabel = { single:'Single', married_jointly:'Married Filing Jointly',
+                    married_separately:'Married Filing Separately', head_of_household:'Head of Household' };
+
+  // Bracket bars
+  const maxTax = Math.max(...(c.bracket_breakdown||[]).map(b=>b.tax_in_bracket||0), 1);
+  const brackets = (c.bracket_breakdown||[]).map(b => {
+    const pct = Math.round((b.tax_in_bracket / maxTax) * 100);
+    return `<div class="bracket-row">
+      <span class="bracket-pct">${b.bracket}</span>
+      <div class="bracket-track"><div class="bracket-fill" data-pct="${pct}"></div></div>
+      <span class="bracket-tax">${money(b.tax_in_bracket)}</span>
+    </div>`;
+  }).join('');
+
+  // Breakdown table rows
+  const rows = [];
+  rows.push(`<tr><td>Gross Income</td><td>${money(c.gross_income)}</td></tr>`);
+  if (c.above_the_line_deductions > 0)
+    rows.push(`<tr class="deduction"><td>Above-the-line Deductions</td><td>− ${money(c.above_the_line_deductions)}</td></tr>`);
+  rows.push(`<tr><td>Adjusted Gross Income (AGI)</td><td>${money(c.agi)}</td></tr>`);
+  rows.push(`<tr class="deduction"><td>${c.deduction_type || 'Standard Deduction'}</td><td>− ${money(c.deduction_amount)}</td></tr>`);
+  rows.push(`<tr><td>Taxable Income</td><td>${money(c.taxable_income)}</td></tr>`);
+  rows.push(`<tr><td>Tax Before Credits</td><td>${money(c.tax_before_credits)}</td></tr>`);
+  if (c.child_tax_credit > 0)
+    rows.push(`<tr class="deduction"><td>Child Tax Credit</td><td>− ${money(c.child_tax_credit)}</td></tr>`);
+  if (c.additional_child_tax_credit > 0)
+    rows.push(`<tr class="deduction"><td>Additional Child Tax Credit (refundable)</td><td>− ${money(c.additional_child_tax_credit)}</td></tr>`);
+  rows.push(`<tr><td>Total Tax After Credits</td><td>${money(c.tax_after_credits)}</td></tr>`);
+  rows.push(`<tr class="deduction"><td>Federal Tax Already Withheld</td><td>− ${money(c.federal_withheld)}</td></tr>`);
+  rows.push(`<tr class="total"><td>${refund ? 'Estimated Refund' : 'Amount Owed'}</td>
+    <td style="color:var(--${refund?'green':'red'})">${money(amount||0)}</td></tr>`);
+
+  document.getElementById('sec-results').innerHTML = `
+    <div class="result-hero ${refund?'refund':'owe'} fade-in">
+      <div class="result-glow"></div>
+      <div class="result-eyebrow">${refund ? '🎉 Estimated Federal Refund' : '💳 Federal Tax Owed'}</div>
+      <div class="result-amount">${money(amount||0)}</div>
+      <div class="result-meta">2024 Tax Year · ${esc(fsLabel[c.filing_status]||c.filing_status||'')}
+        · Effective Rate ${c.effective_tax_rate||0}%</div>
+    </div>
+
+    <div class="tiles fade-in">
+      <div class="tile"><div class="tile-label">Gross Income</div><div class="tile-value">${money(c.gross_income)}</div></div>
+      <div class="tile"><div class="tile-label">Taxable Income</div><div class="tile-value">${money(c.taxable_income)}</div></div>
+      <div class="tile"><div class="tile-label">Marginal Rate</div><div class="tile-value">${c.marginal_tax_rate||'—'}</div></div>
+    </div>
+
+    ${brackets ? `<div class="card fade-in">
+      <div class="section-head">
+        <div class="section-icon">📊</div>
+        <div class="section-title">Tax Bracket Breakdown</div>
+      </div>
+      <div style="margin-top:16px;">${brackets}</div>
+    </div>` : ''}
+
+    <div class="card fade-in">
+      <div class="section-head">
+        <div class="section-icon">🧾</div>
+        <div class="section-title">Detailed Breakdown</div>
+      </div>
+      <table class="breakdown" style="margin-top:16px;">${rows.join('')}</table>
+    </div>
+
+    ${data.summary ? `<div class="card fade-in" style="border-color:var(--accent);background:var(--accent-lo);">
+      <div class="section-head"><div class="section-icon">💬</div><div class="section-title">Summary</div></div>
+      <p style="font-size:.85rem;color:var(--text);margin-top:12px;line-height:1.7;">${esc(data.summary)}</p>
+    </div>` : ''}
+
+    <div class="disclaimer fade-in">
+      ⚠️ <strong>Disclaimer:</strong> This estimate is for informational purposes only and does not
+      constitute tax advice. Your actual tax liability may differ based on your complete financial
+      situation. Always consult a qualified CPA or tax professional and file using official IRS forms.
+    </div>
+    <div class="reset-row"><button class="reset-btn" onclick="resetAll()">Start over with a different document</button></div>
+  `;
+
+  showSection('results');
+
+  // Animate bracket bars after paint
+  requestAnimationFrame(() => setTimeout(() => {
+    document.querySelectorAll('.bracket-fill').forEach((el, i) => {
+      el.style.transitionDelay = (i * 80) + 'ms';
+      el.style.width = el.dataset.pct + '%';
+    });
+  }, 50));
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   UI HELPERS
+═══════════════════════════════════════════════════════════════════════════ */
+const SECTIONS = ['upload','loading','q','results'];
+function showSection(name) {
+  SECTIONS.forEach(id => {
+    const el = document.getElementById('sec-' + id);
+    if (el) el.style.display = (id === name) ? '' : 'none';
+  });
+  const stepMap = { upload:0, loading:0, q:1, results:2 };
+  const cur = stepMap[name] ?? 0;
+  ['s1','s2','s3'].forEach((id,i) => {
+    const el = document.getElementById(id);
+    el.classList.remove('active','done');
+    if (i < cur) el.classList.add('done');
+    else if (i === cur) el.classList.add('active');
+  });
+}
+
+function showLoading(label) {
+  setLoadLabel(label);
+  document.getElementById('stream-preview').textContent = '';
+  showSection('loading');
+}
+function setLoadLabel(t) { document.getElementById('loading-label').textContent = t; }
+function appendPreview(tok) {
+  const el = document.getElementById('stream-preview');
+  el.textContent = (el.textContent + tok).slice(-300);
+}
+function goBack() { showSection('upload'); }
+function resetAll() {
+  S.sessionId = null; S.file = null; S.agentData = null; S.extractedData = {};
+  document.getElementById('file-chip').style.display = 'none';
+  document.getElementById('btn-analyze').disabled = true;
+  fileInput.value = '';
+  showSection('upload');
+}
+
+function showError(msg) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = '⚠️ ' + msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 5000);
+}
+
+function money(n) {
+  if (n == null) return '—';
+  return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>

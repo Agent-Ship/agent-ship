@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from src.agent_framework.registry import discover_agents
 from src.service.routers.rest_router import router as rest_router
 from src.service.routes.mcp_auth import router as mcp_auth_router
+from src.service.routers.tax_router import router as tax_router
 from studio.router import router as debug_router
 load_dotenv()
 
@@ -217,6 +218,9 @@ app.include_router(mcp_auth_router)
 # Include Debug API router
 app.include_router(debug_router, prefix="/api/debug", tags=["debug"])
 
+# Include Tax demo router
+app.include_router(tax_router, prefix="/api/tax", tags=["tax"])
+
 # Serve AgentShip Studio (formerly Debug UI)
 debug_ui_enabled = os.environ.get("STUDIO_ENABLED", os.environ.get("DEBUG_UI_ENABLED", "true")).lower() == "true"
 if debug_ui_enabled:
@@ -243,6 +247,16 @@ if debug_ui_enabled:
         async def debug_ui_redirect():
             """Redirect legacy /debug-ui to /studio."""
             return RedirectResponse(url="/studio", status_code=301)
+
+        # TaxBot demo UI at /tax
+        @app.get("/tax", response_class=HTMLResponse)
+        @app.get("/tax/", response_class=HTMLResponse)
+        async def tax_ui():
+            """Serve TaxBot — 2024 US Federal Tax Filing demo."""
+            tax_path = os.path.join(static_path, "tax.html")
+            response = FileResponse(tax_path)
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            return response
 
         logger.info("🎨 AgentShip Studio mounted at /studio (legacy /debug-ui → 301 redirect)")
     else:

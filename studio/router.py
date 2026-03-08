@@ -120,7 +120,8 @@ class ChatMessage(BaseModel):
 class DebugChatRequest(BaseModel):
     """Request for debug chat."""
     agent_name: str
-    message: str
+    message: Optional[str] = None
+    query: Optional[str] = None  # Alias for message (tax demo uses this)
     session_id: Optional[str] = None
     user_id: Optional[str] = None
     features: Optional[Dict[str, Any]] = None
@@ -273,12 +274,15 @@ async def debug_chat(request: DebugChatRequest):
         user_id = request.user_id or f"debug_user_{uuid.uuid4().hex[:8]}"
         
         # Build query from features (form data) or message
+        msg = request.message or request.query
         if request.features:
             query = dict(request.features)
             query['session_id'] = session_id
             query['user_id'] = user_id
+        elif msg:
+            query = {"text": msg}
         else:
-            query = {"text": request.message}
+            raise HTTPException(status_code=400, detail="message or query required")
         
         # Create chat request
         chat_request = AgentChatRequest(
@@ -403,22 +407,31 @@ async def debug_chat_stream(request: DebugChatRequest):
             
             # Parse the query - prefer features (form data) over message (JSON string)
             # The debug UI sends form data as features, and message as JSON.stringify(formData)
+            # Tax demo sends "query" as alias for "message"
+            msg = request.message or request.query
             query = {}
             
             # First, use features directly (this is the form data from the UI: source, destination, etc.)
             if request.features:
                 query = dict(request.features)
             
-            # If no features but message is provided, try to parse it as JSON
-            if not query and request.message:
+            # If no features but message/query is provided, try to parse it as JSON
+            if not query and msg:
                 try:
-                    parsed_message = json.loads(request.message)
+                    parsed_message = json.loads(msg)
                     if isinstance(parsed_message, dict):
                         query = parsed_message
                     else:
-                        query = {"text": request.message}
+                        query = {"text": msg}
                 except (json.JSONDecodeError, TypeError):
-                    query = {"text": request.message}
+                    query = {"text": msg}
+
+            if not query:
+                yield {
+                    "event": "error",
+                    "data": json.dumps({"type": "error", "message": "message or query required"})
+                }
+                return
             
             # Create request
             chat_request = AgentChatRequest(
