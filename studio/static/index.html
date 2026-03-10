@@ -127,7 +127,7 @@
             box-shadow: 0 0 7px rgba(124,111,247,0.6);
         }
         .agent-label {
-            font-size: 0.8125rem; font-weight: 500; truncate; color: var(--t2);
+            font-size: 0.8125rem; font-weight: 500; overflow: hidden; color: var(--t2);
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
             transition: color 0.12s;
         }
@@ -1097,6 +1097,37 @@ const tokenQueues = new Map();
 const rawContentMap = new Map();
 const processorRunning = new Map();
 
+// Close any open markdown blocks so marked.parse renders partial content correctly.
+function closePartialMarkdown(text) {
+    // Close unclosed fenced code blocks (``` or ~~~)
+    const fenceMatches = text.match(/^(`{3,}|~{3,})/gm) || [];
+    if (fenceMatches.length % 2 !== 0) text += '\n' + fenceMatches[fenceMatches.length - 1];
+    // Close unclosed inline code (single backtick)
+    const backticks = (text.match(/(?<!`)`(?!`)/g) || []).length;
+    if (backticks % 2 !== 0) text += '`';
+    return text;
+}
+
+// Extract display text from raw content — supports full or partial JSON during streaming.
+// When the agent returns {"response":"..."}, we show the inner text as it streams.
+function extractDisplayText(accumulated) {
+    const t = accumulated.trimStart();
+    if (!t.startsWith('{')) return accumulated;
+    try {
+        const p = JSON.parse(accumulated.trim());
+        if (typeof p === 'object' && p !== null)
+            return p.response || p.text || p.answer || p.flight_plan || JSON.stringify(p, null, 2);
+    } catch {
+        // Partial JSON during streaming: try to extract "response":"...", "text":"...", etc.
+        const m = t.match(/"response"\s*:\s*"((?:[^"\\]|\\.)*)/) ||
+                  t.match(/"text"\s*:\s*"((?:[^"\\]|\\.)*)/) ||
+                  t.match(/"answer"\s*:\s*"((?:[^"\\]|\\.)*)/) ||
+                  t.match(/"flight_plan"\s*:\s*"((?:[^"\\]|\\.)*)/);
+        if (m) return m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+    }
+    return accumulated;
+}
+
 function appendTokenWithAnimation(cid, token) {
     if (!tokenQueues.has(cid)) { tokenQueues.set(cid, []); rawContentMap.set(cid, ''); }
     rawContentMap.set(cid, rawContentMap.get(cid) + token);
@@ -1115,7 +1146,9 @@ function processTokenQueue(cid) {
     document.getElementById(cid + '-events')?.querySelector('.spin-placeholder')?.remove();
     queue.shift();
     contentEl.className = 'md md-out';
-    contentEl.innerHTML = marked.parse(rawContentMap.get(cid) || '');
+    const raw = rawContentMap.get(cid) || '';
+    const displayText = extractDisplayText(raw);
+    contentEl.innerHTML = marked.parse(closePartialMarkdown(displayText));
     scrollToBottom();
     setTimeout(() => processTokenQueue(cid), 20);
 }
@@ -1165,18 +1198,24 @@ function finalizeStreamingContainer(cid, content, events) {
     // per-token JSON unwrap in the content handler can't parse partial fragments.
     // Once all tokens have arrived, the accumulated text may be a JSON-wrapped schema
     // response (e.g. {"response": "..."}). Unwrap it now before final render.
+    // Resolve final content: unwrap JSON schema wrapper if present, then render markdown.
     const accumulated = rawContentMap.get(cid) || '';
+    let finalText = accumulated;
     if (accumulated.trimStart().startsWith('{')) {
         try {
             const p = JSON.parse(accumulated.trim());
             if (typeof p === 'object' && p !== null) {
-                const unwrapped = p.response || p.text || p.answer || JSON.stringify(p, null, 2);
-                rawContentMap.set(cid, unwrapped);
-                content = unwrapped;
-                const contentEl = container.querySelector('.md-out');
-                if (contentEl) contentEl.innerHTML = marked.parse(unwrapped);
+                finalText = p.response || p.text || p.answer || JSON.stringify(p, null, 2);
+                rawContentMap.set(cid, finalText);
+                content = finalText;
             }
         } catch {}
+    }
+    // Final render with complete text — no partial-close hacks needed now.
+    const contentEl = container.querySelector('.md-out');
+    if (contentEl) {
+        contentEl.className = 'md md-out';
+        contentEl.innerHTML = marked.parse(finalText);
     }
     // Hide streaming status indicators (thinking dots, tool progress) — they're in-progress only
     const evBox = document.getElementById(cid + '-events');
