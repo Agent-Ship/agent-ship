@@ -215,7 +215,14 @@ class SSEMCPClient(BaseMCPClient):
             result_parts = []
             for item in content:
                 if isinstance(item, dict):
-                    if "text" in item:
+                    item_type = item.get("type", "")
+                    if item_type == "resource":
+                        # Resource blocks (e.g. file contents from GitHub MCP)
+                        resource = item.get("resource", {})
+                        text = resource.get("text") or resource.get("blob") or ""
+                        if text:
+                            result_parts.append(str(text))
+                    elif "text" in item:
                         result_parts.append(item["text"])
                     elif "data" in item:
                         result_parts.append(str(item["data"]))

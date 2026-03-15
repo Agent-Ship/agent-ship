@@ -247,10 +247,14 @@ async def get_agent_config(agent_name: str):
         memory_backend = "in_memory"
         if hasattr(config, "memory") and config.memory and hasattr(config.memory, "backend"):
             memory_backend = config.memory.backend
+        model = getattr(config, "model", None) or getattr(config, "llm_model", None)
+        model_str = model.value if hasattr(model, "value") else (str(model) if model else "unknown")
+        provider = getattr(config, "model_provider", None) or getattr(config, "llm_provider_name", None)
+        provider_str = (provider.name.value if hasattr(provider, "name") else str(provider)) if provider else "unknown"
         return {
             "engine": getattr(config, "execution_engine", "adk") or "adk",
-            "model": getattr(config, "llm_model", "unknown"),
-            "provider": getattr(config, "llm_provider_name", "unknown"),
+            "model": model_str,
+            "provider": provider_str,
             "memory_backend": memory_backend,
             "streaming_mode": getattr(config, "streaming_mode", "event_based") or "event_based",
         }

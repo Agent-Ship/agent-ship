@@ -141,13 +141,22 @@ class StdioMCPClient(BaseMCPClient):
                         msg = block.text
                         break
             raise RuntimeError(msg)
-        # Return structured content if available, else first text content
-        if result.structuredContent is not None:
-            return result.structuredContent
+        # Collect all text from content blocks (text, embedded resource, etc.)
+        # Prefer structuredContent only when there is no text content to surface
+        parts = []
         if result.content:
             for block in result.content:
                 if hasattr(block, "text") and block.text:
-                    return block.text
+                    parts.append(block.text)
+                elif hasattr(block, "resource") and block.resource:
+                    res = block.resource
+                    text = getattr(res, "text", None) or getattr(res, "blob", None)
+                    if text:
+                        parts.append(str(text))
+        if parts:
+            return "\n".join(parts)
+        if result.structuredContent is not None:
+            return result.structuredContent
         return None
 
     async def close(self) -> None:
