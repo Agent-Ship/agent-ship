@@ -127,7 +127,7 @@ class TestProviderModelListConsistency:
     """Every model in a provider's models list must exist in LLMModel enum,
     and the enum value must round-trip through get_model_string without error."""
 
-    @pytest.mark.parametrize("provider_name", ["openai", "claude", "gemini", "groq"])
+    @pytest.mark.parametrize("provider_name", ["openai", "claude", "gemini", "groq", "deepseek"])
     def test_all_provider_models_are_valid_enum_values(self, provider_name):
         provider = LLMProviderConfig.get_llm_provider(LLMProviderName(provider_name))
         for model in provider.models:
@@ -210,9 +210,13 @@ class TestModelStringFormat:
         ("claude", "claude-sonnet-4",  "anthropic/claude-sonnet-4-20250514"),
         ("gemini", "gemini-2.0-flash", "gemini/gemini-2.0-flash"),
         ("gemini", "gemini-1.5-pro",       "gemini/gemini-2.5-pro"),
-        ("claude", "claude-haiku-4-5",     "anthropic/claude-haiku-4-5-20251001"),
-        ("groq",   "qwen-2.5-72b-instruct","groq/qwen-2.5-72b-instruct"),
-        ("groq",   "qwen-2.5-7b-instruct-fp16", "groq/qwen-2.5-7b-instruct-fp16"),
+        ("claude",    "claude-haiku-4-5",              "anthropic/claude-haiku-4-5-20251001"),
+        ("openai",    "o4-mini",                       "openai/o4-mini"),
+        ("openai",    "gpt-4.5-preview",               "openai/gpt-4.5-preview"),
+        ("groq",      "qwen-2.5-72b-instruct",         "groq/qwen-2.5-72b-instruct"),
+        ("groq",      "llama-4-scout-17b-16e-instruct","groq/llama-4-scout-17b-16e-instruct"),
+        ("deepseek",  "deepseek-chat",                 "deepseek/deepseek-chat"),
+        ("deepseek",  "deepseek-reasoner",              "deepseek/deepseek-reasoner"),
     ])
     def test_model_string(self, provider_name, model_name, expected):
         assert model_string(provider_name, model_name) == expected
@@ -358,3 +362,43 @@ class TestOpenRouterProvider:
         )
 
         assert provider_supports_json_object_response_format("openrouter")
+
+
+# ---------------------------------------------------------------------------
+# DeepSeek
+# ---------------------------------------------------------------------------
+
+class TestDeepSeekProvider:
+    """DeepSeek V3 (deepseek-chat) and R1 (deepseek-reasoner) via DeepSeek's API."""
+
+    def test_prefix_is_deepseek(self):
+        assert model_string("deepseek", "deepseek-chat").startswith("deepseek/")
+
+    def test_no_api_base(self):
+        assert LLMProviderConfig.deepseek.api_base is None
+
+    def test_default_model_is_v3(self):
+        assert LLMProviderConfig.deepseek.default_model.value == "deepseek-chat"
+
+    @pytest.mark.parametrize("model_name,expected", [
+        ("deepseek-chat",     "deepseek/deepseek-chat"),
+        ("deepseek-reasoner", "deepseek/deepseek-reasoner"),
+    ])
+    def test_model_strings(self, model_name, expected):
+        assert model_string("deepseek", model_name) == expected
+
+    def test_both_models_in_list(self):
+        values = {m.value for m in LLMProviderConfig.deepseek.models}
+        assert "deepseek-chat" in values
+        assert "deepseek-reasoner" in values
+
+    def test_get_llm_provider_returns_deepseek(self):
+        provider = LLMProviderConfig.get_llm_provider(LLMProviderName.DEEPSEEK)
+        assert provider.name == LLMProviderName.DEEPSEEK
+
+    def test_json_object_mode_allowlisted_with_langgraph(self):
+        from src.agent_framework.engines.json_object_response_format import (
+            provider_supports_json_object_response_format,
+        )
+
+        assert provider_supports_json_object_response_format("deepseek")

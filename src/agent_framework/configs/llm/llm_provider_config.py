@@ -24,6 +24,7 @@ class LLMProviderName(Enum):
     VLLM = "vllm"
     GROQ = "groq"
     OPENROUTER = "openrouter"
+    DEEPSEEK = "deepseek"
 
     def __str__(self):
         return self.value
@@ -42,8 +43,10 @@ class LLMModel(Enum):
     GPT_4_1_MINI = "gpt-4.1-mini"
     O1 = "o1"
     O1_MINI = "o1-mini"
+    O4_MINI = "o4-mini"
     O3 = "o3"
     O3_MINI = "o3-mini"
+    GPT_4_5 = "gpt-4.5-preview"
     # Claude
     CLAUDE_3_5_SONNET = "claude-3-5-sonnet"
     CLAUDE_3_5_HAIKU = "claude-3-5-haiku"
@@ -70,6 +73,12 @@ class LLMModel(Enum):
     QWEN_2_5_72B = "qwen-2.5-72b-instruct"
     QWEN_2_5_7B = "qwen-2.5-7b-instruct-fp16"
     QWEN_2_5_CODER_32B = "qwen-2.5-coder-32b-instruct"
+    # Llama 4 (via Groq)
+    LLAMA_4_SCOUT = "llama-4-scout-17b-16e-instruct"
+    LLAMA_4_MAVERICK = "llama-4-maverick-17b-128e-instruct"
+    # DeepSeek
+    DEEPSEEK_V3 = "deepseek-chat"       # DeepSeek V3
+    DEEPSEEK_R1 = "deepseek-reasoner"   # DeepSeek R1
 
     def __str__(self):
         return self.value
@@ -97,6 +106,7 @@ class ProviderAPIKey(Enum):
     VLLM = os.getenv("VLLM_API_KEY", "EMPTY")  # vLLM servers often require a dummy key
     GROQ = os.getenv("GROQ_API_KEY", "")
     OPENROUTER = os.getenv("OPENROUTER_API_KEY", "")
+    DEEPSEEK = os.getenv("DEEPSEEK_API_KEY", "")
 
     def __str__(self):
         return self.value
@@ -191,6 +201,8 @@ class LLMProviderConfig:
             LLMModel.GPT_4_1_MINI,
             LLMModel.GPT_4O,
             LLMModel.GPT_4O_MINI,
+            LLMModel.GPT_4_5,
+            LLMModel.O4_MINI,
             LLMModel.O3,
             LLMModel.O3_MINI,
             LLMModel.O1,
@@ -269,8 +281,28 @@ class LLMProviderConfig:
             LLMModel.QWEN_2_5_72B,
             LLMModel.QWEN_2_5_7B,
             LLMModel.QWEN_2_5_CODER_32B,
+            LLMModel.LLAMA_4_SCOUT,
+            LLMModel.LLAMA_4_MAVERICK,
         ],
         default_model=LLMModel.LLAMA_3_3_70B,
+    )
+
+    # ── DeepSeek ──────────────────────────────────────────────────────────────
+    # DeepSeek V3 (deepseek-chat) and R1 (deepseek-reasoner) are among the most
+    # widely-used open-weight models in 2025. LiteLLM routes via the "deepseek/"
+    # prefix to DeepSeek's own API (api.deepseek.com).
+    #
+    # Required env var:
+    #   DEEPSEEK_API_KEY  - from https://platform.deepseek.com/api_keys
+    deepseek = LLMProvider(
+        name=LLMProviderName.DEEPSEEK,
+        api_key=ProviderAPIKey.DEEPSEEK,
+        litellm_prefix="deepseek",
+        models=[
+            LLMModel.DEEPSEEK_V3,
+            LLMModel.DEEPSEEK_R1,
+        ],
+        default_model=LLMModel.DEEPSEEK_V3,
     )
 
     # ── vLLM ──────────────────────────────────────────────────────────────────
@@ -309,6 +341,7 @@ class LLMProviderConfig:
         LLMProviderName.CLAUDE: claude,
         LLMProviderName.GEMINI: gemini,
         LLMProviderName.GROQ: groq,
+        LLMProviderName.DEEPSEEK: deepseek,
         LLMProviderName.VLLM: vllm,
         LLMProviderName.OPENROUTER: openrouter,
     }
