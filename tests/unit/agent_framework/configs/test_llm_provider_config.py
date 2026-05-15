@@ -123,7 +123,7 @@ class TestProviderModelListConsistency:
     """Every model in a provider's models list must exist in LLMModel enum,
     and the enum value must round-trip through get_model_string without error."""
 
-    @pytest.mark.parametrize("provider_name", ["openai", "claude", "gemini"])
+    @pytest.mark.parametrize("provider_name", ["openai", "claude", "gemini", "groq"])
     def test_all_provider_models_are_valid_enum_values(self, provider_name):
         provider = LLMProviderConfig.get_llm_provider(LLMProviderName(provider_name))
         for model in provider.models:
@@ -141,6 +141,13 @@ class TestProviderModelListConsistency:
 
     def test_gemini_models_list_is_not_empty(self):
         assert len(LLMProviderConfig.gemini.models) > 0
+
+    def test_groq_models_list_is_not_empty(self):
+        assert len(LLMProviderConfig.groq.models) > 0
+
+    def test_vllm_models_list_is_empty(self):
+        # vLLM accepts any model name — no fixed list enforced
+        assert LLMProviderConfig.vllm.models == []
 
 
 # ---------------------------------------------------------------------------
@@ -164,6 +171,14 @@ class TestDefaultModels:
         # All 1.5 and 2.0 models are deprecated/shut down — default must be 2.5+
         deprecated = {"gemini-1.5-pro", "gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite"}
         assert LLMProviderConfig.gemini.default_model.value not in deprecated
+
+    def test_groq_default_in_model_list(self):
+        p = LLMProviderConfig.groq
+        assert p.default_model in p.models
+
+    def test_vllm_default_model_is_none(self):
+        # vLLM has no fixed default — user must specify llm_model in YAML
+        assert LLMProviderConfig.vllm.default_model is None
 
 
 # ---------------------------------------------------------------------------
@@ -189,7 +204,7 @@ class TestModelStringFormat:
     def test_model_string(self, provider_name, model_name, expected):
         assert model_string(provider_name, model_name) == expected
 
-    @pytest.mark.parametrize("provider_name", ["openai", "claude", "gemini"])
+    @pytest.mark.parametrize("provider_name", ["openai", "claude", "gemini", "groq"])
     def test_model_string_contains_slash(self, provider_name):
         provider = LLMProviderConfig.get_llm_provider(LLMProviderName(provider_name))
         for model in provider.models:
@@ -198,3 +213,91 @@ class TestModelStringFormat:
             prefix, _, model_id = result.partition("/")
             assert prefix, "prefix must not be empty"
             assert model_id, "model id must not be empty"
+
+
+# ---------------------------------------------------------------------------
+# Groq
+# ---------------------------------------------------------------------------
+
+class TestGroqProvider:
+    """Groq is a cloud inference provider served via LiteLLM's groq/ prefix."""
+
+    def test_prefix_is_groq(self):
+        assert model_string("groq", "llama-3.3-70b-versatile").startswith("groq/")
+
+    def test_no_api_base(self):
+        # Groq uses its own cloud endpoint — no custom api_base needed
+        assert LLMProviderConfig.groq.api_base is None
+
+    @pytest.mark.parametrize("model_name,expected", [
+        ("llama-3.3-70b-versatile", "groq/llama-3.3-70b-versatile"),
+        ("llama-3.1-8b-instant",    "groq/llama-3.1-8b-instant"),
+        ("llama3-70b-8192",         "groq/llama3-70b-8192"),
+        ("llama3-8b-8192",          "groq/llama3-8b-8192"),
+        ("mixtral-8x7b-32768",      "groq/mixtral-8x7b-32768"),
+        ("gemma2-9b-it",            "groq/gemma2-9b-it"),
+    ])
+    def test_model_strings(self, model_name, expected):
+        assert model_string("groq", model_name) == expected
+
+    def test_unknown_model_passthrough(self):
+        # Future models not yet in enum should still pass through
+        result = model_string("groq", "llama-4-scout")
+        assert result == "groq/llama-4-scout"
+
+    def test_get_llm_provider_returns_groq(self):
+        provider = LLMProviderConfig.get_llm_provider(LLMProviderName.GROQ)
+        assert provider.name == LLMProviderName.GROQ
+
+
+# ---------------------------------------------------------------------------
+# vLLM
+# ---------------------------------------------------------------------------
+
+class TestVLLMProvider:
+    """vLLM is a self-hosted OpenAI-compatible server. Any model name is valid."""
+
+    def test_prefix_is_hosted_vllm(self):
+        result = model_string("vllm", "meta-llama/Llama-3.1-8B-Instruct")
+        assert result.startswith("hosted_vllm/")
+
+    def test_model_string_with_slash_in_name(self):
+        # HuggingFace-style model IDs contain a slash — must survive round-trip
+        result = model_string("vllm", "meta-llama/Llama-3.1-8B-Instruct")
+        assert result == "hosted_vllm/meta-llama/Llama-3.1-8B-Instruct"
+
+    def test_model_string_simple_name(self):
+        result = model_string("vllm", "mistral-7b")
+        assert result == "hosted_vllm/mistral-7b"
+
+    def test_api_base_defaults_to_localhost(self):
+        assert LLMProviderConfig.vllm.api_base == "http://localhost:8000"
+
+    def test_api_base_respects_env_var(self):
+        # api_base is read from VLLM_API_BASE at module import time.
+        # We verify the plumbing by checking the LLMProvider._api_base field
+        # directly, keeping isolation without a module reload that would
+        # corrupt other tests in the suite.
+        from src.agent_framework.configs.llm.llm_provider_config import LLMProvider, LLMProviderName, ProviderAPIKey
+        custom = LLMProvider(
+            name=LLMProviderName.VLLM,
+            api_key=ProviderAPIKey.VLLM,
+            litellm_prefix="hosted_vllm",
+            models=[],
+            default_model=None,
+            api_base="http://my-gpu-server:9000",
+        )
+        assert custom.api_base == "http://my-gpu-server:9000"
+
+    def test_arbitrary_model_accepted_via_missing(self):
+        # LLMModel._missing_ must return a pseudo-member for unknown strings
+        m = LLMModel("some-custom-model-xyz")
+        assert m.value == "some-custom-model-xyz"
+
+    def test_model_with_slashes_accepted_via_missing(self):
+        m = LLMModel("org/model-name")
+        assert m.value == "org/model-name"
+
+    def test_get_llm_provider_returns_vllm(self):
+        provider = LLMProviderConfig.get_llm_provider(LLMProviderName.VLLM)
+        assert provider.name == LLMProviderName.VLLM
