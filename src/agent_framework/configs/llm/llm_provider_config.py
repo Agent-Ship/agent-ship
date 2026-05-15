@@ -25,6 +25,7 @@ class LLMProviderName(Enum):
     GROQ = "groq"
     OPENROUTER = "openrouter"
     DEEPSEEK = "deepseek"
+    AZURE = "azure"
 
     def __str__(self):
         return self.value
@@ -107,6 +108,7 @@ class ProviderAPIKey(Enum):
     GROQ = os.getenv("GROQ_API_KEY", "")
     OPENROUTER = os.getenv("OPENROUTER_API_KEY", "")
     DEEPSEEK = os.getenv("DEEPSEEK_API_KEY", "")
+    AZURE = os.getenv("AZURE_API_KEY", "")
 
     def __str__(self):
         return self.value
@@ -335,6 +337,25 @@ class LLMProviderConfig:
         default_model=None,
     )
 
+    # ── Azure OpenAI ──────────────────────────────────────────────────────────
+    # Azure hosts the same OpenAI models but behind your own Azure endpoint.
+    # The llm_model value is your Azure *deployment name* (set when you deploy
+    # a model in Azure AI Studio), so the model list is open — LLMModel._missing_
+    # handles any string.  LiteLLM model string: azure/<deployment-name>.
+    #
+    # Required env vars:
+    #   AZURE_API_KEY      - from Azure portal (API key)
+    #   AZURE_API_BASE     - endpoint URL, e.g. https://my-resource.openai.azure.com/
+    #   AZURE_API_VERSION  - API version, e.g. 2024-08-01-preview (read by LiteLLM automatically)
+    azure = LLMProvider(
+        name=LLMProviderName.AZURE,
+        api_key=ProviderAPIKey.AZURE,
+        litellm_prefix="azure",
+        models=[],          # open — deployment names are user-defined in Azure portal
+        default_model=None,
+        api_base=os.getenv("AZURE_API_BASE", ""),
+    )
+
     # Enum member → provider instance (O(1) lookup; extend when adding a provider)
     _PROVIDERS: ClassVar[dict[LLMProviderName, LLMProvider]] = {
         LLMProviderName.OPENAI: openai,
@@ -344,6 +365,7 @@ class LLMProviderConfig:
         LLMProviderName.DEEPSEEK: deepseek,
         LLMProviderName.VLLM: vllm,
         LLMProviderName.OPENROUTER: openrouter,
+        LLMProviderName.AZURE: azure,
     }
 
     @staticmethod

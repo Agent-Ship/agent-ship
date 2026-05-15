@@ -181,7 +181,7 @@ class LangGraphEngine(AgentEngine):
     def capabilities(self) -> EngineCapabilities:
         return EngineCapabilities(
             supported_providers=frozenset(
-                {"openai", "claude", "gemini", "vllm", "groq", "openrouter"}
+                {"openai", "claude", "gemini", "vllm", "groq", "openrouter", "deepseek", "azure"}
             ),
             supports_sse_streaming=True,
             supports_tool_calling=bool(self._tools),

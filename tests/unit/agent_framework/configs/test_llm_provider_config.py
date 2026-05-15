@@ -402,3 +402,48 @@ class TestDeepSeekProvider:
         )
 
         assert provider_supports_json_object_response_format("deepseek")
+
+
+# ---------------------------------------------------------------------------
+# Azure OpenAI
+# ---------------------------------------------------------------------------
+
+class TestAzureProvider:
+    """Azure OpenAI — deployment names are user-defined, so model list is open."""
+
+    def test_prefix_is_azure(self):
+        result = model_string("azure", "my-gpt-4o-deployment")
+        assert result.startswith("azure/")
+
+    def test_deployment_name_passthrough(self):
+        # Any deployment name the user created in Azure portal must survive unchanged
+        assert model_string("azure", "my-gpt-4o-deployment") == "azure/my-gpt-4o-deployment"
+        assert model_string("azure", "prod-gpt-4.1-mini") == "azure/prod-gpt-4.1-mini"
+
+    def test_models_list_is_empty(self):
+        assert LLMProviderConfig.azure.models == []
+
+    def test_default_model_is_none(self):
+        assert LLMProviderConfig.azure.default_model is None
+
+    def test_api_base_from_env(self):
+        from src.agent_framework.configs.llm.llm_provider_config import LLMProvider, LLMProviderName, ProviderAPIKey
+        custom = LLMProvider(
+            name=LLMProviderName.AZURE,
+            api_key=ProviderAPIKey.AZURE,
+            litellm_prefix="azure",
+            models=[],
+            default_model=None,
+            api_base="https://my-resource.openai.azure.com/",
+        )
+        assert custom.api_base == "https://my-resource.openai.azure.com/"
+
+    def test_json_object_mode_supported(self):
+        from src.agent_framework.engines.json_object_response_format import (
+            provider_supports_json_object_response_format,
+        )
+        assert provider_supports_json_object_response_format("azure")
+
+    def test_get_llm_provider_returns_azure(self):
+        provider = LLMProviderConfig.get_llm_provider(LLMProviderName.AZURE)
+        assert provider.name == LLMProviderName.AZURE
