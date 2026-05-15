@@ -23,6 +23,7 @@ class LLMProviderName(Enum):
     GEMINI = "gemini"
     VLLM = "vllm"
     GROQ = "groq"
+    OPENROUTER = "openrouter"
 
     def __str__(self):
         return self.value
@@ -70,10 +71,11 @@ class LLMModel(Enum):
 
     @classmethod
     def _missing_(cls, value: object):
-        """Allow arbitrary model name strings (e.g. vLLM-hosted models like
-        'meta-llama/Llama-3.1-8B-Instruct') that aren't in the fixed enum.
+        '''Allow arbitrary model name strings (e.g. vLLM-hosted models like
+        'meta-llama/Llama-3.1-8B-Instruct', or OpenRouter routes like
+        'anthropic/claude-3.5-sonnet') that aren't in the fixed enum.
         Returns a dynamic pseudo-member so the rest of the config pipeline
-        can treat it uniformly."""
+        can treat it uniformly.'''
         if not isinstance(value, str):
             return None
         obj = object.__new__(cls)
@@ -89,6 +91,7 @@ class ProviderAPIKey(Enum):
     GEMINI = os.getenv("GEMINI_API_KEY")
     VLLM = os.getenv("VLLM_API_KEY", "EMPTY")  # vLLM servers often require a dummy key
     GROQ = os.getenv("GROQ_API_KEY", "")
+    OPENROUTER = os.getenv("OPENROUTER_API_KEY", "")
 
     def __str__(self):
         return self.value
@@ -278,6 +281,18 @@ class LLMProviderConfig:
         api_base=os.getenv("VLLM_API_BASE", "http://localhost:8000"),
     )
 
+    # ── OpenRouter ────────────────────────────────────────────────────────────
+    # Routes many third-party models through one API. Model id is the OpenRouter
+    # route (e.g. anthropic/claude-3.5-sonnet). LiteLLM: openrouter/<route>.
+    # https://openrouter.ai/docs — env: OPENROUTER_API_KEY
+    openrouter = LLMProvider(
+        name=LLMProviderName.OPENROUTER,
+        api_key=ProviderAPIKey.OPENROUTER,
+        litellm_prefix="openrouter",
+        models=[],  # large catalog — use llm_model as route string (LLMModel._missing_)
+        default_model=None,
+    )
+
     # Enum member → provider instance (O(1) lookup; extend when adding a provider)
     _PROVIDERS: ClassVar[dict[LLMProviderName, LLMProvider]] = {
         LLMProviderName.OPENAI: openai,
@@ -285,6 +300,7 @@ class LLMProviderConfig:
         LLMProviderName.GEMINI: gemini,
         LLMProviderName.GROQ: groq,
         LLMProviderName.VLLM: vllm,
+        LLMProviderName.OPENROUTER: openrouter,
     }
 
     @staticmethod

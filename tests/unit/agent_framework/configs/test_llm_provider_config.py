@@ -149,6 +149,9 @@ class TestProviderModelListConsistency:
         # vLLM accepts any model name — no fixed list enforced
         assert LLMProviderConfig.vllm.models == []
 
+    def test_openrouter_models_list_is_empty(self):
+        assert LLMProviderConfig.openrouter.models == []
+
 
 # ---------------------------------------------------------------------------
 # Default models
@@ -179,6 +182,9 @@ class TestDefaultModels:
     def test_vllm_default_model_is_none(self):
         # vLLM has no fixed default — user must specify llm_model in YAML
         assert LLMProviderConfig.vllm.default_model is None
+
+    def test_openrouter_default_model_is_none(self):
+        assert LLMProviderConfig.openrouter.default_model is None
 
 
 # ---------------------------------------------------------------------------
@@ -301,3 +307,33 @@ class TestVLLMProvider:
     def test_get_llm_provider_returns_vllm(self):
         provider = LLMProviderConfig.get_llm_provider(LLMProviderName.VLLM)
         assert provider.name == LLMProviderName.VLLM
+
+
+# ---------------------------------------------------------------------------
+# OpenRouter
+# ---------------------------------------------------------------------------
+
+class TestOpenRouterProvider:
+    """OpenRouter exposes many models via LiteLLM's openrouter/ prefix."""
+
+    def test_prefix_is_openrouter(self):
+        result = model_string("openrouter", "mistralai/mistral-small-3.1-24b-instruct")
+        assert result.startswith("openrouter/")
+
+    def test_slug_with_multiple_slashes(self):
+        result = model_string("openrouter", "anthropic/claude-3.5-sonnet")
+        assert result == "openrouter/anthropic/claude-3.5-sonnet"
+
+    def test_no_api_base(self):
+        assert LLMProviderConfig.openrouter.api_base is None
+
+    def test_get_llm_provider_returns_openrouter(self):
+        provider = LLMProviderConfig.get_llm_provider(LLMProviderName.OPENROUTER)
+        assert provider.name == LLMProviderName.OPENROUTER
+
+    def test_json_object_mode_allowlisted_with_langgraph(self):
+        from src.agent_framework.engines.json_object_response_format import (
+            provider_supports_json_object_response_format,
+        )
+
+        assert provider_supports_json_object_response_format("openrouter")
