@@ -195,11 +195,11 @@ class LangGraphEngine(AgentEngine):
 
         async def call_llm(state: LangGraphState) -> LangGraphState:
             """LLM node - calls LiteLLM with current messages."""
-            model_str, temperature = self._resolve_litellm_model()
+            model_str, temperature, api_base = self._resolve_litellm_model()
             llm_messages = self._convert_to_litellm_messages(state["messages"])
             tools_schema = self._get_tools_schema() if self._tools else None
 
-            response = await _acompletion_with_retry(
+            completion_kwargs: Dict[str, Any] = dict(
                 model=model_str,
                 messages=llm_messages,
                 temperature=temperature,
@@ -207,6 +207,10 @@ class LangGraphEngine(AgentEngine):
                 tools=tools_schema,
                 response_format=self._get_response_format(),
             )
+            if api_base:
+                completion_kwargs["api_base"] = api_base
+
+            response = await _acompletion_with_retry(**completion_kwargs)
 
             message = response.choices[0].message if response.choices else None
             if not message:
@@ -295,18 +299,21 @@ class LangGraphEngine(AgentEngine):
     # LLM Interaction
     # =========================================================================
 
-    def _resolve_litellm_model(self) -> tuple[str, float]:
-        """Return (model_string, temperature) for LiteLLM calls."""
+    def _resolve_litellm_model(self) -> tuple[str, float, Optional[str]]:
+        """Return (model_string, temperature, api_base) for LiteLLM calls.
+
+        api_base is non-None only for self-hosted providers (e.g. vLLM).
+        """
         provider = self.agent_config.model_provider
         model_enum = self.agent_config.model
         model_str = provider.get_model_string(model_enum.value)
         temperature = self.agent_config.temperature or provider.temperature
-        return model_str, temperature
+        return model_str, temperature, provider.api_base
 
     def _get_response_format(self) -> Optional[dict]:
         """Get response_format for structured output (OpenAI-compatible providers)."""
         provider = self.agent_config.model_provider.name.value
-        if provider in ["openai", "gemini", "vertex_ai"]:
+        if provider in ["openai", "gemini", "vertex_ai", "vllm"]:
             return {"type": "json_object"}
         return None
 
@@ -498,6 +505,7 @@ class LangGraphEngine(AgentEngine):
         temperature: float,
         session_id: str = "default",
         user_id: Optional[str] = None,
+        api_base: Optional[str] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Run LLM with streaming and tool calling loop.
 
@@ -530,6 +538,8 @@ class LangGraphEngine(AgentEngine):
                 "response_format": self._get_response_format(),
                 "metadata": self._get_litellm_metadata(),
             }
+            if api_base:
+                completion_kwargs["api_base"] = api_base
             if litellm_callbacks:
                 completion_kwargs["callbacks"] = litellm_callbacks
 
@@ -685,6 +695,7 @@ class LangGraphEngine(AgentEngine):
         temperature: float,
         session_id: str = "default",
         user_id: Optional[str] = None,
+        api_base: Optional[str] = None,
     ) -> str:
         """Run LLM with tool calling loop (non-streaming).
 
@@ -706,6 +717,8 @@ class LangGraphEngine(AgentEngine):
                 "response_format": self._get_response_format(),
                 "metadata": self._get_litellm_metadata(),
             }
+            if api_base:
+                completion_kwargs["api_base"] = api_base
             if litellm_callbacks:
                 completion_kwargs["callbacks"] = litellm_callbacks
 
@@ -938,7 +951,7 @@ class LangGraphEngine(AgentEngine):
         messages = self._convert_to_litellm_messages(history)
         messages.append({"role": "user", "content": input_text})
 
-        model_str, temperature = self._resolve_litellm_model()
+        model_str, temperature, api_base = self._resolve_litellm_model()
 
         # Call before_agent_callback for tracing (starts trace)
         self.observer.before_agent_callback({
@@ -950,7 +963,7 @@ class LangGraphEngine(AgentEngine):
 
         try:
             final_content = await self._run_tool_loop(
-                messages, model_str, temperature, session_id, user_id=user_id
+                messages, model_str, temperature, session_id, user_id=user_id, api_base=api_base
             )
 
             # Call after_agent_callback for tracing (ends trace)
@@ -1032,7 +1045,7 @@ class LangGraphEngine(AgentEngine):
             messages.append({"role": "user", "content": input_text})
 
             thread_id = config["configurable"]["thread_id"]
-            model_str, temperature = self._resolve_litellm_model()
+            model_str, temperature, api_base = self._resolve_litellm_model()
             accumulated_content = ""
 
             # Call before_agent_callback for tracing (starts trace)
@@ -1044,7 +1057,7 @@ class LangGraphEngine(AgentEngine):
             })
 
             async for event in self._run_tool_loop_stream(
-                messages, model_str, temperature, session_id, user_id=user_id
+                messages, model_str, temperature, session_id, user_id=user_id, api_base=api_base
             ):
                 yield event
                 if event.get("type") == "content":

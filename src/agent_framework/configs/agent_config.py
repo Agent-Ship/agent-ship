@@ -134,8 +134,9 @@ class AgentConfig:
 
         # Observability is configured purely via environment per Opik guide
 
-        # Validate that the model belongs to the correct provider
-        if self.model not in self.model_provider.models:
+        # Validate that the model belongs to the correct provider.
+        # Providers with an empty models list (e.g. vLLM) accept any model name.
+        if self.model_provider.models and self.model not in self.model_provider.models:
             available_models = [llm_model.value for llm_model in self.model_provider.models]
             raise ValueError(
                 f"Model '{self.model.value}' is not compatible with provider '{self.model_provider.name.value}'. "
