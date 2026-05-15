@@ -99,6 +99,10 @@ class TestModelAliases:
         result = model_string("claude", "claude-sonnet-4")
         assert result == "anthropic/claude-sonnet-4-20250514"
 
+    def test_claude_haiku_4_5_resolves_to_dated(self):
+        result = model_string("claude", "claude-haiku-4-5")
+        assert result == "anthropic/claude-haiku-4-5-20251001"
+
     # GPT-5 — released August 2025; no aliases needed, IDs are stable
     def test_gpt5_no_alias_needed(self):
         assert model_string("openai", "gpt-5") == "openai/gpt-5"
@@ -205,7 +209,10 @@ class TestModelStringFormat:
         ("claude", "claude-3-5-sonnet","anthropic/claude-3-5-sonnet-20241022"),
         ("claude", "claude-sonnet-4",  "anthropic/claude-sonnet-4-20250514"),
         ("gemini", "gemini-2.0-flash", "gemini/gemini-2.0-flash"),
-        ("gemini", "gemini-1.5-pro",   "gemini/gemini-2.5-pro"),
+        ("gemini", "gemini-1.5-pro",       "gemini/gemini-2.5-pro"),
+        ("claude", "claude-haiku-4-5",     "anthropic/claude-haiku-4-5-20251001"),
+        ("groq",   "qwen-2.5-72b-instruct","groq/qwen-2.5-72b-instruct"),
+        ("groq",   "qwen-2.5-7b-instruct-fp16", "groq/qwen-2.5-7b-instruct-fp16"),
     ])
     def test_model_string(self, provider_name, model_name, expected):
         assert model_string(provider_name, model_name) == expected
@@ -245,6 +252,20 @@ class TestGroqProvider:
     ])
     def test_model_strings(self, model_name, expected):
         assert model_string("groq", model_name) == expected
+
+    @pytest.mark.parametrize("model_name,expected", [
+        ("qwen-2.5-72b-instruct",       "groq/qwen-2.5-72b-instruct"),
+        ("qwen-2.5-7b-instruct-fp16",   "groq/qwen-2.5-7b-instruct-fp16"),
+        ("qwen-2.5-coder-32b-instruct", "groq/qwen-2.5-coder-32b-instruct"),
+    ])
+    def test_qwen_model_strings(self, model_name, expected):
+        assert model_string("groq", model_name) == expected
+
+    def test_qwen_models_in_groq_list(self):
+        groq_model_values = {m.value for m in LLMProviderConfig.groq.models}
+        assert "qwen-2.5-72b-instruct" in groq_model_values
+        assert "qwen-2.5-7b-instruct-fp16" in groq_model_values
+        assert "qwen-2.5-coder-32b-instruct" in groq_model_values
 
     def test_unknown_model_passthrough(self):
         # Future models not yet in enum should still pass through

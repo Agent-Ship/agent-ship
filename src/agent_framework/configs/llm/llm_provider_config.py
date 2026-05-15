@@ -50,6 +50,7 @@ class LLMModel(Enum):
     CLAUDE_3_7_SONNET = "claude-3-7-sonnet"
     CLAUDE_OPUS_4 = "claude-opus-4"
     CLAUDE_SONNET_4 = "claude-sonnet-4"
+    CLAUDE_HAIKU_4_5 = "claude-haiku-4-5"
     # Gemini (1.5 models shut down Sep 2025 — kept in enum for YAML parse compat only)
     GEMINI_1_5_PRO = "gemini-1.5-pro"
     GEMINI_1_5_FLASH = "gemini-1.5-flash"
@@ -65,6 +66,10 @@ class LLMModel(Enum):
     LLAMA3_8B = "llama3-8b-8192"
     MIXTRAL_8X7B = "mixtral-8x7b-32768"
     GEMMA2_9B = "gemma2-9b-it"
+    # Qwen (via Groq)
+    QWEN_2_5_72B = "qwen-2.5-72b-instruct"
+    QWEN_2_5_7B = "qwen-2.5-7b-instruct-fp16"
+    QWEN_2_5_CODER_32B = "qwen-2.5-coder-32b-instruct"
 
     def __str__(self):
         return self.value
@@ -205,6 +210,7 @@ class LLMProviderConfig:
         models=[
             LLMModel.CLAUDE_SONNET_4,
             LLMModel.CLAUDE_OPUS_4,
+            LLMModel.CLAUDE_HAIKU_4_5,
             LLMModel.CLAUDE_3_7_SONNET,
             LLMModel.CLAUDE_3_5_SONNET,
             LLMModel.CLAUDE_3_5_HAIKU,
@@ -217,6 +223,7 @@ class LLMProviderConfig:
             "claude-3-7-sonnet": "claude-3-7-sonnet-20250219",
             "claude-opus-4": "claude-opus-4-20250514",
             "claude-sonnet-4": "claude-sonnet-4-20250514",
+            "claude-haiku-4-5": "claude-haiku-4-5-20251001",
         },
     )
 
@@ -259,6 +266,9 @@ class LLMProviderConfig:
             LLMModel.LLAMA3_8B,
             LLMModel.MIXTRAL_8X7B,
             LLMModel.GEMMA2_9B,
+            LLMModel.QWEN_2_5_72B,
+            LLMModel.QWEN_2_5_7B,
+            LLMModel.QWEN_2_5_CODER_32B,
         ],
         default_model=LLMModel.LLAMA_3_3_70B,
     )
