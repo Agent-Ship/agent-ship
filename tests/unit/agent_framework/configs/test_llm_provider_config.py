@@ -301,3 +301,44 @@ class TestVLLMProvider:
     def test_get_llm_provider_returns_vllm(self):
         provider = LLMProviderConfig.get_llm_provider(LLMProviderName.VLLM)
         assert provider.name == LLMProviderName.VLLM
+
+
+# ---------------------------------------------------------------------------
+# OpenRouter
+# ---------------------------------------------------------------------------
+
+class TestOpenRouterProvider:
+    """OpenRouter proxies hundreds of models; model IDs are 'provider/model' strings."""
+
+    def test_prefix_is_openrouter(self):
+        result = model_string("openrouter", "openai/gpt-4o")
+        assert result.startswith("openrouter/")
+
+    def test_no_api_base(self):
+        assert LLMProviderConfig.openrouter.api_base is None
+
+    def test_models_list_is_empty(self):
+        # OpenRouter accepts any model — no fixed list enforced
+        assert LLMProviderConfig.openrouter.models == []
+
+    def test_default_model_is_none(self):
+        assert LLMProviderConfig.openrouter.default_model is None
+
+    @pytest.mark.parametrize("model_name,expected", [
+        ("openai/gpt-4o",                           "openrouter/openai/gpt-4o"),
+        ("openai/gpt-4o-mini",                      "openrouter/openai/gpt-4o-mini"),
+        ("anthropic/claude-3-5-sonnet",             "openrouter/anthropic/claude-3-5-sonnet"),
+        ("meta-llama/llama-3.3-70b-instruct",       "openrouter/meta-llama/llama-3.3-70b-instruct"),
+        ("mistralai/mistral-7b-instruct",           "openrouter/mistralai/mistral-7b-instruct"),
+        ("google/gemini-2.0-flash-001",             "openrouter/google/gemini-2.0-flash-001"),
+    ])
+    def test_model_strings(self, model_name, expected):
+        assert model_string("openrouter", model_name) == expected
+
+    def test_model_with_slashes_accepted_via_missing(self):
+        m = LLMModel("meta-llama/llama-3.3-70b-instruct")
+        assert m.value == "meta-llama/llama-3.3-70b-instruct"
+
+    def test_get_llm_provider_returns_openrouter(self):
+        provider = LLMProviderConfig.get_llm_provider(LLMProviderName.OPENROUTER)
+        assert provider.name == LLMProviderName.OPENROUTER

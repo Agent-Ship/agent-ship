@@ -23,6 +23,7 @@ class LLMProviderName(Enum):
     GEMINI = "gemini"
     VLLM = "vllm"
     GROQ = "groq"
+    OPENROUTER = "openrouter"
 
     def __str__(self):
         return self.value
@@ -89,6 +90,7 @@ class ProviderAPIKey(Enum):
     GEMINI = os.getenv("GEMINI_API_KEY")
     VLLM = os.getenv("VLLM_API_KEY", "EMPTY")  # vLLM servers often require a dummy key
     GROQ = os.getenv("GROQ_API_KEY", "")
+    OPENROUTER = os.getenv("OPENROUTER_API_KEY", "")
 
     def __str__(self):
         return self.value
@@ -260,6 +262,23 @@ class LLMProviderConfig:
         default_model=LLMModel.LLAMA_3_3_70B,
     )
 
+    # ── OpenRouter ────────────────────────────────────────────────────────────
+    # OpenRouter proxies hundreds of models via a single OpenAI-compatible API.
+    # Model IDs use the "provider/model-name" format (e.g. "openai/gpt-4o",
+    # "anthropic/claude-3-5-sonnet", "meta-llama/llama-3.3-70b-instruct").
+    # LiteLLM prepends "openrouter/" to get the final model string.
+    # No fixed model list — any OpenRouter model ID is valid (LLMModel._missing_).
+    #
+    # Required env var:
+    #   OPENROUTER_API_KEY  - from https://openrouter.ai/keys
+    openrouter = LLMProvider(
+        name=LLMProviderName.OPENROUTER,
+        api_key=ProviderAPIKey.OPENROUTER,
+        litellm_prefix="openrouter",
+        models=[],          # open — any OpenRouter model ID is valid
+        default_model=None,  # user must specify llm_model in YAML
+    )
+
     # ── vLLM ──────────────────────────────────────────────────────────────────
     # vLLM exposes an OpenAI-compatible REST API. LiteLLM routes to it via the
     # "hosted_vllm/" prefix. The model name is whatever the vLLM server has
@@ -284,6 +303,7 @@ class LLMProviderConfig:
         LLMProviderName.CLAUDE: claude,
         LLMProviderName.GEMINI: gemini,
         LLMProviderName.GROQ: groq,
+        LLMProviderName.OPENROUTER: openrouter,
         LLMProviderName.VLLM: vllm,
     }
 
