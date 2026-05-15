@@ -19,6 +19,8 @@ class JsonObjectResponseFormatProvider(StrEnum):
     VLLM = "vllm"
     GROQ = "groq"
     OPENROUTER = "openrouter"
+    DEEPSEEK = "deepseek"
+    AZURE = "azure"
 
 
 def provider_supports_json_object_response_format(provider_value: str) -> bool:

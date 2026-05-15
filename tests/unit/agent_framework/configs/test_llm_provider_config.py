@@ -99,6 +99,10 @@ class TestModelAliases:
         result = model_string("claude", "claude-sonnet-4")
         assert result == "anthropic/claude-sonnet-4-20250514"
 
+    def test_claude_haiku_4_5_resolves_to_dated(self):
+        result = model_string("claude", "claude-haiku-4-5")
+        assert result == "anthropic/claude-haiku-4-5-20251001"
+
     # GPT-5 — released August 2025; no aliases needed, IDs are stable
     def test_gpt5_no_alias_needed(self):
         assert model_string("openai", "gpt-5") == "openai/gpt-5"
@@ -123,7 +127,7 @@ class TestProviderModelListConsistency:
     """Every model in a provider's models list must exist in LLMModel enum,
     and the enum value must round-trip through get_model_string without error."""
 
-    @pytest.mark.parametrize("provider_name", ["openai", "claude", "gemini", "groq"])
+    @pytest.mark.parametrize("provider_name", ["openai", "claude", "gemini", "groq", "deepseek"])
     def test_all_provider_models_are_valid_enum_values(self, provider_name):
         provider = LLMProviderConfig.get_llm_provider(LLMProviderName(provider_name))
         for model in provider.models:
@@ -205,7 +209,14 @@ class TestModelStringFormat:
         ("claude", "claude-3-5-sonnet","anthropic/claude-3-5-sonnet-20241022"),
         ("claude", "claude-sonnet-4",  "anthropic/claude-sonnet-4-20250514"),
         ("gemini", "gemini-2.0-flash", "gemini/gemini-2.0-flash"),
-        ("gemini", "gemini-1.5-pro",   "gemini/gemini-2.5-pro"),
+        ("gemini", "gemini-1.5-pro",       "gemini/gemini-2.5-pro"),
+        ("claude",    "claude-haiku-4-5",              "anthropic/claude-haiku-4-5-20251001"),
+        ("openai",    "o4-mini",                       "openai/o4-mini"),
+        ("openai",    "gpt-4.5-preview",               "openai/gpt-4.5-preview"),
+        ("groq",      "qwen-2.5-72b-instruct",         "groq/qwen-2.5-72b-instruct"),
+        ("groq",      "llama-4-scout-17b-16e-instruct","groq/llama-4-scout-17b-16e-instruct"),
+        ("deepseek",  "deepseek-chat",                 "deepseek/deepseek-chat"),
+        ("deepseek",  "deepseek-reasoner",              "deepseek/deepseek-reasoner"),
     ])
     def test_model_string(self, provider_name, model_name, expected):
         assert model_string(provider_name, model_name) == expected
@@ -245,6 +256,20 @@ class TestGroqProvider:
     ])
     def test_model_strings(self, model_name, expected):
         assert model_string("groq", model_name) == expected
+
+    @pytest.mark.parametrize("model_name,expected", [
+        ("qwen-2.5-72b-instruct",       "groq/qwen-2.5-72b-instruct"),
+        ("qwen-2.5-7b-instruct-fp16",   "groq/qwen-2.5-7b-instruct-fp16"),
+        ("qwen-2.5-coder-32b-instruct", "groq/qwen-2.5-coder-32b-instruct"),
+    ])
+    def test_qwen_model_strings(self, model_name, expected):
+        assert model_string("groq", model_name) == expected
+
+    def test_qwen_models_in_groq_list(self):
+        groq_model_values = {m.value for m in LLMProviderConfig.groq.models}
+        assert "qwen-2.5-72b-instruct" in groq_model_values
+        assert "qwen-2.5-7b-instruct-fp16" in groq_model_values
+        assert "qwen-2.5-coder-32b-instruct" in groq_model_values
 
     def test_unknown_model_passthrough(self):
         # Future models not yet in enum should still pass through
@@ -337,3 +362,88 @@ class TestOpenRouterProvider:
         )
 
         assert provider_supports_json_object_response_format("openrouter")
+
+
+# ---------------------------------------------------------------------------
+# DeepSeek
+# ---------------------------------------------------------------------------
+
+class TestDeepSeekProvider:
+    """DeepSeek V3 (deepseek-chat) and R1 (deepseek-reasoner) via DeepSeek's API."""
+
+    def test_prefix_is_deepseek(self):
+        assert model_string("deepseek", "deepseek-chat").startswith("deepseek/")
+
+    def test_no_api_base(self):
+        assert LLMProviderConfig.deepseek.api_base is None
+
+    def test_default_model_is_v3(self):
+        assert LLMProviderConfig.deepseek.default_model.value == "deepseek-chat"
+
+    @pytest.mark.parametrize("model_name,expected", [
+        ("deepseek-chat",     "deepseek/deepseek-chat"),
+        ("deepseek-reasoner", "deepseek/deepseek-reasoner"),
+    ])
+    def test_model_strings(self, model_name, expected):
+        assert model_string("deepseek", model_name) == expected
+
+    def test_both_models_in_list(self):
+        values = {m.value for m in LLMProviderConfig.deepseek.models}
+        assert "deepseek-chat" in values
+        assert "deepseek-reasoner" in values
+
+    def test_get_llm_provider_returns_deepseek(self):
+        provider = LLMProviderConfig.get_llm_provider(LLMProviderName.DEEPSEEK)
+        assert provider.name == LLMProviderName.DEEPSEEK
+
+    def test_json_object_mode_allowlisted_with_langgraph(self):
+        from src.agent_framework.engines.json_object_response_format import (
+            provider_supports_json_object_response_format,
+        )
+
+        assert provider_supports_json_object_response_format("deepseek")
+
+
+# ---------------------------------------------------------------------------
+# Azure OpenAI
+# ---------------------------------------------------------------------------
+
+class TestAzureProvider:
+    """Azure OpenAI — deployment names are user-defined, so model list is open."""
+
+    def test_prefix_is_azure(self):
+        result = model_string("azure", "my-gpt-4o-deployment")
+        assert result.startswith("azure/")
+
+    def test_deployment_name_passthrough(self):
+        # Any deployment name the user created in Azure portal must survive unchanged
+        assert model_string("azure", "my-gpt-4o-deployment") == "azure/my-gpt-4o-deployment"
+        assert model_string("azure", "prod-gpt-4.1-mini") == "azure/prod-gpt-4.1-mini"
+
+    def test_models_list_is_empty(self):
+        assert LLMProviderConfig.azure.models == []
+
+    def test_default_model_is_none(self):
+        assert LLMProviderConfig.azure.default_model is None
+
+    def test_api_base_from_env(self):
+        from src.agent_framework.configs.llm.llm_provider_config import LLMProvider, LLMProviderName, ProviderAPIKey
+        custom = LLMProvider(
+            name=LLMProviderName.AZURE,
+            api_key=ProviderAPIKey.AZURE,
+            litellm_prefix="azure",
+            models=[],
+            default_model=None,
+            api_base="https://my-resource.openai.azure.com/",
+        )
+        assert custom.api_base == "https://my-resource.openai.azure.com/"
+
+    def test_json_object_mode_supported(self):
+        from src.agent_framework.engines.json_object_response_format import (
+            provider_supports_json_object_response_format,
+        )
+        assert provider_supports_json_object_response_format("azure")
+
+    def test_get_llm_provider_returns_azure(self):
+        provider = LLMProviderConfig.get_llm_provider(LLMProviderName.AZURE)
+        assert provider.name == LLMProviderName.AZURE

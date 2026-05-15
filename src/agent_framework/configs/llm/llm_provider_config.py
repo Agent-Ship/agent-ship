@@ -24,6 +24,8 @@ class LLMProviderName(Enum):
     VLLM = "vllm"
     GROQ = "groq"
     OPENROUTER = "openrouter"
+    DEEPSEEK = "deepseek"
+    AZURE = "azure"
 
     def __str__(self):
         return self.value
@@ -42,14 +44,17 @@ class LLMModel(Enum):
     GPT_4_1_MINI = "gpt-4.1-mini"
     O1 = "o1"
     O1_MINI = "o1-mini"
+    O4_MINI = "o4-mini"
     O3 = "o3"
     O3_MINI = "o3-mini"
+    GPT_4_5 = "gpt-4.5-preview"
     # Claude
     CLAUDE_3_5_SONNET = "claude-3-5-sonnet"
     CLAUDE_3_5_HAIKU = "claude-3-5-haiku"
     CLAUDE_3_7_SONNET = "claude-3-7-sonnet"
     CLAUDE_OPUS_4 = "claude-opus-4"
     CLAUDE_SONNET_4 = "claude-sonnet-4"
+    CLAUDE_HAIKU_4_5 = "claude-haiku-4-5"
     # Gemini (1.5 models shut down Sep 2025 — kept in enum for YAML parse compat only)
     GEMINI_1_5_PRO = "gemini-1.5-pro"
     GEMINI_1_5_FLASH = "gemini-1.5-flash"
@@ -65,6 +70,16 @@ class LLMModel(Enum):
     LLAMA3_8B = "llama3-8b-8192"
     MIXTRAL_8X7B = "mixtral-8x7b-32768"
     GEMMA2_9B = "gemma2-9b-it"
+    # Qwen (via Groq)
+    QWEN_2_5_72B = "qwen-2.5-72b-instruct"
+    QWEN_2_5_7B = "qwen-2.5-7b-instruct-fp16"
+    QWEN_2_5_CODER_32B = "qwen-2.5-coder-32b-instruct"
+    # Llama 4 (via Groq)
+    LLAMA_4_SCOUT = "llama-4-scout-17b-16e-instruct"
+    LLAMA_4_MAVERICK = "llama-4-maverick-17b-128e-instruct"
+    # DeepSeek
+    DEEPSEEK_V3 = "deepseek-chat"       # DeepSeek V3
+    DEEPSEEK_R1 = "deepseek-reasoner"   # DeepSeek R1
 
     def __str__(self):
         return self.value
@@ -92,6 +107,8 @@ class ProviderAPIKey(Enum):
     VLLM = os.getenv("VLLM_API_KEY", "EMPTY")  # vLLM servers often require a dummy key
     GROQ = os.getenv("GROQ_API_KEY", "")
     OPENROUTER = os.getenv("OPENROUTER_API_KEY", "")
+    DEEPSEEK = os.getenv("DEEPSEEK_API_KEY", "")
+    AZURE = os.getenv("AZURE_API_KEY", "")
 
     def __str__(self):
         return self.value
@@ -186,6 +203,8 @@ class LLMProviderConfig:
             LLMModel.GPT_4_1_MINI,
             LLMModel.GPT_4O,
             LLMModel.GPT_4O_MINI,
+            LLMModel.GPT_4_5,
+            LLMModel.O4_MINI,
             LLMModel.O3,
             LLMModel.O3_MINI,
             LLMModel.O1,
@@ -205,6 +224,7 @@ class LLMProviderConfig:
         models=[
             LLMModel.CLAUDE_SONNET_4,
             LLMModel.CLAUDE_OPUS_4,
+            LLMModel.CLAUDE_HAIKU_4_5,
             LLMModel.CLAUDE_3_7_SONNET,
             LLMModel.CLAUDE_3_5_SONNET,
             LLMModel.CLAUDE_3_5_HAIKU,
@@ -217,6 +237,7 @@ class LLMProviderConfig:
             "claude-3-7-sonnet": "claude-3-7-sonnet-20250219",
             "claude-opus-4": "claude-opus-4-20250514",
             "claude-sonnet-4": "claude-sonnet-4-20250514",
+            "claude-haiku-4-5": "claude-haiku-4-5-20251001",
         },
     )
 
@@ -259,8 +280,31 @@ class LLMProviderConfig:
             LLMModel.LLAMA3_8B,
             LLMModel.MIXTRAL_8X7B,
             LLMModel.GEMMA2_9B,
+            LLMModel.QWEN_2_5_72B,
+            LLMModel.QWEN_2_5_7B,
+            LLMModel.QWEN_2_5_CODER_32B,
+            LLMModel.LLAMA_4_SCOUT,
+            LLMModel.LLAMA_4_MAVERICK,
         ],
         default_model=LLMModel.LLAMA_3_3_70B,
+    )
+
+    # ── DeepSeek ──────────────────────────────────────────────────────────────
+    # DeepSeek V3 (deepseek-chat) and R1 (deepseek-reasoner) are among the most
+    # widely-used open-weight models in 2025. LiteLLM routes via the "deepseek/"
+    # prefix to DeepSeek's own API (api.deepseek.com).
+    #
+    # Required env var:
+    #   DEEPSEEK_API_KEY  - from https://platform.deepseek.com/api_keys
+    deepseek = LLMProvider(
+        name=LLMProviderName.DEEPSEEK,
+        api_key=ProviderAPIKey.DEEPSEEK,
+        litellm_prefix="deepseek",
+        models=[
+            LLMModel.DEEPSEEK_V3,
+            LLMModel.DEEPSEEK_R1,
+        ],
+        default_model=LLMModel.DEEPSEEK_V3,
     )
 
     # ── vLLM ──────────────────────────────────────────────────────────────────
@@ -293,14 +337,35 @@ class LLMProviderConfig:
         default_model=None,
     )
 
+    # ── Azure OpenAI ──────────────────────────────────────────────────────────
+    # Azure hosts the same OpenAI models but behind your own Azure endpoint.
+    # The llm_model value is your Azure *deployment name* (set when you deploy
+    # a model in Azure AI Studio), so the model list is open — LLMModel._missing_
+    # handles any string.  LiteLLM model string: azure/<deployment-name>.
+    #
+    # Required env vars:
+    #   AZURE_API_KEY      - from Azure portal (API key)
+    #   AZURE_API_BASE     - endpoint URL, e.g. https://my-resource.openai.azure.com/
+    #   AZURE_API_VERSION  - API version, e.g. 2024-08-01-preview (read by LiteLLM automatically)
+    azure = LLMProvider(
+        name=LLMProviderName.AZURE,
+        api_key=ProviderAPIKey.AZURE,
+        litellm_prefix="azure",
+        models=[],          # open — deployment names are user-defined in Azure portal
+        default_model=None,
+        api_base=os.getenv("AZURE_API_BASE", ""),
+    )
+
     # Enum member → provider instance (O(1) lookup; extend when adding a provider)
     _PROVIDERS: ClassVar[dict[LLMProviderName, LLMProvider]] = {
         LLMProviderName.OPENAI: openai,
         LLMProviderName.CLAUDE: claude,
         LLMProviderName.GEMINI: gemini,
         LLMProviderName.GROQ: groq,
+        LLMProviderName.DEEPSEEK: deepseek,
         LLMProviderName.VLLM: vllm,
         LLMProviderName.OPENROUTER: openrouter,
+        LLMProviderName.AZURE: azure,
     }
 
     @staticmethod
