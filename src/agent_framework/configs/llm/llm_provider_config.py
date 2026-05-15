@@ -1,5 +1,5 @@
 import os
-from typing import List
+from typing import List, ClassVar
 from enum import Enum
 from dotenv import load_dotenv
 import logging
@@ -22,6 +22,7 @@ class LLMProviderName(Enum):
     CLAUDE = "claude"
     GEMINI = "gemini"
     VLLM = "vllm"
+    GROQ = "groq"
 
     def __str__(self):
         return self.value
@@ -56,6 +57,13 @@ class LLMModel(Enum):
     GEMINI_2_5_PRO = "gemini-2.5-pro"
     GEMINI_2_5_FLASH = "gemini-2.5-flash"
     GEMINI_2_5_FLASH_LITE = "gemini-2.5-flash-lite"
+    # Groq
+    LLAMA_3_3_70B = "llama-3.3-70b-versatile"
+    LLAMA_3_1_8B = "llama-3.1-8b-instant"
+    LLAMA3_70B = "llama3-70b-8192"
+    LLAMA3_8B = "llama3-8b-8192"
+    MIXTRAL_8X7B = "mixtral-8x7b-32768"
+    GEMMA2_9B = "gemma2-9b-it"
 
     def __str__(self):
         return self.value
@@ -80,6 +88,7 @@ class ProviderAPIKey(Enum):
     CLAUDE = os.getenv("ANTHROPIC_API_KEY", "")
     GEMINI = os.getenv("GEMINI_API_KEY")
     VLLM = os.getenv("VLLM_API_KEY", "EMPTY")  # vLLM servers often require a dummy key
+    GROQ = os.getenv("GROQ_API_KEY", "")
 
     def __str__(self):
         return self.value
@@ -235,6 +244,22 @@ class LLMProviderConfig:
         },
     )
 
+    # ── Groq ──────────────────────────────────────────────────────────────────
+    groq = LLMProvider(
+        name=LLMProviderName.GROQ,
+        api_key=ProviderAPIKey.GROQ,
+        litellm_prefix="groq",
+        models=[
+            LLMModel.LLAMA_3_3_70B,
+            LLMModel.LLAMA_3_1_8B,
+            LLMModel.LLAMA3_70B,
+            LLMModel.LLAMA3_8B,
+            LLMModel.MIXTRAL_8X7B,
+            LLMModel.GEMMA2_9B,
+        ],
+        default_model=LLMModel.LLAMA_3_3_70B,
+    )
+
     # ── vLLM ──────────────────────────────────────────────────────────────────
     # vLLM exposes an OpenAI-compatible REST API. LiteLLM routes to it via the
     # "hosted_vllm/" prefix. The model name is whatever the vLLM server has
@@ -253,19 +278,22 @@ class LLMProviderConfig:
         api_base=os.getenv("VLLM_API_BASE", "http://localhost:8000"),
     )
 
+    # Enum member → provider instance (O(1) lookup; extend when adding a provider)
+    _PROVIDERS: ClassVar[dict[LLMProviderName, LLMProvider]] = {
+        LLMProviderName.OPENAI: openai,
+        LLMProviderName.CLAUDE: claude,
+        LLMProviderName.GEMINI: gemini,
+        LLMProviderName.GROQ: groq,
+        LLMProviderName.VLLM: vllm,
+    }
+
     @staticmethod
     def get_llm_provider(llm_provider_name: LLMProviderName) -> LLMProvider:
         """Get provider configuration by name."""
-        if llm_provider_name == LLMProviderName.OPENAI:
-            return LLMProviderConfig.openai
-        elif llm_provider_name == LLMProviderName.CLAUDE:
-            return LLMProviderConfig.claude
-        elif llm_provider_name == LLMProviderName.GEMINI:
-            return LLMProviderConfig.gemini
-        elif llm_provider_name == LLMProviderName.VLLM:
-            return LLMProviderConfig.vllm
-        else:
-            raise ValueError(f"Unsupported provider: {llm_provider_name}")
+        try:
+            return LLMProviderConfig._PROVIDERS[llm_provider_name]
+        except KeyError:
+            raise ValueError(f"Unsupported provider: {llm_provider_name}") from None
 
 
 if __name__ == "__main__":

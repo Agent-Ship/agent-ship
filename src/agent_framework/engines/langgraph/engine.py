@@ -313,7 +313,7 @@ class LangGraphEngine(AgentEngine):
     def _get_response_format(self) -> Optional[dict]:
         """Get response_format for structured output (OpenAI-compatible providers)."""
         provider = self.agent_config.model_provider.name.value
-        if provider in ["openai", "gemini", "vertex_ai", "vllm"]:
+        if provider in ["openai", "gemini", "vertex_ai", "vllm", "groq"]:
             return {"type": "json_object"}
         return None
 
