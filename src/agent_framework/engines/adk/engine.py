@@ -62,11 +62,13 @@ class AdkEngine(AgentEngine):
     def _get_adk_model(self):
         """Create ADK LiteLlm model wrapper. Uses provider's get_model_string() so
         LiteLLM gets the right format (e.g. gemini/gemini-1.5-pro for Gemini API, not Vertex).
+        For self-hosted providers like vLLM, api_base is passed through.
         """
         from google.adk.models.lite_llm import LiteLlm
-        model_str = self.agent_config.model_provider.get_model_string(
-            self.agent_config.model.value
-        )
+        provider = self.agent_config.model_provider
+        model_str = provider.get_model_string(self.agent_config.model.value)
+        if provider.api_base:
+            return LiteLlm(model=model_str, api_base=provider.api_base)
         return LiteLlm(model_str)
 
     def engine_name(self) -> str:

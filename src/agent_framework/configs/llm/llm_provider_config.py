@@ -21,6 +21,7 @@ class LLMProviderName(Enum):
     OPENAI = "openai"
     CLAUDE = "claude"
     GEMINI = "gemini"
+    VLLM = "vllm"
 
     def __str__(self):
         return self.value
@@ -59,12 +60,26 @@ class LLMModel(Enum):
     def __str__(self):
         return self.value
 
+    @classmethod
+    def _missing_(cls, value: object):
+        """Allow arbitrary model name strings (e.g. vLLM-hosted models like
+        'meta-llama/Llama-3.1-8B-Instruct') that aren't in the fixed enum.
+        Returns a dynamic pseudo-member so the rest of the config pipeline
+        can treat it uniformly."""
+        if not isinstance(value, str):
+            return None
+        obj = object.__new__(cls)
+        obj._value_ = value
+        obj._name_ = value.upper().replace("-", "_").replace("/", "__").replace(".", "_")
+        return obj
+
 
 class ProviderAPIKey(Enum):
     """API key for the LLM provider."""
     OPENAI = os.getenv("OPENAI_API_KEY", "")
     CLAUDE = os.getenv("ANTHROPIC_API_KEY", "")
     GEMINI = os.getenv("GEMINI_API_KEY")
+    VLLM = os.getenv("VLLM_API_KEY", "EMPTY")  # vLLM servers often require a dummy key
 
     def __str__(self):
         return self.value
@@ -78,15 +93,16 @@ class LLMProvider:
         name: LLMProviderName,
         api_key: ProviderAPIKey,
         models: List[LLMModel],
-        default_model: LLMModel,
+        default_model: LLMModel | None,
         temperature: float = 0.7,
         litellm_prefix: str | None = None,
         model_aliases: dict[str, str] | None = None,
+        api_base: str | None = None,
     ):
         self._name: LLMProviderName = name
         self._api_key: ProviderAPIKey = api_key
         self._models: List[LLMModel] = models
-        self._default_model: LLMModel = default_model
+        self._default_model: LLMModel | None = default_model
         self._temperature = temperature
         # litellm_prefix: the prefix LiteLLM expects (e.g. "anthropic" for Claude).
         # Defaults to the user-facing name when they match.
@@ -94,8 +110,12 @@ class LLMProvider:
         # model_aliases: maps user-facing model name to the actual API model ID.
         # Lets users write "gemini-1.5-pro" while we resolve to "gemini-1.5-pro-002".
         self._model_aliases: dict[str, str] = model_aliases or {}
+        # api_base: custom endpoint URL (required for vLLM and other self-hosted servers).
+        self._api_base: str | None = api_base
 
-        if default_model not in self._models:
+        # Only validate default_model membership when a fixed model list is defined.
+        # Providers like vLLM accept any model name, so models=[] and default_model=None.
+        if self._models and default_model is not None and default_model not in self._models:
             raise ValueError(
                 f"Default model '{default_model}' not found in available models: {models}"
             )
@@ -109,7 +129,11 @@ class LLMProvider:
         return self._api_key.value
 
     @property
-    def default_model(self) -> LLMModel:
+    def api_base(self) -> str | None:
+        return self._api_base
+
+    @property
+    def default_model(self) -> LLMModel | None:
         return self._default_model
 
     @property
@@ -211,6 +235,24 @@ class LLMProviderConfig:
         },
     )
 
+    # ── vLLM ──────────────────────────────────────────────────────────────────
+    # vLLM exposes an OpenAI-compatible REST API. LiteLLM routes to it via the
+    # "hosted_vllm/" prefix. The model name is whatever the vLLM server has
+    # loaded (e.g. "meta-llama/Llama-3.1-8B-Instruct"), so no fixed model list
+    # is enforced here — any string is accepted via LLMModel._missing_.
+    #
+    # Required env vars:
+    #   VLLM_API_BASE  - vLLM server URL, e.g. http://localhost:8000 (default)
+    #   VLLM_API_KEY   - API key if the server requires auth (default: "EMPTY")
+    vllm = LLMProvider(
+        name=LLMProviderName.VLLM,
+        api_key=ProviderAPIKey.VLLM,
+        litellm_prefix="hosted_vllm",
+        models=[],          # open — any model name is valid
+        default_model=None,  # no fixed default; user must specify llm_model in YAML
+        api_base=os.getenv("VLLM_API_BASE", "http://localhost:8000"),
+    )
+
     @staticmethod
     def get_llm_provider(llm_provider_name: LLMProviderName) -> LLMProvider:
         """Get provider configuration by name."""
@@ -220,6 +262,8 @@ class LLMProviderConfig:
             return LLMProviderConfig.claude
         elif llm_provider_name == LLMProviderName.GEMINI:
             return LLMProviderConfig.gemini
+        elif llm_provider_name == LLMProviderName.VLLM:
+            return LLMProviderConfig.vllm
         else:
             raise ValueError(f"Unsupported provider: {llm_provider_name}")
 
