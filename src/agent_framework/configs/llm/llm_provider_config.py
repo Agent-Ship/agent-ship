@@ -23,6 +23,7 @@ class LLMProviderName(Enum):
     GEMINI = "gemini"
     VLLM = "vllm"
     GROQ = "groq"
+    OPENROUTER = "openrouter"
 
     def __str__(self):
         return self.value
@@ -64,6 +65,16 @@ class LLMModel(Enum):
     LLAMA3_8B = "llama3-8b-8192"
     MIXTRAL_8X7B = "mixtral-8x7b-32768"
     GEMMA2_9B = "gemma2-9b-it"
+    # OpenRouter (models use org/model namespace)
+    OR_GPT_4O = "openai/gpt-4o"
+    OR_GPT_4O_MINI = "openai/gpt-4o-mini"
+    OR_CLAUDE_3_5_SONNET = "anthropic/claude-3.5-sonnet"
+    OR_CLAUDE_3_5_HAIKU = "anthropic/claude-3.5-haiku"
+    OR_LLAMA_3_3_70B_INSTRUCT = "meta-llama/llama-3.3-70b-instruct"
+    OR_GEMINI_2_0_FLASH = "google/gemini-2.0-flash-001"
+    OR_DEEPSEEK_R1 = "deepseek/deepseek-r1"
+    OR_DEEPSEEK_CHAT = "deepseek/deepseek-chat-v3-0324"
+    OR_MIXTRAL_8X7B_INSTRUCT = "mistralai/mixtral-8x7b-instruct"
 
     def __str__(self):
         return self.value
@@ -89,6 +100,7 @@ class ProviderAPIKey(Enum):
     GEMINI = os.getenv("GEMINI_API_KEY")
     VLLM = os.getenv("VLLM_API_KEY", "EMPTY")  # vLLM servers often require a dummy key
     GROQ = os.getenv("GROQ_API_KEY", "")
+    OPENROUTER = os.getenv("OPENROUTER_API_KEY", "")
 
     def __str__(self):
         return self.value
@@ -260,6 +272,32 @@ class LLMProviderConfig:
         default_model=LLMModel.LLAMA_3_3_70B,
     )
 
+    # ── OpenRouter ────────────────────────────────────────────────────────────
+    # OpenRouter is a unified gateway to 100+ models. LiteLLM routes via the
+    # "openrouter/" prefix. Model names use the org/model format expected by
+    # the OpenRouter API (e.g. "openai/gpt-4o", "anthropic/claude-3.5-sonnet").
+    # Any model available on OpenRouter works via LLMModel._missing_.
+    #
+    # Required env vars:
+    #   OPENROUTER_API_KEY  - API key from openrouter.ai
+    openrouter = LLMProvider(
+        name=LLMProviderName.OPENROUTER,
+        api_key=ProviderAPIKey.OPENROUTER,
+        litellm_prefix="openrouter",
+        models=[
+            LLMModel.OR_GPT_4O,
+            LLMModel.OR_GPT_4O_MINI,
+            LLMModel.OR_CLAUDE_3_5_SONNET,
+            LLMModel.OR_CLAUDE_3_5_HAIKU,
+            LLMModel.OR_LLAMA_3_3_70B_INSTRUCT,
+            LLMModel.OR_GEMINI_2_0_FLASH,
+            LLMModel.OR_DEEPSEEK_R1,
+            LLMModel.OR_DEEPSEEK_CHAT,
+            LLMModel.OR_MIXTRAL_8X7B_INSTRUCT,
+        ],
+        default_model=LLMModel.OR_GPT_4O_MINI,
+    )
+
     # ── vLLM ──────────────────────────────────────────────────────────────────
     # vLLM exposes an OpenAI-compatible REST API. LiteLLM routes to it via the
     # "hosted_vllm/" prefix. The model name is whatever the vLLM server has
@@ -285,6 +323,7 @@ class LLMProviderConfig:
         LLMProviderName.GEMINI: gemini,
         LLMProviderName.GROQ: groq,
         LLMProviderName.VLLM: vllm,
+        LLMProviderName.OPENROUTER: openrouter,
     }
 
     @staticmethod

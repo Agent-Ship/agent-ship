@@ -123,7 +123,7 @@ class TestProviderModelListConsistency:
     """Every model in a provider's models list must exist in LLMModel enum,
     and the enum value must round-trip through get_model_string without error."""
 
-    @pytest.mark.parametrize("provider_name", ["openai", "claude", "gemini", "groq"])
+    @pytest.mark.parametrize("provider_name", ["openai", "claude", "gemini", "groq", "openrouter"])
     def test_all_provider_models_are_valid_enum_values(self, provider_name):
         provider = LLMProviderConfig.get_llm_provider(LLMProviderName(provider_name))
         for model in provider.models:
@@ -148,6 +148,9 @@ class TestProviderModelListConsistency:
     def test_vllm_models_list_is_empty(self):
         # vLLM accepts any model name — no fixed list enforced
         assert LLMProviderConfig.vllm.models == []
+
+    def test_openrouter_models_list_is_not_empty(self):
+        assert len(LLMProviderConfig.openrouter.models) > 0
 
 
 # ---------------------------------------------------------------------------
@@ -180,6 +183,10 @@ class TestDefaultModels:
         # vLLM has no fixed default — user must specify llm_model in YAML
         assert LLMProviderConfig.vllm.default_model is None
 
+    def test_openrouter_default_in_model_list(self):
+        p = LLMProviderConfig.openrouter
+        assert p.default_model in p.models
+
 
 # ---------------------------------------------------------------------------
 # Full model string format
@@ -204,7 +211,7 @@ class TestModelStringFormat:
     def test_model_string(self, provider_name, model_name, expected):
         assert model_string(provider_name, model_name) == expected
 
-    @pytest.mark.parametrize("provider_name", ["openai", "claude", "gemini", "groq"])
+    @pytest.mark.parametrize("provider_name", ["openai", "claude", "gemini", "groq", "openrouter"])
     def test_model_string_contains_slash(self, provider_name):
         provider = LLMProviderConfig.get_llm_provider(LLMProviderName(provider_name))
         for model in provider.models:
@@ -301,3 +308,53 @@ class TestVLLMProvider:
     def test_get_llm_provider_returns_vllm(self):
         provider = LLMProviderConfig.get_llm_provider(LLMProviderName.VLLM)
         assert provider.name == LLMProviderName.VLLM
+
+
+# ---------------------------------------------------------------------------
+# OpenRouter
+# ---------------------------------------------------------------------------
+
+class TestOpenRouterProvider:
+    """OpenRouter is a multi-model gateway routed via LiteLLM's openrouter/ prefix.
+    Model names use the org/model namespace (e.g. openai/gpt-4o)."""
+
+    def test_prefix_is_openrouter(self):
+        assert model_string("openrouter", "openai/gpt-4o").startswith("openrouter/")
+
+    def test_no_api_base(self):
+        # OpenRouter is a cloud service — no custom api_base needed
+        assert LLMProviderConfig.openrouter.api_base is None
+
+    def test_get_llm_provider_returns_openrouter(self):
+        provider = LLMProviderConfig.get_llm_provider(LLMProviderName.OPENROUTER)
+        assert provider.name == LLMProviderName.OPENROUTER
+
+    @pytest.mark.parametrize("model_name,expected", [
+        ("openai/gpt-4o",                    "openrouter/openai/gpt-4o"),
+        ("openai/gpt-4o-mini",               "openrouter/openai/gpt-4o-mini"),
+        ("anthropic/claude-3.5-sonnet",      "openrouter/anthropic/claude-3.5-sonnet"),
+        ("anthropic/claude-3.5-haiku",       "openrouter/anthropic/claude-3.5-haiku"),
+        ("meta-llama/llama-3.3-70b-instruct","openrouter/meta-llama/llama-3.3-70b-instruct"),
+        ("google/gemini-2.0-flash-001",      "openrouter/google/gemini-2.0-flash-001"),
+        ("deepseek/deepseek-r1",             "openrouter/deepseek/deepseek-r1"),
+        ("deepseek/deepseek-chat-v3-0324",   "openrouter/deepseek/deepseek-chat-v3-0324"),
+        ("mistralai/mixtral-8x7b-instruct",  "openrouter/mistralai/mixtral-8x7b-instruct"),
+    ])
+    def test_model_strings(self, model_name, expected):
+        assert model_string("openrouter", model_name) == expected
+
+    def test_unknown_model_passthrough(self):
+        # Models not in the curated list should still pass through for future additions
+        result = model_string("openrouter", "cohere/command-r-plus")
+        assert result == "openrouter/cohere/command-r-plus"
+
+    def test_model_string_preserves_org_slash(self):
+        # The org/model slash must survive — it's part of the OpenRouter model ID
+        result = model_string("openrouter", "openai/gpt-4o")
+        parts = result.split("/")
+        assert parts[0] == "openrouter"
+        assert parts[1] == "openai"
+        assert parts[2] == "gpt-4o"
+
+    def test_default_model_is_gpt_4o_mini(self):
+        assert LLMProviderConfig.openrouter.default_model.value == "openai/gpt-4o-mini"
