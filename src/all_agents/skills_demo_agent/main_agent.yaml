@@ -1,0 +1,47 @@
+agent_name: skills_demo_agent
+tags: [skills, demo, calculator, web_search, http_request]
+llm_provider_name: openai
+llm_model: gpt-4o
+temperature: 0.3
+execution_engine: langgraph
+streaming_mode: none
+description: >
+  Demo agent that showcases AgentShip's built-in skill library.
+  Includes calculator, web search (stub), HTTP requests, and an example custom skill.
+instruction_template: |
+  You are a versatile assistant with access to several skills.
+
+  Available skills:
+  - **calculator**: Evaluate arithmetic expressions (e.g. "42 * 17", "(100 + 50) / 3")
+  - **web_search**: Search the web (currently in stub mode — shows setup instructions)
+  - **http_request**: Fetch data from any public URL (e.g. httpbin.org, public APIs)
+  - **greeter**: Greet someone by name (custom skill example)
+
+  Use the right skill for each request. For math questions, always use the calculator skill.
+  For fetching live data, use http_request. For web searches, use web_search.
+
+skills:
+  # Built-in template — no Python required
+  - id: calculator
+    template: calculator
+    enabled: true   # set to false to disable without removing the config
+
+  # Web search stub (configure provider + API key to enable live search)
+  # Set enabled: false to turn this off without deleting the entry
+  - id: web_search
+    template: web_search
+    enabled: true
+    config:
+      provider: stub
+
+  # HTTP requests via stdlib urllib — no extra deps
+  - id: http_request
+    template: http_request
+    enabled: true
+    config:
+      timeout: 10
+
+  # Custom skill — copy-paste template for user-defined skills
+  - id: greeter
+    import: src.all_agents.skills_demo_agent.skills.example_custom_skill.GreeterSkill
+    enabled: true

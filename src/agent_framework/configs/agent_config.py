@@ -59,6 +59,7 @@ class AgentConfig:
         instruction_template: str = "",
         tags: List[str] = [],
         tools: List[Dict[str, Any]] | None = None,
+        skills: List[Dict[str, Any]] | None = None,
         memory: Optional[MemoryConfig] = None,
         streaming_mode: Union[StreamingMode, str] = StreamingMode.NONE,
         mcp_servers: Optional[List[Dict[str, Any]]] = None,
@@ -88,6 +89,11 @@ class AgentConfig:
         # Each entry is a dict describing how to construct a tool for this agent.
         # The BaseAgent class is responsible for interpreting this structure.
         self.tools: List[Dict[str, Any]] = tools or []
+
+        # Optional skill configuration loaded from YAML.
+        # Each entry references either a built-in template or a custom BaseSkill class.
+        self.skills: List[Dict[str, Any]] = skills or []
+
         self.max_tool_rounds: int = max_tool_rounds
 
         # MCP server references: resolved from global registry with optional overrides.
@@ -206,6 +212,7 @@ class AgentConfig:
             instruction_template=config["instruction_template"],
             tags=config.get("tags", []),
             tools=config.get("tools", []) or [],
+            skills=config.get("skills", []) or [],
             memory=memory_config,
             streaming_mode=config.get("streaming_mode", StreamingMode.NONE.value),
             mcp_servers=config.get("mcp_servers") or [],
