@@ -29,6 +29,9 @@ from src.agent_framework.configs.agent_config import AgentConfig, StreamingMode
 from src.agent_framework.core.io import build_schema_prompt, extract_display_text
 from src.agent_framework.core.types import AgentType
 from src.agent_framework.engines.base import AgentEngine, EngineCapabilities
+from src.agent_framework.engines.json_object_response_format import (
+    provider_supports_json_object_response_format,
+)
 from src.agent_framework.session.base import SessionStoreFactory
 from src.agent_framework.session.adapters.langgraph import LangGraphSessionStore
 from src.agent_framework.factories.observability_factory import ObservabilityFactory
@@ -177,7 +180,9 @@ class LangGraphEngine(AgentEngine):
 
     def capabilities(self) -> EngineCapabilities:
         return EngineCapabilities(
-            supported_providers=frozenset({"openai", "claude", "gemini"}),
+            supported_providers=frozenset(
+                {"openai", "claude", "gemini", "vllm", "groq", "openrouter", "deepseek", "azure"}
+            ),
             supports_sse_streaming=True,
             supports_tool_calling=bool(self._tools),
             supports_bidi_streaming=False,
@@ -313,7 +318,7 @@ class LangGraphEngine(AgentEngine):
     def _get_response_format(self) -> Optional[dict]:
         """Get response_format for structured output (OpenAI-compatible providers)."""
         provider = self.agent_config.model_provider.name.value
-        if provider in ["openai", "gemini", "vertex_ai", "vllm", "groq"]:
+        if provider_supports_json_object_response_format(provider):
             return {"type": "json_object"}
         return None
 

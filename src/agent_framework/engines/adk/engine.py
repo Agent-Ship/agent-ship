@@ -21,6 +21,9 @@ from src.agent_framework.core.io import extract_display_text, parse_agent_respon
 from src.agent_framework.factories.observability_factory import ObservabilityFactory
 from src.agent_framework.core.types import AgentType
 from src.agent_framework.engines.base import AgentEngine, EngineCapabilities
+from src.agent_framework.engines.json_object_response_format import (
+    JsonObjectResponseFormatProvider,
+)
 from src.agent_framework.session.base import SessionStoreFactory
 from src.agent_framework.session.adapters.adk import AdkSessionStore
 
@@ -63,6 +66,11 @@ class AdkEngine(AgentEngine):
         """Create ADK LiteLlm model wrapper. Uses provider's get_model_string() so
         LiteLLM gets the right format (e.g. gemini/gemini-1.5-pro for Gemini API, not Vertex).
         For self-hosted providers like vLLM, api_base is passed through.
+
+        Structured output is carried via ADK ``output_schema`` (GenAI ``response_schema``).
+        The set of provider strings that accept OpenAI-style
+        ``response_format: {type: json_object}`` in raw LiteLLM is shared with LangGraph
+        as :class:`JsonObjectResponseFormatProvider` in ``json_object_response_format``.
         """
         from google.adk.models.lite_llm import LiteLlm
         provider = self.agent_config.model_provider
@@ -79,12 +87,19 @@ class AdkEngine(AgentEngine):
         # provider support is constrained by that integration and by how ADK
         # surfaces streaming for a given provider/model.
         return EngineCapabilities(
-            supported_providers=frozenset({"openai", "claude", "gemini"}),
+            supported_providers=frozenset(
+                {"openai", "claude", "gemini", "vllm", "groq", "openrouter"}
+            ),
             supports_sse_streaming=True,
             supports_tool_calling=True,
             supports_bidi_streaming=False,  # not implemented in this codebase yet
             supports_multimodal=False,  # not implemented in this codebase yet
-            notes="SSE streaming is supported via Runner.run() events; bidi/live is not wired yet.",
+            notes=(
+                "SSE streaming is supported via Runner.run() events; bidi/live is not wired yet. "
+                "LiteLLM json_object-friendly provider ids (same allowlist as LangGraph): "
+                + ", ".join(sorted(m.value for m in JsonObjectResponseFormatProvider))
+                + "."
+            ),
         )
 
     def rebuild(self) -> None:
