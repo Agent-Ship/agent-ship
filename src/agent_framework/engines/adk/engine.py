@@ -24,6 +24,7 @@ from src.agent_framework.engines.base import AgentEngine, EngineCapabilities
 from src.agent_framework.engines.json_object_response_format import (
     JsonObjectResponseFormatProvider,
 )
+from src.agent_framework.middleware.memory_middleware import MEMORY_RECALL_KEY
 from src.agent_framework.session.base import SessionStoreFactory
 from src.agent_framework.session.adapters.adk import AdkSessionStore
 
@@ -184,14 +185,29 @@ class AdkEngine(AgentEngine):
             return SequentialAgent(**agent_kwargs)
         return Agent(**agent_kwargs)
 
-    async def run(self, user_id: str, session_id: str, input_data: BaseModel) -> BaseModel:
+    async def run(
+        self,
+        user_id: str,
+        session_id: str,
+        input_data: BaseModel,
+        request_context: Optional[Dict[str, Any]] = None,
+    ) -> BaseModel:
         if self.runner is None:
             raise RuntimeError("ADK runner not initialized.")
+
+        has_recall = bool((request_context or {}).get(MEMORY_RECALL_KEY))
+        logger.info(
+            "AdkEngine.run: agent=%s session=%s memory_recall=%s",
+            self.agent_config.agent_name,
+            session_id,
+            has_recall,
+        )
 
         await self.session_store.ensure_session_exists(user_id, session_id)
 
         input_text = input_data.model_dump_json()
-        content = types.Content(role="user", parts=[types.Part(text=input_text)])
+        message_text = self._prepend_memory_recall(input_text, request_context)
+        content = types.Content(role="user", parts=[types.Part(text=message_text)])
 
         result_generator = self.runner.run(
             user_id=user_id,
@@ -212,17 +228,30 @@ class AdkEngine(AgentEngine):
         return parse_agent_response(self.output_schema, result)
 
     async def run_stream(
-        self, user_id: str, session_id: str, input_data: BaseModel
+        self,
+        user_id: str,
+        session_id: str,
+        input_data: BaseModel,
+        request_context: Optional[Dict[str, Any]] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Yield the same event schema as current ADK streaming implementation."""
 
         if self.runner is None:
             raise RuntimeError("ADK runner not initialized.")
 
+        has_recall = bool((request_context or {}).get(MEMORY_RECALL_KEY))
+        logger.info(
+            "AdkEngine.run_stream: agent=%s session=%s memory_recall=%s",
+            self.agent_config.agent_name,
+            session_id,
+            has_recall,
+        )
+
         await self.session_store.ensure_session_exists(user_id, session_id)
 
         input_text = input_data.model_dump_json()
-        content = types.Content(role="user", parts=[types.Part(text=input_text)])
+        message_text = self._prepend_memory_recall(input_text, request_context)
+        content = types.Content(role="user", parts=[types.Part(text=message_text)])
 
         yield {
             "type": "thinking",
@@ -257,6 +286,27 @@ class AdkEngine(AgentEngine):
             }
 
         yield {"type": "done"}
+
+    @staticmethod
+    def _prepend_memory_recall(
+        input_text: str,
+        request_context: Optional[Dict[str, Any]],
+    ) -> str:
+        """Prepend the memory-recall block (if any) to the user message text.
+
+        ADK bakes the system instruction at agent-construction time, so
+        per-call context can't be inserted there safely under concurrency.
+        We prepend it to the user-turn content instead. The recall block
+        already carries its own trust-framing preamble (see
+        `MEMORY_RECALL_PREAMBLE`), so it labels itself as past-conversation
+        notes — the model can distinguish it from the user's current input.
+
+        Returns `input_text` unchanged when no recall block is present.
+        """
+        recall_block = (request_context or {}).get(MEMORY_RECALL_KEY)
+        if not recall_block:
+            return input_text
+        return f"{recall_block}\n\n{input_text}"
 
     def _format_stream_event(self, event) -> List[Dict[str, Any]]:
         events: List[Dict[str, Any]] = []

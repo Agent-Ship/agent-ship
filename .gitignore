@@ -108,3 +108,4 @@ uv.lock
 
 # Internal design docs (not for public consumption)
 design-docs/
+.spec-dev/

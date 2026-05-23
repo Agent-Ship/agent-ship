@@ -32,6 +32,7 @@ from src.agent_framework.engines.base import AgentEngine, EngineCapabilities
 from src.agent_framework.engines.json_object_response_format import (
     provider_supports_json_object_response_format,
 )
+from src.agent_framework.middleware.memory_middleware import MEMORY_RECALL_KEY
 from src.agent_framework.session.base import SessionStoreFactory
 from src.agent_framework.session.adapters.langgraph import LangGraphSessionStore
 from src.agent_framework.factories.observability_factory import ObservabilityFactory
@@ -322,13 +323,27 @@ class LangGraphEngine(AgentEngine):
             return {"type": "json_object"}
         return None
 
-    def _build_system_prompt(self) -> str:
-        """Build system prompt with tool documentation and output schema instructions."""
-        # Auto-generate tool documentation and inject into prompt
+    def _build_system_prompt(
+        self,
+        request_context: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """Build system prompt with tool docs, output schema, and recall block.
+
+        When the per-request `request_context` carries a memory-recall
+        block (written there by `MemoryMiddleware` via the
+        `MEMORY_RECALL_KEY`), it is appended to the base instruction
+        before tool-documentation and schema sections are added. The
+        block already carries its own trust-framing preamble.
+        """
         from src.agent_framework.prompts.tool_documentation import PromptBuilder
 
+        base_instruction = self.agent_config.instruction_template
+        recall_block = (request_context or {}).get(MEMORY_RECALL_KEY)
+        if recall_block:
+            base_instruction = f"{base_instruction}\n\n{recall_block}"
+
         prompt_with_tools = PromptBuilder.build_system_prompt(
-            base_instruction=self.agent_config.instruction_template,
+            base_instruction=base_instruction,
             tools=self._tools,
             engine_type="langgraph"
         )
@@ -336,10 +351,19 @@ class LangGraphEngine(AgentEngine):
         schema_prompt = build_schema_prompt(self.output_schema)
         return f"{prompt_with_tools}\n{schema_prompt}"
 
-    def _convert_to_litellm_messages(self, messages: List[BaseMessage]) -> List[Dict[str, Any]]:
-        """Convert LangChain messages to LiteLLM format."""
+    def _convert_to_litellm_messages(
+        self,
+        messages: List[BaseMessage],
+        request_context: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Convert LangChain messages to LiteLLM format.
+
+        `request_context` is forwarded to `_build_system_prompt` so the
+        first (system) message picks up any per-request additions like
+        the memory-recall block.
+        """
         llm_messages = [
-            {"role": "system", "content": self._build_system_prompt()}
+            {"role": "system", "content": self._build_system_prompt(request_context)}
         ]
 
         for msg in messages:
@@ -935,25 +959,33 @@ class LangGraphEngine(AgentEngine):
         user_id: str,
         session_id: str,
         input_data: BaseModel,
+        request_context: Optional[Dict[str, Any]] = None,
     ) -> BaseModel:
-        """Non-streaming execution."""
+        """Non-streaming execution.
+
+        `request_context` (optional) carries per-request side-channel data
+        from middlewares — most notably the memory-recall block which is
+        injected into the system prompt by `_convert_to_litellm_messages`.
+        """
         await self.session_store.ensure_session_exists(user_id, session_id)
 
         input_text = self._extract_input_text(input_data)
         config = self._get_thread_config(user_id, session_id)
         thread_id = config["configurable"]["thread_id"]
+        has_recall = bool((request_context or {}).get(MEMORY_RECALL_KEY))
 
         logger.info(
-            "LangGraphEngine.run: agent=%s model=%s thread_id=%s tools=%d",
+            "LangGraphEngine.run: agent=%s model=%s thread_id=%s tools=%d memory_recall=%s",
             self.agent_config.agent_name,
             self._resolve_litellm_model()[0],
             thread_id,
             len(self._tools),
+            has_recall,
         )
 
         # Load history and build messages
         history = await self._load_history(user_id, session_id)
-        messages = self._convert_to_litellm_messages(history)
+        messages = self._convert_to_litellm_messages(history, request_context)
         messages.append({"role": "user", "content": input_text})
 
         model_str, temperature, api_base = self._resolve_litellm_model()
@@ -999,20 +1031,28 @@ class LangGraphEngine(AgentEngine):
         user_id: str,
         session_id: str,
         input_data: BaseModel,
+        request_context: Optional[Dict[str, Any]] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
-        """Streaming execution with token-by-token output and tool events."""
+        """Streaming execution with token-by-token output and tool events.
+
+        `request_context` (optional) carries per-request side-channel data
+        from middlewares — most notably the memory-recall block which is
+        injected into the system prompt by `_convert_to_litellm_messages`.
+        """
         await self.session_store.ensure_session_exists(user_id, session_id)
 
         input_text = self._extract_input_text(input_data)
         config = self._get_thread_config(user_id, session_id)
         agent_name = self.agent_config.agent_name
+        has_recall = bool((request_context or {}).get(MEMORY_RECALL_KEY))
 
         logger.info(
-            "LangGraphEngine.run_stream: agent=%s model=%s thread_id=%s tools=%d",
+            "LangGraphEngine.run_stream: agent=%s model=%s thread_id=%s tools=%d memory_recall=%s",
             agent_name,
             self._resolve_litellm_model()[0],
             config["configurable"]["thread_id"],
             len(self._tools),
+            has_recall,
         )
 
         # Check streaming mode - if none, use non-streaming path
@@ -1031,7 +1071,7 @@ class LangGraphEngine(AgentEngine):
         if normalized_mode == "none":
             # Non-streaming mode
             try:
-                final_output = await self.run(user_id, session_id, input_data)
+                final_output = await self.run(user_id, session_id, input_data, request_context)
                 yield {
                     "type": "content",
                     "agent": agent_name,
@@ -1046,7 +1086,7 @@ class LangGraphEngine(AgentEngine):
         try:
             # Load history and build messages
             history = await self._load_history(user_id, session_id)
-            messages = self._convert_to_litellm_messages(history)
+            messages = self._convert_to_litellm_messages(history, request_context)
             messages.append({"role": "user", "content": input_text})
 
             thread_id = config["configurable"]["thread_id"]

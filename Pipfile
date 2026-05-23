@@ -43,6 +43,8 @@ arize = "==7.51.0"
 openai = "==2.3.0"
 tiktoken = "==0.12.0"
 tokenizers = "==0.22.1"
+# Long-term memory backend(s)
+mem0ai = "*"
 # Web Framework Dependencies
 starlette = "==0.48.0"
 sse-starlette = "==3.0.2"

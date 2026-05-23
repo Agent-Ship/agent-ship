@@ -9,7 +9,7 @@ from src.agent_framework.configs.llm.llm_provider_config import (
     LLMProviderName,
     LLMProviderConfig,
 )
-from src.agent_framework.configs.memory_config import MemoryConfig, MemoryBackend
+from src.agent_framework.configs.memory import MemoryConfig
 from src.agent_framework.mcp.models import MCPServerConfig, MCPServerReference
 from src.agent_framework.mcp.registry import MCPServerRegistry
 
@@ -124,14 +124,6 @@ class AgentConfig:
                 )
         self.streaming_mode: StreamingMode = streaming_mode
         
-        # Validate memory backend compatibility with runtime
-        if self.memory.enabled and self.memory.backend == MemoryBackend.VERTEXAI:
-            if self.execution_engine != ExecutionEngine.ADK:
-                raise ValueError(
-                    f"VertexAI memory backend requires execution_engine='adk', "
-                    f"but got '{self.execution_engine.value}'"
-                )
-
         # Observability is configured purely via environment per Opik guide
 
         # Validate that the model belongs to the correct provider.

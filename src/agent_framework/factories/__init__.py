@@ -1,15 +1,16 @@
-"""Clean factory system for AI-Ecosystem components.
+"""Factory system for AI-Ecosystem components.
 
-This module provides clean factory interfaces for creating
-framework components using proper separation of concerns.
+Clean factory interfaces for constructing framework components.
+MemoryFactory has moved to `agent_framework.memory.factory`; it is
+re-exported here for backwards compatibility with existing imports.
 """
 
 from .engine_factory import EngineFactory
-from .memory_factory import MemoryFactory
 from .observability_factory import ObservabilityFactory
+from src.agent_framework.memory.factory import MemoryFactory
 
 __all__ = [
-    "EngineFactory", 
+    "EngineFactory",
     "MemoryFactory",
     "ObservabilityFactory",
 ]
