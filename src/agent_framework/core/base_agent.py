@@ -65,27 +65,45 @@ class BaseAgent(abc.ABC):
 
         # 3) Create all components using clean factories
         from src.agent_framework.factories import EngineFactory, MemoryFactory, ObservabilityFactory
-        
+        from src.agent_framework.middleware import MemoryMiddleware
+
         # Create engine (required)
         base_engine: AgentEngine = EngineFactory.create(
             agent_config=self.agent_config,
             input_schema=self.input_schema,
             output_schema=self.output_schema,
         )
-        
-        # Create memory (optional)
-        self.memory = MemoryFactory.create(
-            memory_config=self.agent_config.memory
-        )
-        
+
+        # Build the long-term memory middleware (only when the agent's YAML
+        # has `memory.enabled: true`). The backend instance is not held on
+        # the agent — the middleware is the only thing that talks to it.
+        # When memory is off, `MemoryFactory.create` returns None and we
+        # skip the middleware entirely; the agent behaves exactly as before.
+        middlewares = []
+        memory_backend = MemoryFactory.create(memory_config=self.agent_config.memory)
+        if memory_backend is not None:
+            middlewares.append(
+                MemoryMiddleware(
+                    memory=memory_backend,
+                    config=self.agent_config.memory,
+                    agent_name=self._get_agent_name(),
+                )
+            )
+
         # Create observer (optional)
         self.observer = ObservabilityFactory.create_observer(
             agent_config=self.agent_config
         )
-        
-        # Middleware seam (no behavior change by default).
-        # Future: configure memory/RAG/tracing middleware here via config/env.
-        self.engine = MiddlewareEngine(inner=base_engine, middlewares=[], meta={"agent_name": self._get_agent_name()})
+
+        # Wrap the engine with the middleware stack. Adding more middlewares
+        # (RAG, safety, tracing) means appending to `middlewares` above.
+        # The `request_context_template` holds values shared by every call
+        # to this agent; the per-call dict is built from a copy.
+        self.engine = MiddlewareEngine(
+            inner=base_engine,
+            middlewares=middlewares,
+            request_context_template={"agent_name": self._get_agent_name()},
+        )
 
     # ------------------------------------------------------------------
     # Small helper accessors

@@ -5,6 +5,11 @@ llm_model: gpt-4o
 temperature: 0.4
 execution_engine: adk
 streaming_mode: none
+memory:
+  enabled: true
+  backend: mem0_platform
+  recall:
+    threshold: 0.2   # Mem0's relevance scores skew low — tune up later once we know what's normal
 description: A general-purpose personal assistant that can answer questions and help with various tasks.
 instruction_template: |
   You are an expert personal assistant. You are responsible for answering questions and helping users with various tasks.

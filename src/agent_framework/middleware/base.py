@@ -1,8 +1,16 @@
 """Middleware protocol for engines.
 
-This is intentionally minimal for the first refactor pass.
-We can expand it later to include richer streaming hooks and standardized
-context objects.
+A middleware sits between `BaseAgent.run()` and the actual engine, on the
+seam exposed by `MiddlewareEngine`. It can inspect / transform the input
+before the engine runs, and observe the output after.
+
+Both hooks receive a `request_context` dict — a per-request scratchpad
+shared across middlewares and the inner engine. Middlewares write values
+into it (e.g. `MemoryMiddleware` writes a recall block under
+`MEMORY_RECALL_KEY`); the engine reads from it when building prompts.
+The dict is created fresh per request by `MiddlewareEngine` and
+discarded when the call returns, so writes from one request cannot leak
+into another.
 """
 
 from __future__ import annotations
@@ -14,10 +22,11 @@ from pydantic import BaseModel
 
 
 class EngineMiddleware(abc.ABC):
-    """Engine-agnostic middleware.
+    """Engine-agnostic middleware contract.
 
     A middleware can:
-    - inspect/transform the input before the engine runs
+    - inspect/transform `input_data` before the engine runs
+    - write side-channel data into `request_context` for the engine to read
     - observe the output after the engine runs (for writeback/telemetry)
     """
 
@@ -28,9 +37,13 @@ class EngineMiddleware(abc.ABC):
         user_id: str,
         session_id: str,
         input_data: BaseModel,
-        meta: Optional[Dict[str, Any]] = None,
+        request_context: Optional[Dict[str, Any]] = None,
     ) -> BaseModel:
-        """Return the (possibly transformed) input_data."""
+        """Run before the engine. Return the (possibly transformed) input_data.
+
+        Writes into `request_context` (when provided) flow to the engine
+        on the same call; they do not persist across requests.
+        """
 
     @abc.abstractmethod
     async def after_run(
@@ -40,7 +53,10 @@ class EngineMiddleware(abc.ABC):
         session_id: str,
         input_data: BaseModel,
         output_data: Any,
-        meta: Optional[Dict[str, Any]] = None,
+        request_context: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """Observe the result (no return)."""
+        """Run after the engine. Observe the result (no return).
 
+        The same `request_context` instance from `before_run` is passed
+        here, so a middleware can read what it wrote earlier.
+        """
