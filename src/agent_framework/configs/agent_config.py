@@ -197,6 +197,20 @@ class AgentConfig:
             # Convert dict to MemoryConfig Pydantic model
             memory_config = MemoryConfig(**config["memory"])
 
+        # Append agents.md from the same directory as the YAML if it exists.
+        # Each agent's agents.md is strictly scoped to its own directory — there
+        # is no inheritance or merging across agent directories, so files from
+        # different agents never interfere with each other.
+        # Set ``load_agents_md: false`` in the YAML to opt out explicitly.
+        instruction_template = config["instruction_template"]
+        if config.get("load_agents_md", True):
+            agents_md_path = os.path.join(os.path.dirname(file_path), "agents.md")
+            if os.path.exists(agents_md_path):
+                with open(agents_md_path, "r") as md_file:
+                    agents_md_content = md_file.read().strip()
+                if agents_md_content:
+                    instruction_template = f"{instruction_template}\n\n{agents_md_content}"
+
         return cls(
             llm_provider_name=LLMProviderName(config["llm_provider_name"]),
             llm_model=LLMModel(config["llm_model"]),
@@ -209,7 +223,7 @@ class AgentConfig:
             ),
             agent_name=config["agent_name"],
             description=config["description"],
-            instruction_template=config["instruction_template"],
+            instruction_template=instruction_template,
             tags=config.get("tags", []),
             tools=config.get("tools", []) or [],
             skills=config.get("skills", []) or [],
