@@ -53,10 +53,10 @@ class LogCaptureHandler(logging.Handler):
                 category = "tool"
             elif any(kw in msg.lower() for kw in ['llm', 'model', 'gemini', 'gpt', 'claude', 'response']):
                 category = "llm"
-            elif record.levelno >= logging.WARNING:
-                category = "warning"
             elif record.levelno >= logging.ERROR:
                 category = "error"
+            elif record.levelno >= logging.WARNING:
+                category = "warning"
             
             self.logs.append({
                 "timestamp": self.format(record).split(' | ')[0],
