@@ -50,6 +50,12 @@ class ToolManager:
             else:
                 logger.warning(f"Failed to create tool: {tool_config.get('id', 'unknown')}")
 
+        # Skill tools: resolve built-in templates or user-defined BaseSkill classes
+        if getattr(agent_config, "skills", None):
+            skill_tools = ToolManager._create_skill_tools(agent_config, engine_type)
+            tools.extend(skill_tools)
+            logger.info(f"Added {len(skill_tools)} skill tools")
+
         # MCP tools: discover from agent's mcp_servers and convert to engine format
         if getattr(agent_config, "mcp_servers", None):
             mcp_tools = ToolManager._create_mcp_tools(agent_config, engine_type)
@@ -377,6 +383,82 @@ class ToolManager:
         
         return None
     
+    # Skill Methods
+
+    @staticmethod
+    def _create_skill_tools(agent_config: 'AgentConfig', engine_type: str) -> List[Any]:
+        """Create engine-specific tools from the agent's ``skills:`` YAML section."""
+        skill_tools: List[Any] = []
+        for skill_config in agent_config.skills:
+            tool = ToolManager._create_skill_tool(skill_config, engine_type)
+            if tool:
+                skill_tools.append(tool)
+            else:
+                logger.warning(f"Failed to create skill: {skill_config.get('id', 'unknown')}")
+        return skill_tools
+
+    @staticmethod
+    def _create_skill_tool(skill_config: Dict, engine_type: str) -> Optional[Any]:
+        """Resolve and instantiate a single skill, then convert to engine format.
+
+        Lookup order:
+        1. ``template`` key  → built-in SKILL_REGISTRY import path
+        2. ``import`` key    → user-supplied fully-qualified class path
+
+        Set ``enabled: false`` in the skill YAML entry to disable the skill
+        without removing it from the configuration.
+        """
+        if skill_config.get("enabled", True) is False:
+            logger.info(f"Skill '{skill_config.get('id', '?')}' is disabled, skipping")
+            return None
+
+        from src.agent_framework.skills.templates import SKILL_REGISTRY
+
+        template = skill_config.get("template")
+        import_path = skill_config.get("import")
+        config_dict = skill_config.get("config") or {}
+
+        if template:
+            import_path = SKILL_REGISTRY.get(template)
+            if not import_path:
+                available = list(SKILL_REGISTRY.keys())
+                logger.warning(
+                    f"Unknown skill template '{template}'. Available: {available}"
+                )
+                return None
+
+        if not import_path:
+            logger.warning(
+                f"Skill '{skill_config.get('id', '?')}' needs either 'template' or 'import'"
+            )
+            return None
+
+        try:
+            skill_cls = ToolManager._import_symbol(import_path)
+        except ImportError as e:
+            logger.warning(f"Failed to import skill '{import_path}': {e}")
+            return None
+
+        try:
+            skill_obj = skill_cls(config=config_dict) if config_dict else skill_cls()
+        except TypeError:
+            # Skill __init__ doesn't accept config — instantiate without it
+            skill_obj = skill_cls()
+
+        # Override the skill id/name if the YAML specifies one
+        skill_id = skill_config.get("id")
+        if skill_id:
+            skill_obj.name = skill_id
+
+        # Re-use the existing function-tool converters (skills are BaseTool subclasses)
+        if engine_type == "adk":
+            return ToolManager._to_adk_function_tool(skill_obj, skill_obj.run, skill_config)
+        elif engine_type == "langgraph":
+            return ToolManager._to_langgraph_function_tool(skill_obj, skill_obj.run, skill_config)
+        else:
+            logger.warning(f"Unsupported engine type for skill: {engine_type}")
+            return None
+
     # Legacy Methods for Backward Compatibility
     @staticmethod
     def _create_function_tool_legacy(tool_config: Dict, engine_type: str) -> Optional[Any]:
