@@ -1,0 +1,24 @@
+# Tasks — live tracker
+
+Status: `[ ]` todo · `[~]` in progress · `[x]` done (with commit SHA + proof).
+Mirrors the phase ladder in `architecture.md`. Detailed per-phase tasks live in
+`phases/phase-NN-*.md`. Notion tracker mirrors this (same SHAs).
+
+| Phase | Status | Notes |
+|---|---|---|
+| 0 Foundation | [~] | repo + kernel walking skeleton + CI + operating model |
+| 1 Real model | [ ] | |
+| 2 Identity backbone | [ ] | |
+| 3 Tools | [ ] | |
+| 4 Structured output | [ ] | |
+| 5 Streaming | [ ] | |
+| 6 Multi-agent + handoffs | [ ] | |
+| 7 Observability | [ ] | |
+| 8 Memory | [ ] | |
+| 9 Durable | [ ] | |
+| 10 Serve + interop | [ ] | |
+| 11 Evals | [ ] | |
+| 12 Sandbox | [ ] | |
+| 13 Deploy | [ ] | |
+| 14 A2A | [ ] | |
+| 15 Recipes | [ ] | |
