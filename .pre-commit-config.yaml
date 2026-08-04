@@ -1,0 +1,30 @@
+# Pre-commit gate (operating-model.md §CI & local gate): ruff format + ruff check,
+# the test suite on every commit, and a soft files-per-commit cap warning. Install
+# once with `pre-commit install`.
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff-format
+      - id: ruff
+        args: [--fix]
+
+  - repo: local
+    hooks:
+      # Run the suite before every commit so nothing lands red. Uses the project
+      # venv's pytest; `pass_filenames: false` so it runs the whole (fast) suite.
+      - id: pytest
+        name: pytest (full suite)
+        entry: pytest -q
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      # Soft cap: warn (never block) when a commit touches many files — the
+      # big-bang commit is the anti-pattern we're eliminating. Exit 0 always.
+      - id: files-per-commit-cap
+        name: soft files-per-commit cap (warn only)
+        entry: scripts/check_commit_size.sh
+        language: script
+        pass_filenames: false
+        always_run: true
