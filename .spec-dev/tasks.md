@@ -6,7 +6,7 @@ Mirrors the phase ladder in `architecture.md`. Detailed per-phase tasks live in
 
 | Phase | Status | Notes |
 |---|---|---|
-| 0 Foundation | [~] | repo + kernel walking skeleton + CI + operating model |
+| 0 Foundation | [x] | walking skeleton green (ac25324); `agentship run` → `echo: hi`; 30 tests, ruff clean. CI workflow committed (runs on push). |
 | 1 Real model | [ ] | |
 | 2 Identity backbone | [ ] | |
 | 3 Tools | [ ] | |
