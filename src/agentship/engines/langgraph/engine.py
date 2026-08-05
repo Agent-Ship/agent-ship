@@ -1,15 +1,62 @@
-"""The LangGraph engine (skeleton) — registered so the kernel can discover it.
+"""The LangGraph engine — AgentShip's default single-agent, real-model engine.
 
-This file is fleshed out in Task 3 (the real single-agent graph over a LiteLLM
-model). At Task 1 it exists only so the ``agentship.engines`` entry point
-resolves and the registry lists ``langgraph`` alongside ``echo``.
+:class:`LangGraphEngine` compiles an :class:`~agentship.spec.AgentSpec` into a
+minimal LangGraph graph: one node that sends ``[system prompt, user input]`` to a
+LiteLLM-backed chat model and returns its answer. It declares ``streaming`` only —
+``tool_calling``/``structured_output``/``multi_agent`` arrive in later phases, and
+the kernel's capability gate rejects specs that ask for them until then.
+
+**Model injection.** The chat model is resolved through
+:func:`agentship.models.resolve_model` (referenced via the module, not imported by
+name), so offline tests monkeypatch that function to inject a fake model and run
+with no network. Production runs resolve a real ``ChatLiteLLM``.
 """
 
 from __future__ import annotations
 
-from typing import ClassVar
+from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING, Any, ClassVar
 
-from ..base import Engine, EngineCapabilities
+from langchain_core.messages import AIMessageChunk, HumanMessage, SystemMessage
+from langgraph.graph import END, START, StateGraph
+from typing_extensions import TypedDict
+
+from ... import models
+from ..base import Engine, EngineCapabilities, Event, Result
+
+if TYPE_CHECKING:
+    from langchain_core.language_models.chat_models import BaseChatModel
+
+    from ...context import RunContext
+    from ...spec import AgentSpec
+
+
+class _AgentState(TypedDict):
+    """The graph's state: the running list of chat messages for one turn."""
+
+    messages: list
+
+
+class _CompiledAgent:
+    """A built LangGraph agent: the compiled graph plus its system prompt.
+
+    Held opaque by the kernel; only this engine's ``run``/``stream`` read it. The
+    system prompt is stored alongside the graph so each turn can seed the message
+    list without re-reading the spec.
+    """
+
+    def __init__(self, graph: Any, system_prompt: str | None) -> None:
+        """Bind the compiled graph and the optional system prompt."""
+        self.graph = graph
+        self.system_prompt = system_prompt
+
+    def initial_messages(self, text: str) -> list:
+        """Build the seed message list for one turn: optional system + user input."""
+        messages: list = []
+        if self.system_prompt:
+            messages.append(SystemMessage(content=self.system_prompt))
+        messages.append(HumanMessage(content=text))
+        return messages
 
 
 class LangGraphEngine(Engine):
@@ -17,16 +64,65 @@ class LangGraphEngine(Engine):
 
     Declares ``streaming`` only for now; ``tool_calling``/``structured_output``/
     ``multi_agent`` stay ``False`` so the capability gate honestly rejects those
-    (they arrive in later phases). The build/run/stream body lands in Task 3.
+    (they arrive in later phases). The model is resolved via
+    :func:`agentship.models.resolve_model`, which offline tests monkeypatch to
+    inject a fake chat model.
     """
 
     name: ClassVar[str] = "langgraph"
     capabilities: ClassVar[EngineCapabilities] = EngineCapabilities(streaming=True)
 
-    def build(self, spec):  # noqa: ANN001, ANN201 - fleshed out in Task 3
-        """Compile the spec into a runnable graph — implemented in Task 3."""
-        raise NotImplementedError("LangGraphEngine.build lands in Phase 1 Task 3")
+    def build(self, spec: AgentSpec) -> _CompiledAgent:
+        """Compile the spec into a single-node graph over the resolved chat model.
 
-    async def run(self, compiled, text, ctx):  # noqa: ANN001, ANN201 - fleshed out in Task 3
-        """Run one turn — implemented in Task 3."""
-        raise NotImplementedError("LangGraphEngine.run lands in Phase 1 Task 3")
+        Resolves the chat model from ``spec.model`` (raising
+        :class:`~agentship.errors.SpecError` on an empty model via
+        :func:`~agentship.models.resolve_model`), then wires one ``agent`` node
+        that invokes it. Returns the compiled artifact the kernel hands back to
+        ``run``/``stream``.
+        """
+        model = models.resolve_model(spec.model or "")
+        graph = self._build_graph(model)
+        return _CompiledAgent(graph, spec.prompt)
+
+    def _build_graph(self, model: BaseChatModel) -> Any:
+        """Wire and compile the minimal ``START → agent → END`` graph for ``model``."""
+
+        def call_model(state: _AgentState) -> dict:
+            """Invoke the chat model on the current messages, appending its reply."""
+            reply = model.invoke(state["messages"])
+            return {"messages": [*state["messages"], reply]}
+
+        builder = StateGraph(_AgentState)
+        builder.add_node("agent", call_model)
+        builder.add_edge(START, "agent")
+        builder.add_edge("agent", END)
+        return builder.compile()
+
+    async def run(self, compiled: _CompiledAgent, text: str, ctx: RunContext) -> Result:
+        """Run one turn and return the model's answer as the :class:`Result` output.
+
+        Invokes the compiled graph on ``[system prompt, user input]`` and returns
+        the content of the final message (the model's reply).
+        """
+        state = await compiled.graph.ainvoke({"messages": compiled.initial_messages(text)})
+        answer = state["messages"][-1].content
+        return Result(output=answer)
+
+    async def stream(
+        self, compiled: _CompiledAgent, text: str, ctx: RunContext
+    ) -> AsyncIterator[Event]:
+        """Stream the model's answer as token ``content`` chunks, then a terminal ``done``.
+
+        Uses LangGraph's ``stream_mode="messages"`` and keeps only the model's own
+        :class:`AIMessageChunk` tokens (never the replayed input messages), each
+        emitted as a ``content`` event. A single ``done`` event terminates the
+        stream once the graph completes.
+        """
+        async for message, _metadata in compiled.graph.astream(
+            {"messages": compiled.initial_messages(text)},
+            stream_mode="messages",
+        ):
+            if isinstance(message, AIMessageChunk) and message.content:
+                yield Event(type="content", data=message.content)
+        yield Event(type="done")
