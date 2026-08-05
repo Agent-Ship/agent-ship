@@ -52,8 +52,8 @@ agentship run examples/assistant.yaml --input "Name three primary colors."
       a test that runs it (offline via fake, live via the cassette). Proof: demo test green.
       (23af377,
       `tests/test_assistant_example.py::test_assistant_example_runs_offline_with_fake_model`)
-- [ ] **T6 Track** — flip this file + `tasks.md` + Notion (P1 row) to done per task, with
-      SHAs + proofs.
+- [x] **T6 Track** — flipped this file + `tasks.md` + Notion (P1 row) to done with SHAs +
+      proofs; verified keyless replay (44 passed) and zero secrets in cassettes.
 
 ## Gaps (found during planning — fill or document)
 - **G1 — one-time cassette recording — CLOSED.** Recorded on 2026-08-05 with the
