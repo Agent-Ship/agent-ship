@@ -37,7 +37,8 @@ can't name one, it isn't done.
 6. **Demo** — update `examples/` + its test + recorded output.
 7. **Commit** — ONE task = ONE commit. Stage only this task's files. Conventional commit
    with `Phase:`/`Task:`/`Proof:` trailers. Soft cap ~8 files / 1 area per commit; a
-   commit spanning many packages is the red flag we're eliminating.
+   commit spanning many packages is the red flag we're eliminating. Commits are authored
+   solely by the developer — **never** add `Co-Authored-By` or "Generated with …" trailers.
 8. **Push & gate** — open a PR into `main`; CI must be green.
 9. **Flip to done** — phase file → tasks.md → Notion, in that order (git is the source of
    truth; Notion mirrors), all referencing the same SHA.
