@@ -1,0 +1,113 @@
+interactions:
+- request:
+    body: '{"messages":[{"content":"You are a concise assistant. Answer in one short
+      sentence.","role":"system"},{"content":"Name three primary colors.","role":"user"}],"model":"gpt-4o-mini"}'
+    headers:
+      accept:
+      - application/json
+      accept-encoding:
+      - gzip, deflate, zstd
+      authorization:
+      - REDACTED
+      connection:
+      - keep-alive
+      content-length:
+      - '180'
+      content-type:
+      - application/json
+      host:
+      - api.openai.com
+      user-agent:
+      - OpenAI/Python 2.53.0
+      x-stainless-arch:
+      - arm64
+      x-stainless-async:
+      - 'false'
+      x-stainless-lang:
+      - python
+      x-stainless-os:
+      - MacOS
+      x-stainless-package-version:
+      - 2.53.0
+      x-stainless-raw-response:
+      - 'true'
+      x-stainless-read-timeout:
+      - '600.0'
+      x-stainless-retry-count:
+      - '0'
+      x-stainless-runtime:
+      - CPython
+      x-stainless-runtime-version:
+      - 3.13.3
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAA/6rmUlBQykxRslJQSs5ILEnOLcjRdbUMqSo0dAEAAAD//4xSXUvDMBR9368oeW7H
+        1n2/CsMHQVBUUJGSJrdtXJqEJFWn7L+bpNva6QRfAjnnnptzT+7nlF2v8/V9dXM5ubjiT9u7h8eN
+        QrFXyPwViD2ohkQ6HVgmRUsTDdiC7zpeLGerdLmazwNRSwrcy0plk6lMaiZYko7SaTJaJOPlXl1J
+        RsC4smd3jaKvcHqfgsKHg0fxAanBGFyCww5FDtSSewRhY5ixWFgUdySRwoII1m+BxlHOG4gjLGi0
+        Bc7l+7BfrKFoDPaGRcN5j8BCSIv9wMHmy57ZHY1xWSotc/NDigo3sKkyl49xYTkTxkqFArtz50sI
+        oDmZCblGtbKZlRsIz6XLth3qYu/IxZ6zzh/v4MksPtMso2Ax46aXHyKYVEA7ZRc2biiTPWLQG/m3
+        l3O927GZKP/TviMIAeXWKVMaKCOn83ZlGvxO/lV2jDgYRgb0m1uyzDLQ/hsoFLjh7aYgszUW6sz9
+        VQlaadauS6GyAuc5ocWMrtBgN/gGAAD//wMAFA2+sjwDAAA=
+    headers:
+      access-control-expose-headers:
+      - X-Request-ID
+      - CF-Ray
+      - CF-Ray
+      alt-svc:
+      - h3=":443"; ma=86400
+      cf-cache-status:
+      - DYNAMIC
+      cf-ray:
+      - a2656d068aa775b1-EWR
+      connection:
+      - keep-alive
+      content-encoding:
+      - gzip
+      content-type:
+      - application/json
+      date:
+      - Wed, 05 Aug 2026 11:22:47 GMT
+      openai-organization:
+      - user-79ankten5jtxtqw6gkjhqs65
+      openai-processing-ms:
+      - '416'
+      openai-project:
+      - proj_ecZZRvNRll6W2v9rvdlNnbIv
+      openai-version:
+      - '2020-10-01'
+      server:
+      - cloudflare
+      set-cookie:
+      - __cf_bm=_k80ur6lzS6GTuGGVR1inCK4OxZfl2jCSXx2EyVDZNM-1785928966.1693838-1.0.1.1-qVSTUx5FlthUr3iKKTTDiVpyQQH_fkbU7_TEtH9DH2JG_VDacT9gKqfkudHxMECzsbi78tD2ndsi1g64ZhwZTZS2uj87SkhcufaRzDNXet8uxhbrfGGetNcv7y7p9gsH;
+        HttpOnly; SameSite=None; Secure; Path=/; Domain=api.openai.com; Expires=Wed,
+        05 Aug 2026 11:52:47 GMT
+      strict-transport-security:
+      - max-age=31536000; includeSubDomains; preload
+      transfer-encoding:
+      - chunked
+      x-content-type-options:
+      - nosniff
+      x-openai-proxy-wasm:
+      - v0.1
+      x-ratelimit-limit-requests:
+      - '5000'
+      x-ratelimit-limit-tokens:
+      - '2000000'
+      x-ratelimit-remaining-requests:
+      - '4999'
+      x-ratelimit-remaining-tokens:
+      - '1999976'
+      x-ratelimit-reset-requests:
+      - 12ms
+      x-ratelimit-reset-tokens:
+      - 0s
+      x-request-id:
+      - req_2ed79373eefe436bb155d2eba75d938b
+    status:
+      code: 200
+      message: OK
+version: 1
