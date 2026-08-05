@@ -1,4 +1,4 @@
-# Phase 1 — Real model (LiteLLM + LangGraph)  🔧 IN PROGRESS
+# Phase 1 — Real model (LiteLLM + LangGraph)  ✅ DONE
 
 Goal: `agentship run` a single YAML agent and get a **real LLM answer**. Introduces the
 LangGraph engine + a LiteLLM model seam, and establishes the **live-proof cassette**
@@ -29,33 +29,46 @@ agentship run examples/assistant.yaml --input "Name three primary colors."
   recording needs a real key (see Gaps).
 
 ## Tasks
-- [ ] **T1 Deps + registration** — add the `[langgraph]` extra + fold into `[all]`; add
+- [x] **T1 Deps + registration** — add the `[langgraph]` extra + fold into `[all]`; add
       `pytest-recording` to `[dev]`; register `langgraph` engine entry point. Proof: import
-      + `Registry` resolves `langgraph`.
-- [ ] **T2 Model seam** — `models.py::resolve_model` over `ChatLiteLLM` (thread
+      + `Registry` resolves `langgraph`. (091dc9d,
+      `tests/test_langgraph_registration.py::test_langgraph_engine_is_registered_via_entry_point`)
+- [x] **T2 Model seam** — `models.py::resolve_model` over `ChatLiteLLM` (thread
       temperature/max_tokens/api_base/timeout; drop `None`s; clear error on empty model).
       Proof: builds a configured model object; params thread; empty model raises `SpecError`.
-- [ ] **T3 LangGraph engine** — single-agent graph; `run` returns the answer, `stream`
+      (2ff6115,
+      `tests/test_models.py::test_resolve_model_builds_chatlitellm_with_model_and_temperature`)
+- [x] **T3 LangGraph engine** — single-agent graph; `run` returns the answer, `stream`
       yields token chunks + terminal `done`; capabilities declared; model injectable. Proof
       (offline, fake model): `run` returns the fake's output; `stream` yields ≥1 chunk then
-      done; capability gate rejects `output:`/`members:` on this engine.
-- [ ] **T4 Live-proof cassette** — vcr config (redact `authorization`), cassette dir, a
+      done; capability gate rejects `output:`/`members:` on this engine. (ffd0708,
+      `tests/test_langgraph_engine.py::test_run_returns_the_models_answer_through_the_graph`)
+- [x] **T4 Live-proof cassette** — vcr config (redact `authorization`), cassette dir, a
       gated live test that runs a real `gpt-4o-mini` through `build_agent` and asserts a
       non-empty answer; record the cassette; replay offline. Proof: the test passes in
-      **replay** mode with no key.
-- [ ] **T5 Demo** — `examples/assistant.yaml` (single real-model agent) + README snippet +
+      **replay** mode with no key. (4076c4b,
+      `tests/test_live_model.py::test_real_gpt_4o_mini_returns_a_non_empty_answer`)
+- [x] **T5 Demo** — `examples/assistant.yaml` (single real-model agent) + README snippet +
       a test that runs it (offline via fake, live via the cassette). Proof: demo test green.
+      (23af377,
+      `tests/test_assistant_example.py::test_assistant_example_runs_offline_with_fake_model`)
 - [ ] **T6 Track** — flip this file + `tasks.md` + Notion (P1 row) to done per task, with
       SHAs + proofs.
 
 ## Gaps (found during planning — fill or document)
-- **G1 — one-time cassette recording needs a real provider key.** The active env has no
-  provider key; `agent-ship/.env` holds `OPENAI_API_KEY`. Plan: record the cassette once
-  using that key (a single cheap `gpt-4o-mini` call), commit it with auth redacted, then CI
-  replays keyless. **If the key is missing/invalid at build time:** ship T3's offline
-  fake-model proof + the gated live test, mark T4 as an OPEN gap here, and the cassette gets
-  recorded on the first keyed run. (Update this line with the outcome.)
-- (Add any further gaps the build surfaces here, then fill them.)
+- **G1 — one-time cassette recording — CLOSED.** Recorded on 2026-08-05 with the
+  `OPENAI_API_KEY` from `agent-ship/.env` (single cheap `gpt-4o-mini` call each). Two
+  cassettes committed with the `authorization` header redacted:
+  `tests/cassettes/test_live_model/…` and `tests/cassettes/test_assistant_example/…`. Both
+  replay with `OPENAI_API_KEY` UNSET (verified: `env -u OPENAI_API_KEY pytest -q` → 44
+  passed). No secret is written to disk (`grep` for `sk-`/`Bearer` in the cassettes → 0).
+- **G2 — LiteLLM ↔ vcrpy interception (found during build — CLOSED).** LiteLLM's async path
+  defaults to an aiohttp transport vcrpy cannot intercept, and the OpenAI SDK refuses to
+  build a client without a key even to replay. Resolved in the tests: set
+  `litellm.disable_aiohttp_transport = True` (forces httpx so vcr hooks it),
+  `LITELLM_LOCAL_MODEL_COST_MAP=True` (no stray cost-map fetch polluting the cassette), and
+  a fixture that injects a placeholder key on keyless replay (VCR matches URI+body, not the
+  redacted auth header).
 
 ## Proof
 `pytest -q` green (incl. the replayed cassette); `agentship run examples/assistant.yaml`
