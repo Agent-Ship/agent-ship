@@ -18,11 +18,25 @@ dependencies = [
 # Optional integrations. Each pillar's real dependencies land when its phase ships;
 # the extras exist now so `pip install agentship[all]` is stable from day one.
 [project.optional-dependencies]
+langgraph = [       # phase 1 — the default real-model engine (LangGraph + LiteLLM)
+    "langgraph>=0.2",
+    "langchain-litellm>=0.1",
+    "langchain-core>=0.3",
+]
 mcp = []            # phase 3 — MCP tools (client) + agent-as-MCP-server
 memory = []         # phase 8 — long-term memory (mem0)
 observability = []  # phase 7 — OpenTelemetry + Langfuse/Opik
-all = []            # every extra above (kept in sync as extras gain deps)
-dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.6"]
+all = [             # every extra above (kept in sync as extras gain deps)
+    "langgraph>=0.2",
+    "langchain-litellm>=0.1",
+    "langchain-core>=0.3",
+]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "pytest-recording>=0.13",
+    "ruff>=0.6",
+]
 
 [project.scripts]
 agentship = "agentship.cli:main"
@@ -30,6 +44,7 @@ agentship = "agentship.cli:main"
 # Engines and adapters register here; the kernel discovers them via importlib.metadata.
 [project.entry-points."agentship.engines"]
 echo = "agentship.engines.echo:EchoEngine"
+langgraph = "agentship.engines.langgraph.engine:LangGraphEngine"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/agentship"]
