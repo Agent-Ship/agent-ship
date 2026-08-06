@@ -1,4 +1,4 @@
-# Phase 1 — Real model (LiteLLM + LangGraph)  ✅ DONE
+# Phase 1 — Real model (LiteLLM + LangGraph)  ✅ DONE · ⚠️ G5 open (multi-provider live proof blocked on keys)
 
 Goal: `agentship run` a single YAML agent and get a **real LLM answer**. Introduces the
 LangGraph engine + a LiteLLM model seam, and establishes the **live-proof cassette**
@@ -98,7 +98,7 @@ agentship run examples/assistant.yaml --input "Name three primary colors."
       `env -u OPENAI_API_KEY -u ANTHROPIC_API_KEY -u GEMINI_API_KEY -u GOOGLE_API_KEY pytest -q`
       → 59 passed, 4 skipped; openai cassette replays with no key
       (`tests/test_providers.py::test_provider_returns_a_non_empty_answer[openai]`). Zero secret
-      leakage across `tests/cassettes` (grep clean). (SHA: pending lead tracking commit)
+      leakage across `tests/cassettes` (grep clean). (ae8ecbe)
 
 ## Gaps (found during planning — fill or document)
 - **G1 — one-time cassette recording — CLOSED.** Recorded on 2026-08-05 with the
@@ -139,8 +139,11 @@ agentship run examples/assistant.yaml --input "Name three primary colors."
   loaded and sent), reported as one clean `Error:` line, not the "no credentials" message.
   Ships `.env.example`; `python-dotenv` added to core deps.
 
-- **G5 — live coverage is single-provider (raised by owner 2026-08-06 — CLOSED).** The live
-  proof previously exercised only OpenAI `gpt-4o-mini`. Fixed in T9: a `LIVE_PROVIDERS` matrix
+- **G5 — live coverage is single-provider (raised by owner 2026-08-06 — PARTIAL / BLOCKED).**
+  Matrix INFRA is done (ae8ecbe); live coverage is STILL OpenAI-only because no working
+  Claude/Gemini key is available — **needs owner to supply a real ANTHROPIC_API_KEY and a
+  billing-enabled GEMINI_API_KEY**, then `pytest tests/test_providers.py --record-mode=once`
+  records both and this closes. The live proof previously exercised only OpenAI `gpt-4o-mini`. Fixed in T9: a `LIVE_PROVIDERS` matrix
   (`tests/providers.py`) with a parametrized live test (`tests/test_providers.py`) + per-provider
   examples (`examples/providers/{openai,anthropic,gemini}.yaml`) + a build/run test
   (`tests/test_provider_examples.py`, offline fake for all three, live cassette per recorded
@@ -155,7 +158,7 @@ agentship run examples/assistant.yaml --input "Name three primary colors."
   message (not silently dropped). `groq`/`mistral` listed in the matrix commented "add a key to
   record". Proof: `env -u OPENAI_API_KEY -u ANTHROPIC_API_KEY -u GEMINI_API_KEY -u
   GOOGLE_API_KEY pytest -q` → 59 passed, 4 skipped; zero secret leakage across
-  `tests/cassettes`. (SHA: pending lead tracking commit)
+  `tests/cassettes`. (ae8ecbe)
 
 ## Proof
 `pytest -q` green (incl. the replayed cassette); `agentship run examples/assistant.yaml`
