@@ -7,7 +7,7 @@ Mirrors the phase ladder in `architecture.md`. Detailed per-phase tasks live in
 | Phase | Status | Notes |
 |---|---|---|
 | 0 Foundation | [x] | walking skeleton green (4834a87); `agentship run` → `echo: hi`; 30 tests, ruff clean. CI workflow committed (runs on push). |
-| 1 Real model | [x] | LangGraph+LiteLLM single agent; real gpt-4o-mini answer via replayed cassette; 44 tests keyless, ruff clean (23af377) |
+| 1 Real model | [x] | LangGraph+LiteLLM single agent; real gpt-4o-mini via replayed cassette; clean run errors + `.env` loading (G3/G4); 53 tests keyless, ruff clean (ab46a2f) |
 | 2 Identity backbone | [ ] | |
 | 3 Tools | [ ] | |
 | 4 Structured output | [ ] | |

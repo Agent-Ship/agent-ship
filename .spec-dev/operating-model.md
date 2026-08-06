@@ -41,7 +41,9 @@ can't name one, it isn't done.
    solely by the developer — **never** add `Co-Authored-By` or "Generated with …" trailers.
 8. **Push & gate** — open a PR into `main`; CI must be green.
 9. **Flip to done** — phase file → tasks.md → Notion, in that order (git is the source of
-   truth; Notion mirrors), all referencing the same SHA.
+   truth; Notion mirrors), all referencing the same SHA. A commit cannot contain its own
+   final hash, so stamp the resolved SHA in the SEPARATE tracking-flip commit that FOLLOWS
+   the code commit — never self-reference a SHA inside the code commit it names.
 
 ## Live proofs, made real
 Every real-model / network path is recorded once as a **VCR-style cassette** (committed,

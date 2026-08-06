@@ -70,7 +70,7 @@ agentship run examples/assistant.yaml --input "Name three primary colors."
       import / in tests) so tests stay hermetic and no stray paid calls. `--env-file`
       overrides (clean `Error:` if missing); `.env.example` shipped; the missing-key error now
       mentions the `.env` option; `python-dotenv` declared in core deps. Proof: with a `.env`
-      in cwd the key is loaded (`9a7bad0`,
+      in cwd the key is loaded (`ab46a2f`,
       `tests/test_cli_env.py::test_run_loads_dotenv_from_cwd`); a bare import does NOT load
       `.env` (`tests/test_cli_env.py::test_importing_agentship_does_not_load_dotenv`);
       `override=False` keeps an exported var
@@ -105,7 +105,7 @@ agentship run examples/assistant.yaml --input "Name three primary colors."
   and exit 1, no traceback.
 
 - **G4 — no way to supply a real key for `agentship run` (asked by owner 2026-08-05 —
-  CLOSED 9a7bad0).** Tests replay cassettes keyless, but a real run needs a provider key
+  CLOSED ab46a2f).** Tests replay cassettes keyless, but a real run needs a provider key
   and the CLI didn't load a `.env`, so the user had to `export` by hand. Fixed in T8:
   `cli.load_env_for_run` loads `./.env` (or `--env-file PATH`) with `override=False` so an
   exported var still wins; it is called *inside* the `run` command, never at import time, so
