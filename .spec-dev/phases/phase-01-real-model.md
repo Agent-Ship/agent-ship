@@ -1,4 +1,4 @@
-# Phase 1 — Real model (LiteLLM + LangGraph)  ✅ DONE
+# Phase 1 — Real model (LiteLLM + LangGraph)  🔧 GAP FIX (G4)
 
 Goal: `agentship run` a single YAML agent and get a **real LLM answer**. Introduces the
 LangGraph engine + a LiteLLM model seam, and establishes the **live-proof cassette**
@@ -58,10 +58,18 @@ agentship run examples/assistant.yaml --input "Name three primary colors."
       provider/credential failures to a clear, actionable `ModelError`; the CLI prints a
       concise `Error: …` to stderr and exits 1 (a `--debug` flag re-raises the full trace).
       Proof: run against an engine that raises → clean message + exit 1, no traceback;
-      missing-key message names the env var. (6b320ab,
+      missing-key message names the env var. (5c1d1e7,
       `tests/test_cli_errors.py::test_generic_error_shows_debug_hint_and_no_traceback`;
       credential mapping proven by
       `tests/test_cli_errors.py::test_credential_mapping_raises_model_error_naming_the_env_var`)
+
+## Tasks (continued)
+- [ ] **T8 `.env` support for real runs (G4)** — the CLI loads a `.env` (via python-dotenv)
+      so `agentship run` finds `OPENAI_API_KEY` without a manual export. Scoped to the CLI
+      entry point ONLY (never library import / tests) so tests stay hermetic and no stray
+      paid calls. Add `--env-file` to override; ship a `.env.example`; update the clean
+      missing-key error to mention the `.env` option. Proof: with a `.env` present the key is
+      loaded (monkeypatched cwd); tests do NOT load `.env`; missing-key path still clean.
 
 ## Gaps (found during planning — fill or document)
 - **G1 — one-time cassette recording — CLOSED.** Recorded on 2026-08-05 with the
@@ -77,7 +85,7 @@ agentship run examples/assistant.yaml --input "Name three primary colors."
   `LITELLM_LOCAL_MODEL_COST_MAP=True` (no stray cost-map fetch polluting the cassette), and
   a fixture that injects a placeholder key on keyless replay (VCR matches URI+body, not the
   redacted auth header).
-- **G3 — raw traceback on a failed run (found by owner testing 2026-08-05 — CLOSED 6b320ab).**
+- **G3 — raw traceback on a failed run (found by owner testing 2026-08-05 — CLOSED 5c1d1e7).**
   `agentship run examples/assistant.yaml` with no `OPENAI_API_KEY` dumped a ~100-line
   LiteLLM/LangGraph traceback (`openai.OpenAIError: Missing credentials`) instead of a clean
   message. Fixed in T7: `models.map_model_error` maps a credential failure to an actionable
@@ -88,6 +96,12 @@ agentship run examples/assistant.yaml --input "Name three primary colors."
   Verified keyless: `env -u OPENAI_API_KEY agentship run examples/assistant.yaml --input hi`
   → one clean `Error: No API credentials for model 'openai/gpt-4o-mini'. Set OPENAI_API_KEY …`
   and exit 1, no traceback.
+
+- **G4 — no way to supply a real key for `agentship run` (asked by owner 2026-08-05 — OPEN).**
+  Tests replay cassettes keyless, but a real run needs a provider key and the CLI doesn't load
+  a `.env`, so the user must `export` by hand. Fix in T8: CLI-scoped `.env` loading (+
+  `--env-file`, `.env.example`). Avoid the old footgun by NOT loading `.env` in tests/imports.
+  (Update to CLOSED with the SHA when done.)
 
 ## Proof
 `pytest -q` green (incl. the replayed cassette); `agentship run examples/assistant.yaml`
