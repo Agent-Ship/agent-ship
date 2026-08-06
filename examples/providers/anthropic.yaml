@@ -1,0 +1,4 @@
+name: anthropic-assistant
+engine: langgraph
+model: anthropic/claude-3-5-haiku-latest
+prompt: "Reply with the single word: pong."

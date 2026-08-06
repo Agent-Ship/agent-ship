@@ -1,0 +1,112 @@
+interactions:
+- request:
+    body: '{"messages":[{"content":"Reply with the single word: pong.","role":"system"},{"content":"ping","role":"user"}],"model":"gpt-4o-mini"}'
+    headers:
+      accept:
+      - application/json
+      accept-encoding:
+      - gzip, deflate, zstd
+      authorization:
+      - REDACTED
+      connection:
+      - keep-alive
+      content-length:
+      - '133'
+      content-type:
+      - application/json
+      host:
+      - api.openai.com
+      user-agent:
+      - OpenAI/Python 2.53.0
+      x-stainless-arch:
+      - arm64
+      x-stainless-async:
+      - 'false'
+      x-stainless-lang:
+      - python
+      x-stainless-os:
+      - MacOS
+      x-stainless-package-version:
+      - 2.53.0
+      x-stainless-raw-response:
+      - 'true'
+      x-stainless-read-timeout:
+      - '600.0'
+      x-stainless-retry-count:
+      - '0'
+      x-stainless-runtime:
+      - CPython
+      x-stainless-runtime-version:
+      - 3.13.3
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAA/6rmUlBQykxRslJQSs5ILEnOLcjRdbUs8kjzKAAAAAD//4xSy27CMBC88xXIZ4JC
+        SiG9VlVP9MKBQysUGXsTTBOvZTt9qOLfu86jCX1IvVjyzM56Zr3b3fXq9jVZr7b3J8S7x92D2WyA
+        zYICDycQvlfNBZIOvELd0sIC9xC6LtbpKl6ky/SqISqUUAZZYXy0xKhSWkVJnCyjeB0t0k59RCXA
+        UdkTXafTj+YMPrWEN4LjWY9U4BwvgLC+iECLZUAYd045z7Vns4EUqD3oxrpBXczHnIW8djz403VZ
+        jgiuNXoe8jWu9h1z/vJRYmEsHtw3KcspnztmNA5Hs6E3nUfDGvZM577JW19EYNSoMj7z+AzNc0kX
+        lw1THpEd58lfOYJ7/KJZJsFzVbrRuJjg4ghyUA6z5bVUOCImo8g/vfzWu42tdPGf9gMhBBjansxY
+        kEpc5h3KLIQV/Kvsa8SNYebAvtBOZV6BDd8gIed12S4Gc+/OQ5XRXxVgjVXtduQmu+G5kOIAtMmT
+        8+QTAAD//wMAkxi58ysDAAA=
+    headers:
+      access-control-expose-headers:
+      - X-Request-ID
+      - CF-Ray
+      - CF-Ray
+      alt-svc:
+      - h3=":443"; ma=86400
+      cf-cache-status:
+      - DYNAMIC
+      cf-ray:
+      - a26df6829ea621eb-EWR
+      connection:
+      - keep-alive
+      content-encoding:
+      - gzip
+      content-type:
+      - application/json
+      date:
+      - Thu, 06 Aug 2026 12:14:44 GMT
+      openai-organization:
+      - user-79ankten5jtxtqw6gkjhqs65
+      openai-processing-ms:
+      - '439'
+      openai-project:
+      - proj_ecZZRvNRll6W2v9rvdlNnbIv
+      openai-version:
+      - '2020-10-01'
+      server:
+      - cloudflare
+      set-cookie:
+      - __cf_bm=aQAN78I00dVsoKVeMx37O8uWLG7s.ZkCaklaNP_dWHI-1786018483.6172647-1.0.1.1-JPe0KyVFB0QCs.K3lXnj5rI3Gt3nhV9QX7LfU5rLg.FTCvQT1xXXXQQZLsq4GzjVGMBLplep12jsgILyWUeB8kdobI4m2MHiXTYMn1X2wmLCxFwJfNyanIaz3jQ.ZF0l;
+        HttpOnly; SameSite=None; Secure; Path=/; Domain=api.openai.com; Expires=Thu,
+        06 Aug 2026 12:44:44 GMT
+      strict-transport-security:
+      - max-age=31536000; includeSubDomains; preload
+      transfer-encoding:
+      - chunked
+      x-content-type-options:
+      - nosniff
+      x-openai-proxy-wasm:
+      - v0.1
+      x-ratelimit-limit-requests:
+      - '5000'
+      x-ratelimit-limit-tokens:
+      - '2000000'
+      x-ratelimit-remaining-requests:
+      - '4999'
+      x-ratelimit-remaining-tokens:
+      - '1999986'
+      x-ratelimit-reset-requests:
+      - 12ms
+      x-ratelimit-reset-tokens:
+      - 0s
+      x-request-id:
+      - req_211569551f1142219ce62994a86f564c
+    status:
+      code: 200
+      message: OK
+version: 1

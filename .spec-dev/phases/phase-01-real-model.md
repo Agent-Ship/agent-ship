@@ -1,4 +1,4 @@
-# Phase 1 — Real model (LiteLLM + LangGraph)  🔧 GAP FIX (G5 provider matrix)
+# Phase 1 — Real model (LiteLLM + LangGraph)  ✅ DONE
 
 Goal: `agentship run` a single YAML agent and get a **real LLM answer**. Introduces the
 LangGraph engine + a LiteLLM model seam, and establishes the **live-proof cassette**
@@ -79,14 +79,26 @@ agentship run examples/assistant.yaml --input "Name three primary colors."
       (`tests/test_cli_env.py::test_run_missing_env_file_is_a_clean_error`).
 
 ## Tasks (continued)
-- [ ] **T9 Provider matrix (G5)** — prove the "swap any provider" claim against MORE than
-      OpenAI. A parametrized live test over a `PROVIDERS` list (openai, anthropic, gemini —
-      the keys we have), each running a single `langgraph` agent to a real answer, recorded
-      to a per-provider cassette and **replayed keyless in CI**. One `examples/providers/*.yaml`
-      per provider + a test that builds/runs each (offline fake + live cassette). Document a
-      "how to add a provider" recipe (append id+env-var, record). Providers without a key
-      (groq/mistral/…) are listed as "add a key to record", not silently skipped. Proof:
-      `env -u <ALL_KEYS> pytest -q` replays every provider cassette green.
+- [x] **T9 Provider matrix (G5)** — prove the "swap any provider" claim against MORE than
+      OpenAI. A parametrized live test over `LIVE_PROVIDERS` (`tests/providers.py`: openai,
+      anthropic, gemini) runs a single `langgraph` agent to a real answer, each recorded to a
+      per-provider cassette under `tests/cassettes/test_providers/<name>.yaml` and **replayed
+      keyless in CI**; a provider without a cassette skips with an actionable reason (never a
+      silent drop or a network reach). One `examples/providers/*.yaml` per provider + a test
+      building/running each (offline fake for all three + live cassette per recorded provider).
+      `examples/README.md` documents the "supported providers + how to add one" recipe (append
+      id+env-var to the matrix, record, grep for leakage). `groq`/`mistral` are listed in the
+      matrix commented as "add a key to record". conftest redaction extended to all provider
+      channels (`x-api-key`, `x-goog-api-key`, and the Gemini `key=`/`api_key` query params)
+      with `match_on` set to method+host+path+body so keyless replay still matches after the
+      query key is stripped. **Recorded live: openai/gpt-4o-mini** (replays green keyless).
+      **Not recorded: anthropic** (the `../agent-ship/.env` key is a `your-…-here` placeholder)
+      and **gemini** (the key's project has free-tier quota `limit: 0` — every model returns
+      429/403); both remain in the matrix and skip with a record-recipe message. Proof:
+      `env -u OPENAI_API_KEY -u ANTHROPIC_API_KEY -u GEMINI_API_KEY -u GOOGLE_API_KEY pytest -q`
+      → 59 passed, 4 skipped; openai cassette replays with no key
+      (`tests/test_providers.py::test_provider_returns_a_non_empty_answer[openai]`). Zero secret
+      leakage across `tests/cassettes` (grep clean). (SHA: pending lead tracking commit)
 
 ## Gaps (found during planning — fill or document)
 - **G1 — one-time cassette recording — CLOSED.** Recorded on 2026-08-05 with the
@@ -127,11 +139,23 @@ agentship run examples/assistant.yaml --input "Name three primary colors."
   loaded and sent), reported as one clean `Error:` line, not the "no credentials" message.
   Ships `.env.example`; `python-dotenv` added to core deps.
 
-- **G5 — live coverage is single-provider (raised by owner 2026-08-06 — OPEN).** The live
-  proof only exercises OpenAI `gpt-4o-mini`; the "swap any provider" value prop is unproven
-  for Claude/Gemini/others, and there is one example (openai). Fix in T9: a provider-matrix
-  live test + per-provider examples + cassettes (openai/anthropic/gemini recorded from
-  `agent-ship/.env`; others documented as "add a key to record"). (Close with the SHA.)
+- **G5 — live coverage is single-provider (raised by owner 2026-08-06 — CLOSED).** The live
+  proof previously exercised only OpenAI `gpt-4o-mini`. Fixed in T9: a `LIVE_PROVIDERS` matrix
+  (`tests/providers.py`) with a parametrized live test (`tests/test_providers.py`) + per-provider
+  examples (`examples/providers/{openai,anthropic,gemini}.yaml`) + a build/run test
+  (`tests/test_provider_examples.py`, offline fake for all three, live cassette per recorded
+  provider). conftest redaction extended to every provider credential channel (headers
+  `authorization`/`x-api-key`/`x-goog-api-key`/`api-key`; query params `key`/`api_key`) with
+  `match_on=method+host+path+body` so keyless replay still matches after the Gemini `key=`
+  query param is stripped. **Recorded live: openai** (`gpt-4o-mini`, replays keyless). Could
+  NOT record: **anthropic** — the only available key (`../agent-ship/.env`) is a
+  `your-anthropic-api-key-here` placeholder; **gemini** — the available key's Google project has
+  free-tier `limit: 0` (all 42 generateContent models return 429/403, no billing), so no live
+  call is possible. Both stay in the matrix and skip with an actionable "set <KEY> and record"
+  message (not silently dropped). `groq`/`mistral` listed in the matrix commented "add a key to
+  record". Proof: `env -u OPENAI_API_KEY -u ANTHROPIC_API_KEY -u GEMINI_API_KEY -u
+  GOOGLE_API_KEY pytest -q` → 59 passed, 4 skipped; zero secret leakage across
+  `tests/cassettes`. (SHA: pending lead tracking commit)
 
 ## Proof
 `pytest -q` green (incl. the replayed cassette); `agentship run examples/assistant.yaml`

@@ -1,0 +1,4 @@
+name: openai-assistant
+engine: langgraph
+model: openai/gpt-4o-mini
+prompt: "Reply with the single word: pong."

@@ -1,0 +1,4 @@
+name: gemini-assistant
+engine: langgraph
+model: gemini/gemini-2.0-flash-lite
+prompt: "Reply with the single word: pong."
