@@ -1,4 +1,4 @@
-# Phase 1 — Real model (LiteLLM + LangGraph)  🔧 GAP FIX (G4)
+# Phase 1 — Real model (LiteLLM + LangGraph)  ✅ DONE
 
 Goal: `agentship run` a single YAML agent and get a **real LLM answer**. Introduces the
 LangGraph engine + a LiteLLM model seam, and establishes the **live-proof cassette**
@@ -64,12 +64,19 @@ agentship run examples/assistant.yaml --input "Name three primary colors."
       `tests/test_cli_errors.py::test_credential_mapping_raises_model_error_naming_the_env_var`)
 
 ## Tasks (continued)
-- [ ] **T8 `.env` support for real runs (G4)** — the CLI loads a `.env` (via python-dotenv)
+- [x] **T8 `.env` support for real runs (G4)** — the CLI loads a `.env` (via python-dotenv)
       so `agentship run` finds `OPENAI_API_KEY` without a manual export. Scoped to the CLI
-      entry point ONLY (never library import / tests) so tests stay hermetic and no stray
-      paid calls. Add `--env-file` to override; ship a `.env.example`; update the clean
-      missing-key error to mention the `.env` option. Proof: with a `.env` present the key is
-      loaded (monkeypatched cwd); tests do NOT load `.env`; missing-key path still clean.
+      entry point ONLY (`cli.load_env_for_run`, called inside the `run` command — never at
+      import / in tests) so tests stay hermetic and no stray paid calls. `--env-file`
+      overrides (clean `Error:` if missing); `.env.example` shipped; the missing-key error now
+      mentions the `.env` option; `python-dotenv` declared in core deps. Proof: with a `.env`
+      in cwd the key is loaded (`9a7bad0`,
+      `tests/test_cli_env.py::test_run_loads_dotenv_from_cwd`); a bare import does NOT load
+      `.env` (`tests/test_cli_env.py::test_importing_agentship_does_not_load_dotenv`);
+      `override=False` keeps an exported var
+      (`tests/test_cli_env.py::test_run_does_not_override_an_exported_var`); missing
+      `--env-file` is a clean error
+      (`tests/test_cli_env.py::test_run_missing_env_file_is_a_clean_error`).
 
 ## Gaps (found during planning — fill or document)
 - **G1 — one-time cassette recording — CLOSED.** Recorded on 2026-08-05 with the
@@ -97,11 +104,18 @@ agentship run examples/assistant.yaml --input "Name three primary colors."
   → one clean `Error: No API credentials for model 'openai/gpt-4o-mini'. Set OPENAI_API_KEY …`
   and exit 1, no traceback.
 
-- **G4 — no way to supply a real key for `agentship run` (asked by owner 2026-08-05 — OPEN).**
-  Tests replay cassettes keyless, but a real run needs a provider key and the CLI doesn't load
-  a `.env`, so the user must `export` by hand. Fix in T8: CLI-scoped `.env` loading (+
-  `--env-file`, `.env.example`). Avoid the old footgun by NOT loading `.env` in tests/imports.
-  (Update to CLOSED with the SHA when done.)
+- **G4 — no way to supply a real key for `agentship run` (asked by owner 2026-08-05 —
+  CLOSED 9a7bad0).** Tests replay cassettes keyless, but a real run needs a provider key
+  and the CLI didn't load a `.env`, so the user had to `export` by hand. Fixed in T8:
+  `cli.load_env_for_run` loads `./.env` (or `--env-file PATH`) with `override=False` so an
+  exported var still wins; it is called *inside* the `run` command, never at import time, so
+  the footgun (LiteLLM auto-loading `.env` and firing stray paid calls in tests) can't return.
+  A hermeticity guard test proves a bare `import agentship` leaves the cwd `.env` unread
+  (`tests/test_cli_env.py::test_importing_agentship_does_not_load_dotenv`); the keyless suite
+  stays green (`env -u OPENAI_API_KEY pytest -q` → 53 passed). Verified real-run: a `.env` with
+  a bogus `OPENAI_API_KEY` makes the run reach OpenAI and fail with a 401 (proving the key was
+  loaded and sent), reported as one clean `Error:` line, not the "no credentials" message.
+  Ships `.env.example`; `python-dotenv` added to core deps.
 
 ## Proof
 `pytest -q` green (incl. the replayed cassette); `agentship run examples/assistant.yaml`

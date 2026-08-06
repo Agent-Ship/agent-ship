@@ -13,6 +13,7 @@ dependencies = [
     "pydantic>=2",
     "pyyaml>=6",
     "click>=8",
+    "python-dotenv>=1",  # CLI loads a .env for real runs (scoped to the entry point)
 ]
 
 # Optional integrations. Each pillar's real dependencies land when its phase ships;

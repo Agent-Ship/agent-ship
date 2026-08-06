@@ -129,14 +129,14 @@ def map_model_error(model: str, exc: Exception) -> ModelError:
         env_var = _provider_env_var(model)
         if env_var is not None:
             message = (
-                f"No API credentials for model {model!r}. Set {env_var} "
-                f"(export it or add it to a .env you source) and retry."
+                f"No API credentials for model {model!r}. Set {env_var} — export it, "
+                f"or put it in a .env in this directory (see .env.example) — and retry."
             )
         else:
             message = (
-                f"No API credentials for model {model!r}. Set the provider's API "
-                f"key environment variable (export it or add it to a .env you "
-                f"source) and retry."
+                f"No API credentials for model {model!r}. Set the provider's API key "
+                f"environment variable — export it, or put it in a .env in this "
+                f"directory (see .env.example) — and retry."
             )
         return ModelError(message)
     return ModelError(f"Model call failed for {model!r}: {exc}")
