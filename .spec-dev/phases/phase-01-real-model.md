@@ -1,4 +1,4 @@
-# Phase 1 — Real model (LiteLLM + LangGraph)  ✅ DONE
+# Phase 1 — Real model (LiteLLM + LangGraph)  🔧 GAP FIX (G5 provider matrix)
 
 Goal: `agentship run` a single YAML agent and get a **real LLM answer**. Introduces the
 LangGraph engine + a LiteLLM model seam, and establishes the **live-proof cassette**
@@ -78,6 +78,16 @@ agentship run examples/assistant.yaml --input "Name three primary colors."
       `--env-file` is a clean error
       (`tests/test_cli_env.py::test_run_missing_env_file_is_a_clean_error`).
 
+## Tasks (continued)
+- [ ] **T9 Provider matrix (G5)** — prove the "swap any provider" claim against MORE than
+      OpenAI. A parametrized live test over a `PROVIDERS` list (openai, anthropic, gemini —
+      the keys we have), each running a single `langgraph` agent to a real answer, recorded
+      to a per-provider cassette and **replayed keyless in CI**. One `examples/providers/*.yaml`
+      per provider + a test that builds/runs each (offline fake + live cassette). Document a
+      "how to add a provider" recipe (append id+env-var, record). Providers without a key
+      (groq/mistral/…) are listed as "add a key to record", not silently skipped. Proof:
+      `env -u <ALL_KEYS> pytest -q` replays every provider cassette green.
+
 ## Gaps (found during planning — fill or document)
 - **G1 — one-time cassette recording — CLOSED.** Recorded on 2026-08-05 with the
   `OPENAI_API_KEY` from `agent-ship/.env` (single cheap `gpt-4o-mini` call each). Two
@@ -116,6 +126,12 @@ agentship run examples/assistant.yaml --input "Name three primary colors."
   a bogus `OPENAI_API_KEY` makes the run reach OpenAI and fail with a 401 (proving the key was
   loaded and sent), reported as one clean `Error:` line, not the "no credentials" message.
   Ships `.env.example`; `python-dotenv` added to core deps.
+
+- **G5 — live coverage is single-provider (raised by owner 2026-08-06 — OPEN).** The live
+  proof only exercises OpenAI `gpt-4o-mini`; the "swap any provider" value prop is unproven
+  for Claude/Gemini/others, and there is one example (openai). Fix in T9: a provider-matrix
+  live test + per-provider examples + cassettes (openai/anthropic/gemini recorded from
+  `agent-ship/.env`; others documented as "add a key to record"). (Close with the SHA.)
 
 ## Proof
 `pytest -q` green (incl. the replayed cassette); `agentship run examples/assistant.yaml`
