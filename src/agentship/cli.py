@@ -9,6 +9,7 @@ exit code rather than a traceback.
 from __future__ import annotations
 
 import asyncio
+import sys
 
 import click
 
@@ -25,8 +26,18 @@ def main() -> None:
 @click.argument("file", type=click.Path(exists=True, dir_okay=False))
 @click.option("--input", "input_text", required=True, help="The input text for one turn.")
 @click.option("--stream", is_flag=True, help="Stream the response as events instead of one result.")
-def run(file: str, input_text: str, stream: bool) -> None:
-    """Run one turn of the agent declared in FILE and print its output."""
+@click.option("--debug", is_flag=True, help="Re-raise on failure so the full traceback is shown.")
+def run(file: str, input_text: str, stream: bool, debug: bool) -> None:
+    """Run one turn of the agent declared in FILE and print its output.
+
+    On failure the CLI prints a single clean ``Error: …`` line to stderr and exits
+    ``1`` — never a raw traceback. Known harness failures
+    (:class:`~agentship.errors.AgentShipError` and its subclasses, e.g.
+    ``ModelError`` / ``SpecError`` / ``CapabilityError``) print their actionable
+    message as-is. Any unexpected error prints its concise message plus a hint to
+    re-run with ``--debug``. With ``--debug`` set, the original exception is
+    re-raised so the full traceback surfaces for diagnosis.
+    """
     try:
         agent = build_agent(file)
         if stream:
@@ -35,7 +46,20 @@ def run(file: str, input_text: str, stream: bool) -> None:
             result = asyncio.run(agent.run(input_text))
             click.echo(result.output)
     except AgentShipError as exc:
-        raise click.ClickException(str(exc)) from exc
+        # Expected harness failure: already carries an actionable message.
+        if debug:
+            raise
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+    except Exception as exc:
+        # Unexpected failure: show a concise message, not a wall of traceback,
+        # and point at --debug for the full trace.
+        if debug:
+            raise
+        click.echo(
+            f"Error: {exc} (run with --debug for the full traceback)", err=True
+        )
+        sys.exit(1)
 
 
 async def _stream_turn(agent, input_text: str) -> None:

@@ -39,3 +39,14 @@ class CapabilityError(AgentShipError):
     Raised at build time — never mid-run — so a misconfiguration surfaces before
     the agent serves traffic, rather than as a confusing failure partway through.
     """
+
+
+class ModelError(AgentShipError):
+    """A model/provider call failed (missing credentials, a provider error, …).
+
+    Raised when the underlying LiteLLM/provider call cannot complete — most
+    commonly missing or invalid API credentials, but also any other provider-side
+    failure. The message is actionable: for a credential failure it names the exact
+    environment variable to set. The original provider exception is always chained
+    (``raise … from``) so the full cause is available under ``--debug``.
+    """

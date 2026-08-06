@@ -54,6 +54,14 @@ agentship run examples/assistant.yaml --input "Name three primary colors."
       `tests/test_assistant_example.py::test_assistant_example_runs_offline_with_fake_model`)
 - [x] **T6 Track** — flipped this file + `tasks.md` + Notion (P1 row) to done with SHAs +
       proofs; verified keyless replay (44 passed) and zero secrets in cassettes.
+- [x] **T7 Clean run errors (G3)** — `agentship run` must never dump a raw traceback. Map
+      provider/credential failures to a clear, actionable `ModelError`; the CLI prints a
+      concise `Error: …` to stderr and exits 1 (a `--debug` flag re-raises the full trace).
+      Proof: run against an engine that raises → clean message + exit 1, no traceback;
+      missing-key message names the env var. (6b320ab,
+      `tests/test_cli_errors.py::test_generic_error_shows_debug_hint_and_no_traceback`;
+      credential mapping proven by
+      `tests/test_cli_errors.py::test_credential_mapping_raises_model_error_naming_the_env_var`)
 
 ## Gaps (found during planning — fill or document)
 - **G1 — one-time cassette recording — CLOSED.** Recorded on 2026-08-05 with the
@@ -69,6 +77,17 @@ agentship run examples/assistant.yaml --input "Name three primary colors."
   `LITELLM_LOCAL_MODEL_COST_MAP=True` (no stray cost-map fetch polluting the cassette), and
   a fixture that injects a placeholder key on keyless replay (VCR matches URI+body, not the
   redacted auth header).
+- **G3 — raw traceback on a failed run (found by owner testing 2026-08-05 — CLOSED 6b320ab).**
+  `agentship run examples/assistant.yaml` with no `OPENAI_API_KEY` dumped a ~100-line
+  LiteLLM/LangGraph traceback (`openai.OpenAIError: Missing credentials`) instead of a clean
+  message. Fixed in T7: `models.map_model_error` maps a credential failure to an actionable
+  `ModelError` naming the env var (`OPENAI_API_KEY`); the LangGraph engine wraps its
+  `run`/`stream` model call to raise it (chaining the cause); the CLI prints a single clean
+  `Error: …` to stderr and exits 1, with `--debug` to re-raise the full traceback. LiteLLM's
+  own stderr banner is silenced via `litellm.suppress_debug_info` so only our line shows.
+  Verified keyless: `env -u OPENAI_API_KEY agentship run examples/assistant.yaml --input hi`
+  → one clean `Error: No API credentials for model 'openai/gpt-4o-mini'. Set OPENAI_API_KEY …`
+  and exit 1, no traceback.
 
 ## Proof
 `pytest -q` green (incl. the replayed cassette); `agentship run examples/assistant.yaml`

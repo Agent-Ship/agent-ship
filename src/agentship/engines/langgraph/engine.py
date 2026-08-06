@@ -45,10 +45,16 @@ class _CompiledAgent:
     list without re-reading the spec.
     """
 
-    def __init__(self, graph: Any, system_prompt: str | None) -> None:
-        """Bind the compiled graph and the optional system prompt."""
+    def __init__(self, graph: Any, system_prompt: str | None, model_id: str) -> None:
+        """Bind the compiled graph, the optional system prompt, and the model id.
+
+        ``model_id`` is the LiteLLM model string (e.g. ``"openai/gpt-4o-mini"``);
+        it is kept so a provider failure at run time can be turned into an
+        actionable :class:`~agentship.errors.ModelError` that names the credential.
+        """
         self.graph = graph
         self.system_prompt = system_prompt
+        self.model_id = model_id
 
     def initial_messages(self, text: str) -> list:
         """Build the seed message list for one turn: optional system + user input."""
@@ -83,7 +89,7 @@ class LangGraphEngine(Engine):
         """
         model = models.resolve_model(spec.model or "")
         graph = self._build_graph(model)
-        return _CompiledAgent(graph, spec.prompt)
+        return _CompiledAgent(graph, spec.prompt, spec.model or "")
 
     def _build_graph(self, model: BaseChatModel) -> Any:
         """Wire and compile the minimal ``START → agent → END`` graph for ``model``."""
@@ -103,9 +109,18 @@ class LangGraphEngine(Engine):
         """Run one turn and return the model's answer as the :class:`Result` output.
 
         Invokes the compiled graph on ``[system prompt, user input]`` and returns
-        the content of the final message (the model's reply).
+        the content of the final message (the model's reply). A provider/credential
+        failure is turned into an actionable
+        :class:`~agentship.errors.ModelError` via
+        :func:`agentship.models.map_model_error` (which names the missing env var);
+        the original exception is chained so ``--debug`` still shows the full cause.
         """
-        state = await compiled.graph.ainvoke({"messages": compiled.initial_messages(text)})
+        try:
+            state = await compiled.graph.ainvoke(
+                {"messages": compiled.initial_messages(text)}
+            )
+        except Exception as exc:
+            raise models.map_model_error(compiled.model_id, exc) from exc
         answer = state["messages"][-1].content
         return Result(output=answer)
 
@@ -117,12 +132,19 @@ class LangGraphEngine(Engine):
         Uses LangGraph's ``stream_mode="messages"`` and keeps only the model's own
         :class:`AIMessageChunk` tokens (never the replayed input messages), each
         emitted as a ``content`` event. A single ``done`` event terminates the
-        stream once the graph completes.
+        stream once the graph completes. A provider/credential failure raised while
+        streaming is turned into an actionable
+        :class:`~agentship.errors.ModelError` via
+        :func:`agentship.models.map_model_error`, chaining the original cause.
         """
-        async for message, _metadata in compiled.graph.astream(
+        stream = compiled.graph.astream(
             {"messages": compiled.initial_messages(text)},
             stream_mode="messages",
-        ):
-            if isinstance(message, AIMessageChunk) and message.content:
-                yield Event(type="content", data=message.content)
+        )
+        try:
+            async for message, _metadata in stream:
+                if isinstance(message, AIMessageChunk) and message.content:
+                    yield Event(type="content", data=message.content)
+        except Exception as exc:
+            raise models.map_model_error(compiled.model_id, exc) from exc
         yield Event(type="done")
