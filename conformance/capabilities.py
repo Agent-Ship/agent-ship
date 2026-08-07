@@ -31,6 +31,7 @@ from dataclasses import dataclass
 from agentship.engines.base import EngineCapabilities
 from agentship.runtime import RunnableAgent, build_agent
 from agentship.spec import AgentSpec, MemberSpec
+from pydantic import BaseModel
 
 
 @dataclass(frozen=True)
@@ -73,38 +74,57 @@ async def _prove_streaming(agent: RunnableAgent) -> None:
 
 
 async def _prove_structured_output(agent: RunnableAgent) -> None:
-    """Positive cell for ``structured_output``: the engine really validates a target.
+    """Positive cell for ``structured_output``: the engine really returns a validated model.
 
-    Not yet implemented by any shipped engine (phase 04). It exists so that the
-    moment an engine declares ``structured_output != "none"``, the matrix demands a
-    real proof rather than accepting the claim. Until a shipped engine declares it,
-    this cell is unreached for the real engines; the over-declaration meta-test
-    (:mod:`conformance.test_over_declaration`) exercises the "declared-but-unbuilt →
-    cell fails" path directly.
+    Inspects real behaviour rather than hard-coding a failure: it runs the built
+    agent and asserts the turn's ``output`` is a validated pydantic model instance,
+    which is what a genuine structured-output engine must produce. An engine that
+    declares ``structured_output != "none"`` but returns a plain string (as every
+    shipped engine does today — structured output lands in a later phase) fails this
+    cell, catching the over-claim. When a real structured-output engine ships it
+    already passes, no edit needed.
     """
-    raise AssertionError(
-        f"engine {agent.spec.engine!r} declares structured_output but no conformance "
-        f"cell proves it — structured output is a phase-04 capability; either it is "
-        f"genuinely implemented (write the real proof here) or the declaration is an "
-        f"over-claim (set structured_output back to 'none')"
+    result = await agent.run("ping", user_id="conformance")
+    assert isinstance(result.output, BaseModel), (
+        f"engine {agent.spec.engine!r} declares structured_output but its run returned "
+        f"{type(result.output).__name__} (expected a validated pydantic model) — either "
+        f"implement structured output or set structured_output back to 'none'"
     )
 
 
 async def _prove_multi_agent(agent: RunnableAgent) -> None:
-    """Positive cell for ``multi_agent`` — unbuilt (phase 06); demands proof if declared."""
-    raise AssertionError(
-        f"engine {agent.spec.engine!r} declares multi_agent but no conformance cell "
-        f"proves it — multi-agent coordination is a later-phase capability; implement "
-        f"the real proof or drop the declaration"
+    """Positive cell for ``multi_agent``: the built agent really coordinates its members.
+
+    Inspects the built agent rather than hard-coding a failure: the request spec
+    declares members, so a genuine multi-agent engine must surface a compiled team
+    (its coordinator/members) on the built artifact. This cell asserts the engine
+    exposes an inspectable ``members`` structure on the compiled agent. No shipped
+    engine coordinates members yet (a later phase), so a declaration today fails
+    here — catching the over-claim while passing automatically once real
+    coordination ships.
+    """
+    members = getattr(agent.compiled, "members", None)
+    assert members, (
+        f"engine {agent.spec.engine!r} declares multi_agent but its built agent exposes "
+        f"no coordinated `members` — either implement multi-agent coordination or drop "
+        f"the declaration"
     )
 
 
 async def _prove_durability(agent: RunnableAgent) -> None:
-    """Positive cell for ``durability`` — unbuilt (phase 02/09); demands proof if declared."""
-    raise AssertionError(
-        f"engine {agent.spec.engine!r} declares durability but no conformance cell "
-        f"proves it — durable resume is a later-phase capability; implement the real "
-        f"proof (mint token → kill → resume) or drop the declaration"
+    """Positive cell for ``durability``: the built agent really exposes a resume seam.
+
+    Inspects the built agent rather than hard-coding a failure: a genuinely durable
+    engine must surface a checkpointer / resume handle on its compiled artifact so a
+    crashed run can re-attach. This cell asserts that seam exists. No shipped engine
+    checkpoints yet (a later phase), so a declaration today fails here — catching the
+    over-claim while passing automatically once durable resume is implemented.
+    """
+    checkpointer = getattr(agent.compiled, "checkpointer", None)
+    assert checkpointer is not None, (
+        f"engine {agent.spec.engine!r} declares durability but its built agent exposes no "
+        f"`checkpointer`/resume seam — either implement durable resume (mint token → kill "
+        f"→ resume) or set durability back to 'none'"
     )
 
 
@@ -148,6 +168,29 @@ CAPABILITIES: tuple[Capability, ...] = (
         prove=_prove_durability,
     ),
 )
+
+
+#: Capabilities that have **no** conformance cell yet because they land in a later
+#: phase, mapped to the phase that builds them. This is the explicit allowlist the
+#: coverage guard (:mod:`conformance.test_over_declaration`) checks: every
+#: :class:`~agentship.engines.base.EngineCapabilities` field must be *either* covered
+#: by a :data:`CAPABILITIES` cell *or* listed here. A newly-declared capability field
+#: with neither a cell nor an entry here fails the guard, so it cannot slip past
+#: unproven. ``providers`` is gated separately (at build, against the ``model:``
+#: prefix — see :meth:`EngineCapabilities._assert_provider_supported`), not by a cell.
+DEFERRED_CAPABILITIES: dict[str, str] = {
+    "tool_calling": "P03",
+    "hitl": "P02",
+    "cycles": "P02",
+    "multimodal_in": "P03",
+    "live_bidi": "P13",
+    "providers": "gated at build (model prefix), not by a matrix cell",
+}
+
+
+def covered_capability_names() -> frozenset[str]:
+    """Return the set of capability field names that have a :data:`CAPABILITIES` cell."""
+    return frozenset(capability.name for capability in CAPABILITIES)
 
 
 def request_capability(capability: Capability, engine_name: str) -> RunnableAgent:
