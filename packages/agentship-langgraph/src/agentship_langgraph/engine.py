@@ -25,9 +25,11 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from agentship.engines.base import Engine, EngineCapabilities, Event, Result
 from langchain_core.messages import AIMessageChunk, HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 from typing_extensions import TypedDict
 
 from . import models
+from .agent import LangGraphAgent
 
 if TYPE_CHECKING:
     from agentship.context import RunContext
@@ -89,21 +91,64 @@ class LangGraphEngine(Engine):
         streaming=True,
     )
 
-    def build(self, spec: AgentSpec) -> _CompiledAgent:
-        """Compile the spec into a single-node graph over the resolved chat model.
+    def build(self, spec: AgentSpec, authored: object = None) -> _CompiledAgent:
+        """Compile the spec into a runnable graph over the resolved chat model.
 
-        Resolves the chat model from ``spec.model`` (raising
+        Resolves the chat ``model`` from ``spec.model`` (raising
         :class:`~agentship.errors.SpecError` on an empty model via
         :func:`~agentship_langgraph.models.resolve_model`), threading any
         ``spec.params`` (temperature/max_tokens/api_base/timeout) as generation
-        params — ``None`` fields are dropped so the model keeps its own defaults.
-        Then wires one ``agent`` node that invokes it and returns the compiled
-        artifact the kernel hands back to ``run``/``stream``.
+        params — ``None`` fields are dropped so the model keeps its own defaults —
+        and resolves ``tools`` (empty until Phase 03 wires tool execution).
+
+        The build *body* is chosen so the author never wires a vendor:
+
+        - when ``authored`` is a :class:`~agentship_langgraph.agent.LangGraphAgent`
+          (the custom-authoring path, §4.3), its ``build_graph(model, tools)`` is
+          called and the returned graph is compiled — this is where a developer's
+          native LangGraph runs;
+        - otherwise the engine's own default single-node graph is used.
+
+        Both paths hand ``build_graph`` the *same* wired ``model``/``tools`` plain
+        params — there is no ``EngineKit`` bundle. Vendor (LangChain/LangGraph)
+        types are confined to this adapter; the core never sees one.
         """
+        model = self._resolve_model(spec)
+        tools = self._resolve_tools(spec)
+        if isinstance(authored, LangGraphAgent):
+            graph = authored.build_graph(model, tools)
+        else:
+            graph = self._build_graph(model)
+        compiled = graph if isinstance(graph, CompiledStateGraph) else graph.compile()
+        return _CompiledAgent(compiled, spec.prompt, spec.model or "")
+
+    def _resolve_model(self, spec: AgentSpec) -> BaseChatModel:
+        """Resolve the LiteLLM-backed chat model for ``spec`` (honouring routing).
+
+        Uses ``RunContext.routed_model`` when a ``route`` step has stamped one on
+        the current run (the adapter reads routing, never decides it — §13.5),
+        falling back to ``spec.model`` otherwise. ``spec.params`` are threaded as
+        generation params with ``None`` fields dropped. The routing branch is a
+        no-op today (nothing stamps ``routed_model`` yet) but the seam is honoured
+        so Phase 01's ``ModelRouter`` wave drops in without touching this method.
+        """
+        from agentship.context import get_run_context
+
+        ctx = get_run_context()
+        routed = getattr(ctx, "routed_model", None) if ctx is not None else None
+        model_id = routed or spec.model or ""
         params = spec.params.model_dump(exclude_none=True) if spec.params else {}
-        model = models.resolve_model(spec.model or "", **params)
-        graph = self._build_graph(model)
-        return _CompiledAgent(graph, spec.prompt, spec.model or "")
+        return models.resolve_model(model_id, **params)
+
+    def _resolve_tools(self, spec: AgentSpec) -> list:
+        """Resolve the tools to hand ``build_graph`` — empty until Phase 03.
+
+        ``spec.tools`` is parsed and validated by the spec today, but actual MCP /
+        python tool *execution* is a Phase 03 deliverable. Until then the engine
+        honestly hands ``build_graph`` an empty tool list (declare, don't fake)
+        rather than pretending to wire tools it cannot yet execute.
+        """
+        return []
 
     def _build_graph(self, model: BaseChatModel) -> Any:
         """Wire and compile the minimal ``START → agent → END`` graph for ``model``."""

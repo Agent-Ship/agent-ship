@@ -231,38 +231,57 @@ class RunnableAgent:
             scope.restore()
 
 
-def _resolve_code_spec(spec: AgentSpec) -> AgentSpec:
-    """Author a spec in Python: call the ``code:`` builder and return its AgentSpec.
+def _resolve_code_spec(spec: AgentSpec) -> tuple[AgentSpec, Any]:
+    """Author an agent in Python: call the ``code:`` builder, return (spec, authored).
 
-    Resolves the ``"module:function"`` reference on ``spec.code``, invokes it, and
-    returns the :class:`AgentSpec` it produces. The result must itself be an
-    :class:`AgentSpec` that does not re-set ``code:`` — a builder that returns a
-    non-spec or another ``code:`` spec is a loud :class:`~agentship.errors.SpecError`,
-    never a silent no-op.
+    Resolves the ``"module:function"`` reference on ``spec.code`` and invokes it.
+    The builder may return one of two things (declare, don't fake — never a silent
+    no-op):
+
+    - an :class:`AgentSpec` — a purely declarative Python-authored spec. The
+      returned spec must not itself re-set ``code:`` (that would loop), and the
+      *authored* half of the tuple is ``None`` (there is no custom agent object).
+    - an **authored agent** — any object carrying a ``.spec`` attribute that is an
+      :class:`AgentSpec` (e.g. a ``LangGraphAgent`` subclass instance). This is the
+      custom-authoring path: the effective spec is ``authored.spec`` and the object
+      itself is threaded to the engine's ``build`` so an engine that supports custom
+      authoring can call into it. The core stays vendor-neutral — it only reads
+      ``.spec`` and forwards the object opaquely.
+
+    Raises :class:`~agentship.errors.SpecError` when the builder returns neither
+    shape, or returns a spec that itself sets ``code:``.
     """
     builder = resolve_code(spec.code)  # type: ignore[arg-type]  # guarded by caller
     built = builder()
-    if not isinstance(built, AgentSpec):
+    if isinstance(built, AgentSpec):
+        effective, authored = built, None
+    elif isinstance(getattr(built, "spec", None), AgentSpec):
+        effective, authored = built.spec, built
+    else:
         raise SpecError(
-            f"code {spec.code!r} must return an AgentSpec, got {type(built).__name__}"
+            f"code {spec.code!r} must return an AgentSpec or an authored agent with "
+            f"a `.spec` AgentSpec, got {type(built).__name__}"
         )
-    if built.code is not None:
+    if effective.code is not None:
         raise SpecError(
             f"code {spec.code!r} returned a spec that itself sets code: "
-            f"{built.code!r} — a Python builder must return a concrete spec"
+            f"{effective.code!r} — a Python builder must return a concrete spec"
         )
-    return built
+    return effective, authored
 
 
 def build_agent(spec: AgentSpec | str, *, middlewares: Sequence[Middleware] = ()) -> RunnableAgent:
     """Build a :class:`RunnableAgent` from an :class:`AgentSpec` or a YAML path.
 
     When the spec sets ``code: "module:function"``, the agent is authored in Python:
-    that builder is resolved and called to produce the real :class:`AgentSpec`, and
-    the agent is built from *that* — so a ``code:`` spec is honoured, not silently
-    ignored (declare, don't fake). Otherwise the spec is used as-is. Then the engine
-    is resolved by name, the spec is capability-validated against it (failing fast on
-    an unsupported request), and the agent is compiled.
+    that builder is resolved and called. It may return a plain :class:`AgentSpec`
+    (a declarative Python-authored spec) or an **authored agent** carrying its own
+    ``.spec`` (the custom-authoring path — e.g. a ``LangGraphAgent`` subclass whose
+    ``build_graph`` the engine will call). Either way the effective spec is honoured
+    and the authored object (if any) is threaded to the engine's ``build`` — never
+    silently ignored (declare, don't fake). Otherwise the spec is used as-is. Then
+    the engine is resolved by name, the spec is capability-validated against it
+    (failing fast on an unsupported request), and the agent is compiled.
 
     Raises :class:`~agentship.errors.SpecError` when a ``code:`` builder does not
     return an :class:`AgentSpec`, :class:`~agentship.errors.EngineNotFoundError` when
@@ -271,8 +290,9 @@ def build_agent(spec: AgentSpec | str, *, middlewares: Sequence[Middleware] = ()
     """
     if isinstance(spec, str):
         spec = load_spec(spec)
+    authored: Any = None
     if spec.code is not None:
-        spec = _resolve_code_spec(spec)
+        spec, authored = _resolve_code_spec(spec)
     engine_cls = ENGINES.get(spec.engine)
     if engine_cls is None:
         raise EngineNotFoundError(
@@ -281,5 +301,8 @@ def build_agent(spec: AgentSpec | str, *, middlewares: Sequence[Middleware] = ()
         )
     engine = engine_cls()
     assert_spec_supported(engine, spec)
-    compiled = engine.build(spec)
+    # Only thread ``authored`` when a custom Python-authored agent was produced, so
+    # an engine that never implements custom authoring keeps the plain, two-arg
+    # ``build(spec)`` contract and needs no change to opt out of the seam.
+    compiled = engine.build(spec, authored) if authored is not None else engine.build(spec)
     return RunnableAgent(spec, engine, compiled, middlewares=middlewares)

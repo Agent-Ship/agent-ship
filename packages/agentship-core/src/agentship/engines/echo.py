@@ -34,8 +34,12 @@ class EchoEngine(Engine):
     name = "echo"
     capabilities = EngineCapabilities(streaming=True)
 
-    def build(self, spec: AgentSpec) -> AgentSpec:
-        """Compile the spec — for echo there is nothing to compile, so return it."""
+    def build(self, spec: AgentSpec, authored: object = None) -> AgentSpec:
+        """Compile the spec — for echo there is nothing to compile, so return it.
+
+        Echo has no custom-authoring path, so it ignores ``authored`` entirely and
+        builds from the spec alone.
+        """
         return spec
 
     async def run(self, compiled: AgentSpec, text: str, ctx: RunContext) -> Result:

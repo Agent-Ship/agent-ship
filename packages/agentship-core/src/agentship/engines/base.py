@@ -225,11 +225,18 @@ class Engine(ABC):
             )
 
     @abstractmethod
-    def build(self, spec: AgentSpec) -> Any:
+    def build(self, spec: AgentSpec, authored: Any = None) -> Any:
         """Compile an :class:`AgentSpec` into an engine-native runnable artifact.
 
         Returns an opaque "compiled agent" that only this engine's ``run``/
         ``stream`` understand.
+
+        ``authored`` is the optional Python-authored agent object a ``code:``
+        reference produced (an object carrying its own ``.spec``). It is
+        engine-specific and vendor-typed, so the *core* only forwards it opaquely;
+        an engine that supports custom authoring (e.g. LangGraph's ``build_graph``
+        path) inspects it, while engines that do not simply ignore it and build
+        from ``spec`` alone. ``None`` means a declarative (YAML/spec-only) build.
         """
 
     @abstractmethod
