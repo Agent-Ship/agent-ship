@@ -1,0 +1,7 @@
+name: tuned
+engine: langgraph
+model: openai/gpt-4o-mini
+prompt: You are a concise assistant. Answer in one short sentence.
+params:
+  temperature: 0.2
+  max_tokens: 256

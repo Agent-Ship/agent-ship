@@ -31,6 +31,55 @@ The offline test suite proves this wiring with an injected fake model (no
 network); the live path is proven by a recorded, replayed cassette (no key needed
 to replay).
 
+## `tuned.yaml` — tune generation
+
+The same `langgraph` engine, plus a `params:` block that tunes how the model
+generates. Every field is optional; an omitted one keeps the model's default.
+
+```yaml
+params:
+  temperature: 0.2   # lower = more deterministic
+  max_tokens: 256    # cap the answer length
+```
+
+```bash
+export OPENAI_API_KEY=sk-...
+agentship run examples/tuned.yaml --input "Name three primary colors."
+```
+
+`params:` also accepts `api_base` (see below) and `timeout` (per-request seconds).
+An unknown param key or a bad type (e.g. `temperature: hot`) fails loudly at load
+time — it is never silently dropped.
+
+## Local & self-hosted models
+
+Because the model is resolved through LiteLLM, the same agent runs against a
+**local / self-hosted** OpenAI-compatible server (Ollama, vLLM, LM Studio, …) by
+setting the `model:` id and pointing `params.api_base` at the server. **No API key
+is needed** for a local model — the credential check never fires for a local run.
+
+`examples/local.yaml` targets a local [Ollama](https://ollama.com):
+
+```yaml
+model: ollama/llama3
+params:
+  api_base: "http://localhost:11434"
+```
+
+Run it against a real Ollama (not exercised in CI — it needs a running server):
+
+```bash
+ollama serve            # start the local server
+ollama pull llama3      # fetch the model once
+agentship run examples/local.yaml --input "Say hello in one word."
+```
+
+If the server is not running, the run fails with a clean
+`Error: Model call failed for 'ollama/llama3': ...` — a connection error, not a
+raw traceback, and not a demand for `OPENAI_API_KEY`. The offline test suite
+proves the `api_base` threads to the model call (no server, no key); the live path
+is the documented manual run above.
+
 ## `providers/` — swap any provider
 
 Because the model is resolved through LiteLLM, the same agent runs against any

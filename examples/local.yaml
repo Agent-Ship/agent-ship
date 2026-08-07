@@ -1,0 +1,6 @@
+name: local
+engine: langgraph
+model: ollama/llama3
+prompt: You are a helpful assistant running on a local model.
+params:
+  api_base: "http://localhost:11434"
