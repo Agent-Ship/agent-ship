@@ -3,10 +3,13 @@
 :class:`LangGraphEngine` compiles an :class:`~agentship.spec.AgentSpec` into a
 minimal LangGraph graph: one node that sends ``[system prompt, user input]`` to a
 LiteLLM-backed chat model and returns its answer. It honestly declares only what
-this minimal graph delivers — ``streaming``, ``tool_calling`` (the model can bind
-tools), ``structured_output="native"`` (LangChain validates), and the LiteLLM
-providers it reaches. ``multi_agent``/``durability`` stay off, so the kernel's
-capability gate rejects specs that ask for them until those phases land.
+this minimal graph delivers today — ``streaming`` and the LiteLLM ``providers``
+it reaches. **Everything else stays off.** The graph does not yet bind tools
+(``tool_calling`` — phase 03), validate a structured target
+(``structured_output`` — phase 04), coordinate members (``multi_agent``), or
+checkpoint (``durability``); declaring those before they are built would be the
+exact over-claim the conformance matrix exists to catch (*declare, don't fake*),
+so they remain off until their phases land and their conformance cells pass.
 
 **Model injection.** The chat model is resolved through
 :func:`agentship_langgraph.models.resolve_model` (referenced via the module, not imported by
@@ -69,12 +72,14 @@ class _CompiledAgent:
 class LangGraphEngine(Engine):
     """AgentShip's default engine — a single-agent LangGraph graph over LiteLLM.
 
-    Declares only what this minimal graph honestly delivers: ``streaming``,
-    ``tool_calling`` (LangChain models bind tools), ``structured_output="native"``
-    (LangChain validates the structured target), and the LiteLLM ``providers`` it
-    can reach. ``multi_agent`` and ``durability`` stay off so the capability gate
-    rejects those until their phases land. The model is resolved via
-    :func:`agentship_langgraph.models.resolve_model`, which offline tests
+    Declares only what this minimal graph honestly delivers today: ``streaming``
+    and the LiteLLM ``providers`` it can reach. Tool calling, structured output,
+    multi-agent coordination, and durability are **not** implemented by this
+    single-node graph yet, so they stay off (``tool_calling=False``,
+    ``structured_output="none"``, ``multi_agent=False``, ``durability="none"``) —
+    the capability gate therefore rejects any spec that asks for them until their
+    phases build them and their conformance cells go green. The model is resolved
+    via :func:`agentship_langgraph.models.resolve_model`, which offline tests
     monkeypatch to inject a fake chat model.
     """
 
@@ -82,8 +87,6 @@ class LangGraphEngine(Engine):
     capabilities: ClassVar[EngineCapabilities] = EngineCapabilities(
         providers=["openai", "anthropic", "gemini", "ollama"],
         streaming=True,
-        tool_calling=True,
-        structured_output="native",
     )
 
     def build(self, spec: AgentSpec) -> _CompiledAgent:

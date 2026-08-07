@@ -4,7 +4,9 @@ No network: these monkeypatch :func:`agentship_langgraph.models.resolve_model` s
 compiles a graph over a deterministic ``FakeListChatModel``. They assert the real
 mechanism — ``run`` returns the model's answer through the compiled graph;
 ``stream`` yields >=1 content chunk then a terminal ``done``; and the capability
-gate rejects ``output:``/``members:`` on this engine (it declares neither).
+gate rejects ``output_schema:``/``members:``/``durability:`` on this engine, which
+honestly declares only ``streaming`` (structured output, multi-agent, and
+durability are unbuilt — declare, don't fake).
 """
 
 from __future__ import annotations
@@ -114,12 +116,18 @@ def test_none_params_are_dropped_before_threading(capture_resolve):
     assert capture_resolve["kwargs"] == {"temperature": 0.5}
 
 
-def test_output_schema_is_accepted_native_structured_output(fake_model):
-    """This engine declares structured_output='native', so an output_schema builds fine."""
-    agent = build_agent(
-        AgentSpec(name="a", engine="langgraph", model="x", output_schema="mypkg:Answer")
-    )
-    assert agent.spec.output_schema == "mypkg:Answer"
+def test_output_schema_rejected_by_capability_gate(fake_model):
+    """This engine declares structured_output='none' (not built yet) — a schema fails fast.
+
+    Structured output is a phase-04 deliverable; until the graph actually validates
+    a target, declaring ``structured_output`` would be an over-claim (declare, don't
+    fake). So an ``output_schema`` spec must be rejected by the capability gate.
+    """
+    with pytest.raises(CapabilityError) as exc:
+        build_agent(
+            AgentSpec(name="a", engine="langgraph", model="x", output_schema="mypkg:Answer")
+        )
+    assert "structured output" in str(exc.value).lower()
 
 
 def test_durability_rejected_by_capability_gate(fake_model):
