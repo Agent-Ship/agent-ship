@@ -120,6 +120,48 @@ def test_concrete_engine_without_capabilities_raises_at_import():
                 raise NotImplementedError
 
 
+def test_provider_gate_rejects_undeclared_provider():
+    """langgraph declares no ``cohere`` provider, so a cohere model fails fast at build."""
+    caps = EngineCapabilities(providers={"openai", "anthropic"})
+    spec = AgentSpec(name="a", engine="langgraph", model="cohere/command-r")
+    with pytest.raises(CapabilityError) as exc:
+        caps.assert_supports_spec(spec)
+    assert "cohere" in str(exc.value).lower()
+
+
+def test_langgraph_build_rejects_undeclared_provider():
+    """End-to-end: building a langgraph agent on cohere fails fast via the gate.
+
+    Skipped if the langgraph engine package is not installed in this environment.
+    """
+    pytest.importorskip("agentship_langgraph")
+    spec = AgentSpec(name="a", engine="langgraph", model="cohere/command-r")
+    with pytest.raises(CapabilityError) as exc:
+        build_agent(spec)
+    assert "cohere" in str(exc.value).lower()
+
+
+def test_provider_gate_allows_declared_provider():
+    """A model on a declared provider builds without error."""
+    caps = EngineCapabilities(providers={"openai", "anthropic"})
+    spec = AgentSpec(name="a", engine="langgraph", model="openai/gpt-4o-mini")
+    caps.assert_supports_spec(spec)  # no raise
+
+
+def test_provider_gate_skipped_when_providers_empty():
+    """Empty ``providers`` means unconstrained — any provider is allowed."""
+    caps = EngineCapabilities()  # providers == set()
+    spec = AgentSpec(name="a", engine="echo", model="cohere/command-r")
+    caps.assert_supports_spec(spec)  # no raise
+
+
+def test_provider_gate_ignores_model_without_prefix():
+    """A model string with no ``provider/`` prefix carries no provider to gate."""
+    caps = EngineCapabilities(providers={"openai"})
+    spec = AgentSpec(name="a", engine="langgraph", model="gpt-4o-mini")
+    caps.assert_supports_spec(spec)  # no raise
+
+
 def test_unknown_engine_raises_engine_not_found():
     """A spec naming an unregistered engine raises EngineNotFoundError listing what's available."""
     with pytest.raises(EngineNotFoundError) as exc:

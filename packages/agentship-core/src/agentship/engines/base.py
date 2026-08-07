@@ -114,6 +114,7 @@ class EngineCapabilities(BaseModel):
         - ``output_schema`` (a declared schema) → ``structured_output != "none"``
         - ``members`` (a declared team) → ``multi_agent``
         - ``durability`` (other than ``"none"``) → ``durability != "none"``
+        - ``model`` provider prefix → ``providers`` (skipped when ``providers`` empty)
         """
         if spec.streaming and not self.streaming:
             raise CapabilityError(
@@ -137,6 +138,27 @@ class EngineCapabilities(BaseModel):
                 f"engine {spec.engine!r} does not support durable execution, but the spec "
                 f"requests durability: {spec.durability!r} — use a durable engine or remove "
                 f"the field"
+            )
+        self._assert_provider_supported(spec)
+
+    def _assert_provider_supported(self, spec: AgentSpec) -> None:
+        """Gate the ``model:`` provider prefix against declared ``providers``.
+
+        The provider is the segment before the first ``/`` in ``spec.model`` (e.g.
+        ``"openai"`` in ``"openai/gpt-4o-mini"``). If ``providers`` is empty the
+        engine is *unconstrained* and any provider is allowed (this check is
+        skipped). A model with no ``/`` prefix carries no provider to gate, so it is
+        allowed too. Otherwise the provider must be in ``providers`` or the build
+        fails fast — never a silent call to an unreachable provider.
+        """
+        if not self.providers or not spec.model or "/" not in spec.model:
+            return
+        provider = spec.model.split("/", 1)[0]
+        if provider not in self.providers:
+            raise CapabilityError(
+                f"engine {spec.engine!r} cannot reach provider {provider!r} (from "
+                f"model {spec.model!r}); it declares providers {sorted(self.providers)} "
+                f"— use a model on one of those providers or a different engine"
             )
 
 
