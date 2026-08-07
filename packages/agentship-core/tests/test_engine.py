@@ -78,6 +78,48 @@ def test_durability_request_on_none_engine_raises_capability_error():
     assert "durability" in str(exc.value).lower()
 
 
+def test_assert_supports_spec_method_gates_a_spec():
+    """``EngineCapabilities.assert_supports_spec`` is the canonical §13.5 spec gate.
+
+    echo declares no structured output, so a spec with an output_schema must raise.
+    """
+    caps = EngineCapabilities(streaming=True)
+    ok_spec = AgentSpec(name="a", engine="echo", streaming=True)
+    caps.assert_supports_spec(ok_spec)  # declared → no raise
+    bad_spec = AgentSpec(name="a", engine="echo", output_schema="mypkg:M")
+    with pytest.raises(CapabilityError):
+        caps.assert_supports_spec(bad_spec)
+
+
+def test_assert_spec_supported_wrapper_still_delegates():
+    """The free ``assert_spec_supported`` wrapper still works (imported by the CLI)."""
+    from agentship.engines.base import assert_spec_supported
+    from agentship.engines.echo import EchoEngine
+
+    engine = EchoEngine()
+    assert_spec_supported(engine, AgentSpec(name="a", engine="echo", streaming=True))
+    with pytest.raises(CapabilityError):
+        assert_spec_supported(
+            engine, AgentSpec(name="a", engine="echo", output_schema="mypkg:M")
+        )
+
+
+def test_concrete_engine_without_capabilities_raises_at_import():
+    """``Engine.__init_subclass__`` rejects a concrete engine that omits ``capabilities``."""
+    from agentship.engines.base import Engine
+
+    with pytest.raises(TypeError, match="capabilities"):
+
+        class _NoCaps(Engine):
+            name = "nocaps"
+
+            def build(self, spec):
+                return spec
+
+            async def run(self, compiled, text, ctx):  # pragma: no cover
+                raise NotImplementedError
+
+
 def test_unknown_engine_raises_engine_not_found():
     """A spec naming an unregistered engine raises EngineNotFoundError listing what's available."""
     with pytest.raises(EngineNotFoundError) as exc:

@@ -102,6 +102,43 @@ class EngineCapabilities(BaseModel):
                 f"the requirement"
             )
 
+    def assert_supports_spec(self, spec: AgentSpec) -> None:
+        """Fail fast if these capabilities cannot satisfy what ``spec`` declares.
+
+        The canonical §13.5 capability gate: every spec field that *implies* a
+        capability is checked here, at build time, so a misconfiguration surfaces as
+        an actionable :class:`~agentship.errors.CapabilityError` before the agent runs
+        rather than as a confusing mid-run failure (*declare, don't fake*):
+
+        - ``streaming`` → ``streaming``
+        - ``output_schema`` (a declared schema) → ``structured_output != "none"``
+        - ``members`` (a declared team) → ``multi_agent``
+        - ``durability`` (other than ``"none"``) → ``durability != "none"``
+        """
+        if spec.streaming and not self.streaming:
+            raise CapabilityError(
+                f"engine {spec.engine!r} does not support streaming, but the spec sets "
+                f"streaming: true — use a streaming engine or remove the field"
+            )
+        if spec.output_schema and self.structured_output == "none":
+            raise CapabilityError(
+                f"engine {spec.engine!r} does not support structured output, but the spec "
+                f"declares output_schema: {spec.output_schema!r} — use a structured-output "
+                f"engine or remove the field"
+            )
+        if spec.members and not self.multi_agent:
+            raise CapabilityError(
+                f"engine {spec.engine!r} does not support multi-agent coordination, but the "
+                f"spec declares {len(spec.members)} member(s) — use a multi-agent engine or "
+                f"remove the `members` field so they are not silently dropped"
+            )
+        if spec.durability != "none" and self.durability == "none":
+            raise CapabilityError(
+                f"engine {spec.engine!r} does not support durable execution, but the spec "
+                f"requests durability: {spec.durability!r} — use a durable engine or remove "
+                f"the field"
+            )
+
 
 class Result(BaseModel):
     """The outcome of a run: the agent's output."""
@@ -133,6 +170,28 @@ class Engine(ABC):
     name: ClassVar[str]
     #: What this engine supports; the kernel validates specs against it.
     capabilities: ClassVar[EngineCapabilities]
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """Reject, at import, a *concrete* engine that forgets to declare ``capabilities``.
+
+        The whole gate depends on every engine declaring what it supports, so a
+        subclass that ships without a ``capabilities`` ClassVar is a latent bug —
+        the gate would ``AttributeError`` at build time instead of failing honestly.
+        Catching it here turns "engine forgot to declare capabilities" into a clear
+        error the moment the module is imported. Abstract subclasses (those still
+        carrying unimplemented ``@abstractmethod`` methods) are skipped, since they
+        are seams, not shippable engines.
+        """
+        super().__init_subclass__(**kwargs)
+        if getattr(cls, "__abstractmethods__", None):
+            return  # still abstract — a seam, not a concrete engine
+        if "capabilities" not in cls.__dict__ and not any(
+            "capabilities" in base.__dict__ for base in cls.__mro__[1:] if base is not Engine
+        ):
+            raise TypeError(
+                f"engine {cls.__name__!r} must declare a `capabilities` ClassVar "
+                f"(an EngineCapabilities) so the capability gate knows what it supports"
+            )
 
     @abstractmethod
     def build(self, spec: AgentSpec) -> Any:
@@ -167,38 +226,10 @@ def register_engine(cls: type[Engine]) -> type[Engine]:
 
 
 def assert_spec_supported(engine: Engine, spec: AgentSpec) -> None:
-    """Fail fast if ``engine`` cannot satisfy what ``spec`` declares.
+    """Thin wrapper around :meth:`EngineCapabilities.assert_supports_spec`.
 
-    This is the capability gate. Every spec field that *implies* an engine
-    capability is checked here, at build time, so a misconfiguration surfaces as
-    an actionable :class:`~agentship.errors.CapabilityError` before the agent runs:
-
-    - ``streaming`` → ``capabilities.streaming``
-    - ``output_schema`` (a declared schema) → ``capabilities.structured_output != "none"``
-    - ``members`` (a declared team) → ``capabilities.multi_agent``
-    - ``durability`` (other than ``"none"``) → ``capabilities.durability != "none"``
+    Kept as the free-function entry point some callers (the CLI) import directly;
+    it simply delegates to the engine's capabilities so the gate logic lives in one
+    place (:meth:`EngineCapabilities.assert_supports_spec`, canonical §13.5).
     """
-    caps = engine.capabilities
-    if spec.streaming and not caps.streaming:
-        raise CapabilityError(
-            f"engine {spec.engine!r} does not support streaming, but the spec sets "
-            f"streaming: true — use a streaming engine or remove the field"
-        )
-    if spec.output_schema and caps.structured_output == "none":
-        raise CapabilityError(
-            f"engine {spec.engine!r} does not support structured output, but the spec "
-            f"declares output_schema: {spec.output_schema!r} — use a structured-output "
-            f"engine or remove the field"
-        )
-    if spec.members and not caps.multi_agent:
-        raise CapabilityError(
-            f"engine {spec.engine!r} does not support multi-agent coordination, but the "
-            f"spec declares {len(spec.members)} member(s) — use a multi-agent engine or "
-            f"remove the `members` field so they are not silently dropped"
-        )
-    if spec.durability != "none" and caps.durability == "none":
-        raise CapabilityError(
-            f"engine {spec.engine!r} does not support durable execution, but the spec "
-            f"requests durability: {spec.durability!r} — use a durable engine or remove "
-            f"the field"
-        )
+    engine.capabilities.assert_supports_spec(spec)
