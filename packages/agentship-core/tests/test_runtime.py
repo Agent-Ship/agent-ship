@@ -7,6 +7,7 @@ import gc
 import pytest
 from agentship.context import current_run, get_run_context
 from agentship.engines.base import Result
+from agentship.errors import SpecError
 from agentship.middleware import Middleware
 from agentship.runtime import build_agent
 from agentship.spec import AgentSpec
@@ -112,3 +113,44 @@ async def test_contextvar_reset_after_early_break_of_stream():
     assert get_run_context() is None
     # And the contextvar itself is genuinely unset (not merely a stale object).
     assert current_run.get(None) is None
+
+
+def test_build_agent_runs_python_code_builder(tmp_path):
+    """A spec with `code:` builds via the Python builder it names, not the outer spec.
+
+    build_agent must resolve `code: module:function`, call it to obtain the real
+    AgentSpec, and build from that — proving the authoring hook is wired end-to-end
+    (declare-don't-fake). Runs fully offline on the echo engine.
+    """
+    mod = tmp_path / "author.py"
+    mod.write_text(
+        "from agentship.spec import AgentSpec\n"
+        "\n"
+        "def build():\n"
+        "    return AgentSpec(name='from-code', engine='echo')\n"
+    )
+    agent = build_agent(AgentSpec(name="outer", engine="echo", code=f"{mod}:build"))
+    # The built agent carries the code-authored spec, not the thin outer stub.
+    assert agent.spec.name == "from-code"
+
+
+async def test_build_agent_code_builder_actually_runs(tmp_path):
+    """The code-authored agent is fully runnable — the builder's spec drives execution."""
+    mod = tmp_path / "author.py"
+    mod.write_text(
+        "from agentship.spec import AgentSpec\n"
+        "\n"
+        "def build():\n"
+        "    return AgentSpec(name='coded', engine='echo')\n"
+    )
+    agent = build_agent(AgentSpec(name="outer", engine="echo", code=f"{mod}:build"))
+    result = await agent.run("hi")
+    assert result.output == "echo: hi"
+
+
+def test_build_agent_code_builder_returning_non_spec_raises(tmp_path):
+    """A `code:` builder that does not return an AgentSpec fails loudly at build time."""
+    mod = tmp_path / "author.py"
+    mod.write_text("def build():\n    return 'not a spec'\n")
+    with pytest.raises(SpecError):
+        build_agent(AgentSpec(name="outer", engine="echo", code=f"{mod}:build"))

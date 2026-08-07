@@ -17,8 +17,8 @@ from typing import TYPE_CHECKING, Any
 
 from .context import Caller, RunContext, RunMode, current_run
 from .engines.base import ENGINES, Event, Result, assert_spec_supported
-from .errors import EngineNotFoundError
-from .spec import AgentSpec, load_spec
+from .errors import EngineNotFoundError, SpecError
+from .spec import AgentSpec, load_spec, resolve_code
 
 if TYPE_CHECKING:
     from .engines.base import Engine
@@ -231,17 +231,48 @@ class RunnableAgent:
             scope.restore()
 
 
+def _resolve_code_spec(spec: AgentSpec) -> AgentSpec:
+    """Author a spec in Python: call the ``code:`` builder and return its AgentSpec.
+
+    Resolves the ``"module:function"`` reference on ``spec.code``, invokes it, and
+    returns the :class:`AgentSpec` it produces. The result must itself be an
+    :class:`AgentSpec` that does not re-set ``code:`` — a builder that returns a
+    non-spec or another ``code:`` spec is a loud :class:`~agentship.errors.SpecError`,
+    never a silent no-op.
+    """
+    builder = resolve_code(spec.code)  # type: ignore[arg-type]  # guarded by caller
+    built = builder()
+    if not isinstance(built, AgentSpec):
+        raise SpecError(
+            f"code {spec.code!r} must return an AgentSpec, got {type(built).__name__}"
+        )
+    if built.code is not None:
+        raise SpecError(
+            f"code {spec.code!r} returned a spec that itself sets code: "
+            f"{built.code!r} — a Python builder must return a concrete spec"
+        )
+    return built
+
+
 def build_agent(spec: AgentSpec | str, *, middlewares: Sequence[Middleware] = ()) -> RunnableAgent:
     """Build a :class:`RunnableAgent` from an :class:`AgentSpec` or a YAML path.
 
-    Resolves the engine by name, capability-validates the spec against it (failing
-    fast on an unsupported request), then compiles the agent. Raises
-    :class:`~agentship.errors.EngineNotFoundError` when the engine is unknown, or
-    :class:`~agentship.errors.CapabilityError` when the spec asks for something the
-    engine cannot do.
+    When the spec sets ``code: "module:function"``, the agent is authored in Python:
+    that builder is resolved and called to produce the real :class:`AgentSpec`, and
+    the agent is built from *that* — so a ``code:`` spec is honoured, not silently
+    ignored (declare, don't fake). Otherwise the spec is used as-is. Then the engine
+    is resolved by name, the spec is capability-validated against it (failing fast on
+    an unsupported request), and the agent is compiled.
+
+    Raises :class:`~agentship.errors.SpecError` when a ``code:`` builder does not
+    return an :class:`AgentSpec`, :class:`~agentship.errors.EngineNotFoundError` when
+    the engine is unknown, or :class:`~agentship.errors.CapabilityError` when the spec
+    asks for something the engine cannot do.
     """
     if isinstance(spec, str):
         spec = load_spec(spec)
+    if spec.code is not None:
+        spec = _resolve_code_spec(spec)
     engine_cls = ENGINES.get(spec.engine)
     if engine_cls is None:
         raise EngineNotFoundError(
