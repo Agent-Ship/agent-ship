@@ -30,6 +30,7 @@ from typing_extensions import TypedDict
 
 from . import models
 from .agent import LangGraphAgent
+from .templates import resolve_template
 
 if TYPE_CHECKING:
     from agentship.context import RunContext
@@ -101,24 +102,33 @@ class LangGraphEngine(Engine):
         params — ``None`` fields are dropped so the model keeps its own defaults —
         and resolves ``tools`` (empty until Phase 03 wires tool execution).
 
-        The build *body* is chosen so the author never wires a vendor:
+        The build *body* is chosen so the author never wires a vendor, in order of
+        precedence:
 
         - when ``authored`` is a :class:`~agentship_langgraph.agent.LangGraphAgent`
           (the custom-authoring path, §4.3), its ``build_graph(model, tools)`` is
-          called and the returned graph is compiled — this is where a developer's
-          native LangGraph runs;
+          called — this is where a developer's native LangGraph runs;
+        - else when ``spec.template`` is set, that template's generated
+          ``build_graph(model, tools)`` is used (e.g. ``single`` → a prebuilt ReAct
+          agent, zero author code);
         - otherwise the engine's own default single-node graph is used.
 
-        Both paths hand ``build_graph`` the *same* wired ``model``/``tools`` plain
-        params — there is no ``EngineKit`` bundle. Vendor (LangChain/LangGraph)
-        types are confined to this adapter; the core never sees one.
+        Every path hands ``build_graph`` the *same* wired ``model``/``tools`` plain
+        params — there is no ``EngineKit`` bundle. A template may return an
+        already-compiled graph (``single`` does); the engine detects that and reuses
+        it rather than compiling twice. Vendor (LangChain/LangGraph) types are
+        confined to this adapter; the core never sees one.
         """
         model = self._resolve_model(spec)
         tools = self._resolve_tools(spec)
         if isinstance(authored, LangGraphAgent):
             graph = authored.build_graph(model, tools)
         else:
-            graph = self._build_graph(model)
+            template_body = resolve_template(spec)
+            if template_body is not None:
+                graph = template_body(model, tools)
+            else:
+                graph = self._build_graph(model)
         compiled = graph if isinstance(graph, CompiledStateGraph) else graph.compile()
         return _CompiledAgent(compiled, spec.prompt, spec.model or "")
 
