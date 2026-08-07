@@ -15,7 +15,7 @@ import uuid
 from collections.abc import AsyncIterator, Sequence
 from typing import TYPE_CHECKING, Any
 
-from .context import Principal, RunContext, RunMode, current_run
+from .context import Caller, RunContext, RunMode, current_run
 from .engines.base import ENGINES, Event, Result, assert_spec_supported
 from .errors import EngineNotFoundError
 from .spec import AgentSpec, load_spec
@@ -126,7 +126,7 @@ class RunnableAgent:
     ) -> RunContext:
         """Build a fresh :class:`RunContext` for one turn.
 
-        Wraps ``user_id`` in a single-tenant :class:`Principal` (``tenant_id`` falls
+        Wraps ``user_id`` in a single-tenant :class:`Caller` (``tenant_id`` falls
         back to ``"default"``), so a project with no auth just works. ``session_id``
         is caller-supplied and stable across a conversation's turns; it is only
         minted (``uuid4().hex``) when the caller passes none. ``run_id`` is always
@@ -134,7 +134,7 @@ class RunnableAgent:
         is an invoke or a stream so engines branch off it, not an invented key.
         """
         return RunContext(
-            principal=Principal(user_id=user_id),
+            caller=Caller(user_id=user_id),
             session_id=session_id if session_id is not None else uuid.uuid4().hex,
             run_id=uuid.uuid4().hex,
             agent_name=self.spec.name,

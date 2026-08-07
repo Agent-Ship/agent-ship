@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 
-from agentship.context import Principal, RunContext, RunMode, current_run, get_run_context
+from agentship.context import Caller, RunContext, RunMode, current_run, get_run_context
 from agentship.runtime import build_agent
 from agentship.spec import AgentSpec
 
@@ -12,7 +12,7 @@ from agentship.spec import AgentSpec
 def _ctx(**overrides) -> RunContext:
     """Build a RunContext with sensible defaults, overridable per test."""
     fields = {
-        "principal": Principal(user_id="u1"),
+        "caller": Caller(user_id="u1"),
         "session_id": "s1",
         "run_id": "r1",
         "agent_name": "assistant",
@@ -24,23 +24,29 @@ def _ctx(**overrides) -> RunContext:
 
 def test_memory_scope_is_tenant_and_user():
     """memory_scope is (tenant_id, user_id) per DESIGN §13.4 — never keyed on agent/session."""
-    ctx = _ctx(principal=Principal(tenant_id="acme", user_id="u1"))
+    ctx = _ctx(caller=Caller(tenant_id="acme", user_id="u1"))
     assert ctx.memory_scope == ("acme", "u1")
 
 
-def test_principal_single_tenant_default():
+def test_caller_single_tenant_default():
     """A project with no auth just works: tenant_id defaults to 'default'."""
-    p = Principal(user_id="alice")
-    assert p.tenant_id == "default"
-    ctx = _ctx(principal=p)
+    c = Caller(user_id="alice")
+    assert c.tenant_id == "default"
+    ctx = _ctx(caller=c)
     assert ctx.tenant_id == "default"
     assert ctx.user_id == "alice"
     assert ctx.memory_scope == ("default", "alice")
 
 
-def test_run_context_mirrors_principal_identity():
-    """user_id/tenant_id on the context mirror the principal (one source of truth)."""
-    ctx = _ctx(principal=Principal(tenant_id="t7", user_id="bob"))
+def test_run_context_default_caller_tenant_is_default():
+    """RunContext exposes the caller; the single-tenant default is 'default'."""
+    ctx = _ctx(caller=Caller(user_id="alice"))
+    assert ctx.caller.tenant_id == "default"
+
+
+def test_run_context_mirrors_caller_identity():
+    """user_id/tenant_id on the context mirror the caller (one source of truth)."""
+    ctx = _ctx(caller=Caller(tenant_id="t7", user_id="bob"))
     assert ctx.user_id == "bob"
     assert ctx.tenant_id == "t7"
 

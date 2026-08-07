@@ -1,15 +1,15 @@
-"""The identity backbone: :class:`RunContext`, :class:`Principal`, ``current_run``.
+"""The identity backbone: :class:`RunContext`, :class:`Caller`, ``current_run``.
 
 One compiled agent serves many concurrent turns, so *all* per-turn state lives in
 a contextvar rather than on the agent instance. :class:`RunContext` carries the
-identity a later pillar reads — who the caller is (:class:`Principal`), which
+identity a later pillar reads — who the caller is (:class:`Caller`), which
 conversation and turn this is, how it is being driven (:class:`RunMode`), and the
 optional trace id — and nothing more. The invariant (architecture §5) is that
 ``session_id`` is stable across the turns of a conversation and later equals the
 engine's thread id and the checkpoint key; ``run_id`` is minted fresh per turn.
 
 **Single-tenant default (DESIGN Clean-Build "reusability fixes").** A project with
-no auth just works: :class:`Principal` defaults ``tenant_id="default"``, so nothing
+no auth just works: :class:`Caller` defaults ``tenant_id="default"``, so nothing
 has to plumb a tenant. Tenancy is opt-in hardening, never a baseline tax.
 """
 
@@ -34,7 +34,7 @@ class RunMode(StrEnum):
     STREAM = "stream"
 
 
-class Principal(BaseModel):
+class Caller(BaseModel):
     """The authenticated caller (DESIGN §13.2 canonical, KISS subset).
 
     The ``(tenant_id, user_id)`` pair scopes long-term memory and the re-identify
@@ -55,11 +55,11 @@ class RunContext:
     Held in the :data:`current_run` contextvar so concurrent turns never collide.
     The field set is deliberately small (KISS, grow-per-pillar); later phases read
     these fields but must not invent new identity keys here. ``user_id`` and
-    ``tenant_id`` are read-only mirrors of :attr:`principal` — one source of truth.
+    ``tenant_id`` are read-only mirrors of :attr:`caller` — one source of truth.
     """
 
     #: The authenticated caller. Its ``(tenant_id, user_id)`` scopes memory + vault.
-    principal: Principal
+    caller: Caller
     #: Stable across the turns of one conversation. Later equals the engine thread
     #: id and the checkpoint key (architecture §5). Minted once when the caller
     #: passes none, then threaded by the caller on subsequent turns.
@@ -80,13 +80,13 @@ class RunContext:
 
     @property
     def user_id(self) -> str:
-        """The caller's user id — a read-only mirror of ``principal.user_id``."""
-        return self.principal.user_id
+        """The caller's user id — a read-only mirror of ``caller.user_id``."""
+        return self.caller.user_id
 
     @property
     def tenant_id(self) -> str:
-        """The caller's tenant id — a read-only mirror of ``principal.tenant_id``."""
-        return self.principal.tenant_id
+        """The caller's tenant id — a read-only mirror of ``caller.tenant_id``."""
+        return self.caller.tenant_id
 
     @property
     def memory_scope(self) -> tuple[str, str]:
