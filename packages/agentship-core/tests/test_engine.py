@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from agentship.engines.base import EngineCapabilities
+from agentship.engines.base import EngineCapabilities, Modality
 from agentship.errors import CapabilityError, EngineNotFoundError
 from agentship.runtime import build_agent
 from agentship.spec import AgentSpec, MemberSpec
@@ -12,16 +12,41 @@ from agentship.spec import AgentSpec, MemberSpec
 def test_engine_capabilities_defaults_are_all_off():
     """A bare EngineCapabilities declares nothing — every capability defaults off/none."""
     caps = EngineCapabilities()
-    assert caps.providers == []
+    assert caps.providers == set()
     assert caps.streaming is False
     assert caps.tool_calling is False
-    assert caps.hitl is False
+    assert caps.hitl == "none"
     assert caps.durability == "none"
     assert caps.cycles is False
     assert caps.structured_output == "none"
-    assert caps.multimodal_in is False
+    assert caps.multimodal_in == set()
     assert caps.live_bidi is False
     assert caps.multi_agent is False
+
+
+def test_providers_is_a_set_of_strings():
+    """``providers`` is a ``set[str]`` (canonical §3.1), not a list — order-free membership."""
+    caps = EngineCapabilities(providers={"openai", "anthropic"})
+    assert caps.providers == {"openai", "anthropic"}
+
+
+def test_hitl_is_a_three_valued_literal():
+    """``hitl`` widens to Literal[none|interrupt|deferred_tool] (canonical §3.1)."""
+    assert EngineCapabilities(hitl="interrupt").hitl == "interrupt"
+    assert EngineCapabilities(hitl="deferred_tool").hitl == "deferred_tool"
+    with pytest.raises(ValueError):
+        EngineCapabilities(hitl="yes")
+
+
+def test_multimodal_in_is_a_set_of_modalities():
+    """``multimodal_in`` widens to ``set[Modality]`` (canonical §3.1)."""
+    caps = EngineCapabilities(multimodal_in={Modality.IMAGE, Modality.AUDIO})
+    assert caps.multimodal_in == {Modality.IMAGE, Modality.AUDIO}
+
+
+def test_modality_enum_has_the_canonical_members():
+    """``Modality`` is the canonical text/image/audio/video/pdf StrEnum."""
+    assert {m.value for m in Modality} == {"text", "image", "audio", "video", "pdf"}
 
 
 def test_streaming_on_echo_is_allowed():

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 from pydantic import BaseModel, Field
@@ -28,6 +29,22 @@ if TYPE_CHECKING:  # avoid import cycles; these are only referenced in signature
     from ..spec import AgentSpec
 
 
+class Modality(StrEnum):
+    """An input modality an engine may accept (canonical §3.1).
+
+    The kernel keeps ``multimodal_in`` as a ``set[Modality]`` so an engine declares
+    exactly which non-text inputs it handles — a set, not a bool, because "accepts
+    images" and "accepts audio" are independent claims that must not collapse into
+    one on/off flag. ``TEXT`` is listed for completeness; every engine handles text.
+    """
+
+    TEXT = "text"
+    IMAGE = "image"
+    AUDIO = "audio"
+    VIDEO = "video"
+    PDF = "pdf"
+
+
 class EngineCapabilities(BaseModel):
     """An engine's honest declaration of what it supports (canonical, DESIGN §3.1).
 
@@ -36,20 +53,25 @@ class EngineCapabilities(BaseModel):
     don't fake*). Every field defaults to off/none so declaring the class is
     non-breaking: an engine opts in only to what it truly supports.
 
-    A few fields are intentionally simpler than their final DESIGN §3.1 shape
-    (``hitl`` and ``multimodal_in`` are plain booleans, not the richer
-    ``Literal``/``set[Modality]`` forms) — the richer shapes arrive with the
-    phases that consume them; the kernel needs only the honest on/off signal now.
+    The field *shapes* are the canonical DESIGN §3.1 forms — ``providers`` is a
+    ``set[str]``, ``hitl`` is a three-valued ``Literal``, ``multimodal_in`` is a
+    ``set[Modality]``. These are widened up front on purpose: widening a field later
+    (bool → set/Literal) would be a breaking change for anyone reading it, so the
+    kernel commits to the final shape now even though later phases fill in the
+    behaviour behind the richer values.
     """
 
-    #: LiteLLM provider prefixes this engine can reach (e.g. ``["openai", "anthropic"]``).
-    providers: list[str] = Field(default_factory=list)
+    #: LiteLLM provider prefixes this engine can reach (e.g. ``{"openai", "anthropic"}``).
+    #: A set: membership is order-free and each provider is an independent claim.
+    #: Empty means *unconstrained* — the gate does not restrict the model's provider.
+    providers: set[str] = Field(default_factory=set)
     #: Whether the engine can stream tokens/events for a turn.
     streaming: bool = False
     #: Whether the engine can call tools during a turn.
     tool_calling: bool = False
-    #: Whether the engine supports human-in-the-loop pauses (plain bool for now).
-    hitl: bool = False
+    #: Human-in-the-loop mode: ``"none"`` (no pauses), ``"interrupt"`` (pause the
+    #: graph for input), or ``"deferred_tool"`` (a tool call awaits human approval).
+    hitl: Literal["none", "interrupt", "deferred_tool"] = "none"
     #: Durable-execution mode: ``"none"`` (crash = fail), ``"checkpoint"`` (core
     #: drives ``resume``), or ``"workflow"`` (core re-attaches to an external runtime).
     durability: Literal["none", "checkpoint", "workflow"] = "none"
@@ -58,9 +80,9 @@ class EngineCapabilities(BaseModel):
     #: Structured-output support: ``"none"``, ``"native"`` (engine validates), or
     #: ``"assisted"`` (core middleware validates + retries).
     structured_output: Literal["none", "native", "assisted"] = "none"
-    #: Whether the engine accepts non-text input (plain bool for now; the
-    #: ``set[Modality]`` form arrives in the multimodal phase).
-    multimodal_in: bool = False
+    #: The set of non-text input modalities the engine accepts (empty = text-only).
+    #: A set, not a bool: "accepts images" and "accepts audio" are separate claims.
+    multimodal_in: set[Modality] = Field(default_factory=set)
     #: Whether the engine supports live bidirectional (voice) streaming.
     live_bidi: bool = False
     #: Whether the engine can coordinate a multi-agent team (members).

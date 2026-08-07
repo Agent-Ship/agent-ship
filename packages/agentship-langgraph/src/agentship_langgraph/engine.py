@@ -85,7 +85,7 @@ class LangGraphEngine(Engine):
 
     name: ClassVar[str] = "langgraph"
     capabilities: ClassVar[EngineCapabilities] = EngineCapabilities(
-        providers=["openai", "anthropic", "gemini", "ollama"],
+        providers={"openai", "anthropic", "gemini", "ollama"},
         streaming=True,
     )
 
