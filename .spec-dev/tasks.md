@@ -10,7 +10,7 @@ Mirrors the phase ladder in `architecture.md`. Detailed per-phase tasks live in
 | 1 Real model | [x] | LangGraph+LiteLLM single agent; clean errors + `.env` (G3/G4); provider-matrix infra + examples (G5, ae8ecbe); 59 pass/4 skip keyless, ruff clean. ⚠️ live proof still OpenAI-only — Claude/Gemini recording BLOCKED on working keys |
 | **Packaging split** | [x] | monorepo of 4 dists (core + langgraph + cli + agentship meta); 59 pass/4 skip keyless, history preserved (a468b08) |
 | **Demo repo** | [x] | `agentship-demo/` is its own git repo: single-agent demo, .env.example, cassette smoke test (keyless, 0 leakage), CI stub |
-| 1b Model tuning + local | [~] | `params:` (temperature/max_tokens/timeout) + `api_base` → Ollama/vLLM/self-hosted; offline-proven |
+| 1b Model tuning + local | [x] | `params:` (temperature/max_tokens/timeout) + `api_base` → Ollama/vLLM/self-hosted; offline-proven; 70 pass/4 skip keyless (94e9b9e) |
 | 2 Sessions (multi-turn) | [ ] | caller session_id → LangGraph thread_id; remembers across turns |
 | 3 Tools | [ ] | |
 | 4 Structured I/O | [ ] | |

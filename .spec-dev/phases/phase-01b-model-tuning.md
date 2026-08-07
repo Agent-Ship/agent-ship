@@ -1,4 +1,4 @@
-# Phase 1b — Model tuning + local models  🔧 IN PROGRESS
+# Phase 1b — Model tuning + local models  ✅ DONE
 
 **New assertion (the delta over P1):** an agent can carry a `params:` block
 (`temperature`, `max_tokens`, `timeout`) and an `api_base:` so generation is tunable and a
@@ -24,7 +24,7 @@ agentship run examples/local.yaml  --input "..."     # talks to a local Ollama v
       `timeout: float|None`) + `params: ModelParams | None = None` on `AgentSpec`. Proof:
       YAML with a `params:` block loads; an unknown param key raises `SpecError`; omitting
       `params` still works.
-      (SHA: pending lead tracking commit) Proof:
+      (5d7634f) Proof:
       `packages/agentship-core/tests/test_spec.py::test_params_block_loads_and_populates_model_params`
       (also `::test_params_unknown_key_is_rejected`, `::test_params_omitted_still_builds`,
       `::test_params_bad_type_raises_spec_error`).
@@ -33,7 +33,7 @@ agentship run examples/local.yaml  --input "..."     # talks to a local Ollama v
       (or `{}`). Proof (offline): `build_agent` with `params` → the resolved model carries
       `temperature`/`api_base` (monkeypatch `resolve_model` to capture kwargs); no `params`
       → no kwargs passed.
-      (SHA: pending lead tracking commit) Proof:
+      (9140feb) Proof:
       `packages/agentship-langgraph/tests/test_langgraph_engine.py::test_params_thread_into_resolve_model`
       (also `::test_no_params_passes_no_extra_kwargs`, `::test_none_params_are_dropped_before_threading`,
       and the dead-api_base state `::test_dead_api_base_surfaces_clean_model_error`).
@@ -41,10 +41,11 @@ agentship run examples/local.yaml  --input "..."     # talks to a local Ollama v
       `examples/local.yaml` (`model: ollama/llama3`, `api_base: http://localhost:11434`);
       a "Local & self-hosted models" section in `examples/README.md`. Proof: both examples
       build; `local.yaml`'s `api_base` threads to the model (offline capture).
-      (SHA: pending lead tracking commit) Proof:
+      (94e9b9e) Proof:
       `packages/agentship-langgraph/tests/test_tuning_examples.py::test_local_example_threads_api_base`
       (also `::test_tuned_example_threads_generation_params`, `::test_local_example_needs_no_openai_key`).
-- [ ] **T4 Track** — flip this file + `tasks.md` + Notion (P1b row) with SHAs + proofs.
+- [x] **T4 Track** — flipped this file (SHAs stamped) + `tasks.md` + Notion (P1b row);
+      verified on `main`: 70 passed / 4 skipped keyless, ruff clean.
 
 ## User-facing states
 - Bad param type (e.g. `temperature: "hot"`) → pydantic error → `SpecError` via `load_spec`.
