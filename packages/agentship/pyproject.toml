@@ -10,22 +10,43 @@ readme = "README.md"
 requires-python = ">=3.13"
 license = "Apache-2.0"
 # The everyday stack: `pip install agentship` gives a real agent out of the box —
-# kernel + the default LangGraph engine + the CLI.
+# kernel + the default LangGraph engine + the CLI. This is the same set as [starter];
+# the extra exists so the documented `pip install "agentship[starter]"` path resolves.
 dependencies = [
     "agentship-core",
     "agentship-langgraph",
     "agentship-cli",
 ]
 
-# Pillar extras. Each is EMPTY for now — a placeholder so `pip install agentship[all]`
-# is stable from day one. Each extra gains its sibling dist as that pillar's phase
-# lands (mcp → P3, memory → P8, observability → P7, service → P9/P10).
 [project.optional-dependencies]
-mcp = []            # phase 3 — MCP tools (client) + agent-as-MCP-server
-memory = []         # phase 8 — long-term, cross-session memory
-observability = []  # phase 7 — OpenTelemetry + Langfuse/Opik
-service = []        # phase 9/10 — the REST/SSE agent gateway
-all = []            # every pillar extra above (kept in sync as extras gain deps)
+# ---- Real extras (resolvable today) ----
+# The batteries-included default stack (DESIGN §9 quickstart / §14 Quickstart).
+# `pip install "agentship[starter]"` == kernel + default engine + CLI. langgraph and
+# cli are already base deps above, so [starter] is the named alias the docs promise;
+# it also becomes the anchor that grows as pillars land (memory/observability/mcp).
+starter = [
+    "agentship-langgraph",
+    "agentship-cli",
+]
+# The default engine on its own (DESIGN §9; the demo pins `agentship[langgraph]`).
+langgraph = [
+    "agentship-langgraph",
+]
+
+# ---- Pillar placeholders (empty until the pillar's phase lands) ----
+# Each names the dist it will pull in when that phase ships; kept present so the
+# extra name is stable from day one and `pip install agentship[<pillar>]` never
+# warns "extra not provided". Fill with the sibling dist as the phase lands.
+mcp = []            # phase 03 — MCP tools (client) + agent-as-MCP-server  → agentship-mcp
+service = []        # phase 04 — the REST/SSE agent gateway                → agentship-service
+observability = []  # phase 05 — OpenTelemetry + Langfuse/Phoenix          → agentship-observability
+memory = []         # phase 08 — long-term, cross-session memory           → agentship-memory
+
+# Everything real above, aggregated. Grows as the placeholders gain deps.
+all = [
+    "agentship-langgraph",
+    "agentship-cli",
+]
 
 # Meta-package: no modules of its own, just dependencies.
 [tool.hatch.build.targets.wheel]
