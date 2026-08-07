@@ -1,7 +1,7 @@
 """T9 live proof (G5): the "swap any provider" claim, across the whole matrix.
 
-For every :class:`~tests.providers.Provider` in
-:data:`~tests.providers.LIVE_PROVIDERS` this parametrizes one live turn: build a
+For every :class:`~providers.Provider` in
+:data:`~providers.LIVE_PROVIDERS` this parametrizes one live turn: build a
 single ``langgraph`` agent on that provider's model, ``run("ping")``, and assert a
 non-empty string answer. Each provider records to its own cassette under
 ``tests/cassettes/test_providers/<name>.yaml`` and replays **keyless** in CI, so
@@ -20,10 +20,9 @@ from pathlib import Path
 
 import litellm
 import pytest
-from tests.providers import LIVE_PROVIDERS, Provider
-
 from agentship.runtime import build_agent
 from agentship.spec import AgentSpec
+from providers import LIVE_PROVIDERS, Provider
 
 #: Directory holding one recorded cassette per provider (``<name>.yaml``).
 CASSETTE_DIR = Path(__file__).resolve().parent / "cassettes" / "test_providers"

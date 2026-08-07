@@ -3,7 +3,7 @@
 The kernel populates :data:`agentship.engines.base.ENGINES` from the
 ``agentship.engines`` entry-point group. Once the ``[langgraph]`` extra is
 installed and the entry point registered in ``pyproject.toml``, the registry must
-resolve ``langgraph`` to :class:`~agentship.engines.langgraph.engine.LangGraphEngine`.
+resolve ``langgraph`` to :class:`~agentship_langgraph.engine.LangGraphEngine`.
 """
 
 from __future__ import annotations

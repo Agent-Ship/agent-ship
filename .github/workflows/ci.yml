@@ -19,13 +19,14 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Install the package with all extras + dev tooling
+      - name: Install the packages (editable) + dev tooling
         run: |
           python -m pip install --upgrade pip
-          pip install -e '.[all,dev]'
+          pip install -e packages/agentship-core -e packages/agentship-langgraph -e packages/agentship-cli
+          pip install 'pytest>=8' 'pytest-asyncio>=0.23' 'pytest-recording>=0.13' 'ruff>=0.6'
 
       - name: Lint (ruff)
         run: ruff check .
 
       - name: Test (pytest)
-        run: pytest -q
+        run: pytest packages -q

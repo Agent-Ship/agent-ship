@@ -1,63 +1,16 @@
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[project]
-name = "agentship"
-version = "0.0.1"
-description = "An open, recipe-first harness that wires best-of-breed agent libraries behind small, stable seams."
-readme = "README.md"
-requires-python = ">=3.13"
-license = "Apache-2.0"
-dependencies = [
-    "pydantic>=2",
-    "pyyaml>=6",
-    "click>=8",
-    "python-dotenv>=1",  # CLI loads a .env for real runs (scoped to the entry point)
-]
-
-# Optional integrations. Each pillar's real dependencies land when its phase ships;
-# the extras exist now so `pip install agentship[all]` is stable from day one.
-[project.optional-dependencies]
-langgraph = [       # phase 1 — the default real-model engine (LangGraph + LiteLLM)
-    "langgraph>=0.2",
-    "langchain-litellm>=0.1",
-    "langchain-core>=0.3",
-]
-mcp = []            # phase 3 — MCP tools (client) + agent-as-MCP-server
-memory = []         # phase 8 — long-term memory (mem0)
-observability = []  # phase 7 — OpenTelemetry + Langfuse/Opik
-all = [             # every extra above (kept in sync as extras gain deps)
-    "langgraph>=0.2",
-    "langchain-litellm>=0.1",
-    "langchain-core>=0.3",
-]
-dev = [
-    "pytest>=8",
-    "pytest-asyncio>=0.23",
-    "pytest-recording>=0.13",
-    "ruff>=0.6",
-]
-
-[project.scripts]
-agentship = "agentship.cli:main"
-
-# Engines and adapters register here; the kernel discovers them via importlib.metadata.
-[project.entry-points."agentship.engines"]
-echo = "agentship.engines.echo:EchoEngine"
-langgraph = "agentship.engines.langgraph.engine:LangGraphEngine"
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/agentship"]
+# Workspace-root config only. This directory is a monorepo of installable packages
+# under `packages/*/` — each has its own `[project]` + `[build-system]`. The root is
+# NOT itself a distributable package; it only carries the shared ruff + pytest config
+# so every package is linted and tested the same way from one place.
 
 [tool.ruff]
 target-version = "py313"
 line-length = 100
-src = ["src", "tests"]
+src = ["packages"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "BLE"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["tests"]
+testpaths = ["packages"]

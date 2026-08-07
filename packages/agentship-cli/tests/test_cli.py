@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from agentship_cli.main import main
 from click.testing import CliRunner
 
-from agentship.cli import main
-
-_HELLO = Path(__file__).resolve().parent.parent / "examples" / "hello.yaml"
+_HELLO = Path(__file__).resolve().parents[3] / "examples" / "hello.yaml"
 
 
 def test_cli_run_prints_echo_output():

@@ -5,7 +5,6 @@ from __future__ import annotations
 import textwrap
 
 import pytest
-
 from agentship.errors import SpecError
 from agentship.spec import AgentSpec, load_spec, resolve_code
 

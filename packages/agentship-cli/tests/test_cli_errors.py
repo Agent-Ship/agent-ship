@@ -21,11 +21,10 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 
 import pytest
-from click.testing import CliRunner
-
-from agentship.cli import main
 from agentship.engines.base import ENGINES, Engine, EngineCapabilities, Event, Result
 from agentship.errors import ModelError
+from agentship_cli.main import main
+from click.testing import CliRunner
 
 
 class _RaisingEngine(Engine):
@@ -121,7 +120,7 @@ def test_credential_mapping_raises_model_error_naming_the_env_var():
     helper an exception whose message is the real LiteLLM 'Missing credentials'
     text, and asserts the mapped error is actionable and names ``OPENAI_API_KEY``.
     """
-    from agentship.models import map_model_error
+    from agentship_langgraph.models import map_model_error
 
     underlying = RuntimeError(
         "litellm.InternalServerError: OpenAIException - Missing credentials. "

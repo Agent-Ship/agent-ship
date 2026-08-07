@@ -12,18 +12,17 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import agentship_langgraph.models as models_module
 import litellm
 import pytest
-from langchain_core.language_models.fake_chat_models import FakeListChatModel
-
-import agentship.models as models_module
 from agentship.runtime import build_agent
+from langchain_core.language_models.fake_chat_models import FakeListChatModel
 
 # See tests/test_live_model.py for why these two lines are needed for VCR replay.
 litellm.disable_aiohttp_transport = True
 os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
 
-EXAMPLE = str(Path(__file__).resolve().parent.parent / "examples" / "assistant.yaml")
+EXAMPLE = str(Path(__file__).resolve().parents[3] / "examples" / "assistant.yaml")
 
 
 async def test_assistant_example_runs_offline_with_fake_model(monkeypatch):

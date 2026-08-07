@@ -16,11 +16,10 @@ import importlib
 import os
 from pathlib import Path
 
+from agentship_cli.main import main
 from click.testing import CliRunner
 
-from agentship.cli import main
-
-_HELLO = Path(__file__).resolve().parent.parent / "examples" / "hello.yaml"
+_HELLO = Path(__file__).resolve().parents[3] / "examples" / "hello.yaml"
 
 #: A var name no real environment would set, used to observe ``.env`` loading.
 _PROBE = "AGENTSHIP_TEST_VAR"
@@ -94,7 +93,7 @@ def test_run_does_not_override_an_exported_var(tmp_path, monkeypatch):
 
 
 def test_importing_agentship_does_not_load_dotenv(tmp_path, monkeypatch):
-    """Importing ``agentship`` / ``agentship.cli`` must NOT load a ``.env``.
+    """Importing ``agentship`` / ``agentship_cli.main`` must NOT load a ``.env``.
 
     This is the critical anti-footgun guard: a ``.env`` sitting in the cwd must be
     invisible to a bare import (and therefore to pytest), so the suite never fires
@@ -105,11 +104,12 @@ def test_importing_agentship_does_not_load_dotenv(tmp_path, monkeypatch):
     (tmp_path / ".env").write_text(f"{_PROBE}=fromdotenv\n")
     monkeypatch.chdir(tmp_path)
     try:
+        import agentship_cli.main
+
         import agentship
-        import agentship.cli
 
         importlib.reload(agentship)
-        importlib.reload(agentship.cli)
+        importlib.reload(agentship_cli.main)
         assert _PROBE not in os.environ
     finally:
         _clear_probe()

@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agentship"
+version = "0.0.1"
+description = "AgentShip — an open, recipe-first harness that wires best-of-breed agent libraries behind small, stable seams. Meta-package: one install for the everyday stack (kernel + default engine + CLI)."
+readme = "README.md"
+requires-python = ">=3.13"
+license = "Apache-2.0"
+# The everyday stack: `pip install agentship` gives a real agent out of the box —
+# kernel + the default LangGraph engine + the CLI.
+dependencies = [
+    "agentship-core",
+    "agentship-langgraph",
+    "agentship-cli",
+]
+
+# Pillar extras. Each is EMPTY for now — a placeholder so `pip install agentship[all]`
+# is stable from day one. Each extra gains its sibling dist as that pillar's phase
+# lands (mcp → P3, memory → P8, observability → P7, service → P9/P10).
+[project.optional-dependencies]
+mcp = []            # phase 3 — MCP tools (client) + agent-as-MCP-server
+memory = []         # phase 8 — long-term, cross-session memory
+observability = []  # phase 7 — OpenTelemetry + Langfuse/Opik
+service = []        # phase 9/10 — the REST/SSE agent gateway
+all = []            # every pillar extra above (kept in sync as extras gain deps)
+
+# Meta-package: no modules of its own, just dependencies.
+[tool.hatch.build.targets.wheel]
+bypass-selection = true

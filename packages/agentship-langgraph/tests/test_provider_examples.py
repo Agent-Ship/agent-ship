@@ -10,7 +10,7 @@ Two paths, mirroring the assistant example:
   run against the real provider (replayed keyless via its cassette). Providers
   without a cassette skip with an actionable reason instead of failing.
 
-The example files and the :data:`~tests.providers.LIVE_PROVIDERS` matrix are kept
+The example files and the :data:`~providers.LIVE_PROVIDERS` matrix are kept
 in lockstep: every provider has one ``examples/providers/<name>.yaml``.
 """
 
@@ -19,19 +19,18 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import agentship_langgraph.models as models_module
 import litellm
 import pytest
-from langchain_core.language_models.fake_chat_models import FakeListChatModel
-from tests.providers import LIVE_PROVIDERS, Provider
-
-import agentship.models as models_module
 from agentship.runtime import build_agent
+from langchain_core.language_models.fake_chat_models import FakeListChatModel
+from providers import LIVE_PROVIDERS, Provider
 
 # See tests/test_live_model.py for why these two lines are needed for VCR replay.
 litellm.disable_aiohttp_transport = True
 os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
 
-EXAMPLES_DIR = Path(__file__).resolve().parent.parent / "examples" / "providers"
+EXAMPLES_DIR = Path(__file__).resolve().parents[3] / "examples" / "providers"
 CASSETTE_DIR = Path(__file__).resolve().parent / "cassettes" / "test_providers"
 
 

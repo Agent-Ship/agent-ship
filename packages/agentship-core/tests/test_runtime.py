@@ -5,7 +5,6 @@ from __future__ import annotations
 import gc
 
 import pytest
-
 from agentship.context import current_run, get_run_context
 from agentship.engines.base import Result
 from agentship.middleware import Middleware

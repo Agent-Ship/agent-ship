@@ -15,7 +15,7 @@ repos:
       # venv's pytest; `pass_filenames: false` so it runs the whole (fast) suite.
       - id: pytest
         name: pytest (full suite)
-        entry: pytest -q
+        entry: pytest packages -q
         language: system
         pass_filenames: false
         always_run: true

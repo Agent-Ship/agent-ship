@@ -13,9 +13,8 @@ import sys
 from pathlib import Path
 
 import click
-
-from .errors import AgentShipError
-from .runtime import build_agent
+from agentship.errors import AgentShipError
+from agentship.runtime import build_agent
 
 
 def load_env_for_run(env_file: str | None) -> None:

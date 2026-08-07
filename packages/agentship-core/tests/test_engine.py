@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from agentship.errors import CapabilityError, EngineNotFoundError
 from agentship.runtime import build_agent
 from agentship.spec import AgentSpec, MemberSpec

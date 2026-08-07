@@ -1,6 +1,6 @@
 """T3 proof: the LangGraph engine, offline, with a fake chat model injected.
 
-No network: these monkeypatch :func:`agentship.models.resolve_model` so the engine
+No network: these monkeypatch :func:`agentship_langgraph.models.resolve_model` so the engine
 compiles a graph over a deterministic ``FakeListChatModel``. They assert the real
 mechanism — ``run`` returns the model's answer through the compiled graph;
 ``stream`` yields >=1 content chunk then a terminal ``done``; and the capability
@@ -9,20 +9,19 @@ gate rejects ``output:``/``members:`` on this engine (it declares neither).
 
 from __future__ import annotations
 
+import agentship_langgraph.models as models_module
 import pytest
-from langchain_core.language_models.fake_chat_models import FakeListChatModel
-
-import agentship.models as models_module
 from agentship.errors import CapabilityError
 from agentship.runtime import build_agent
 from agentship.spec import AgentSpec, MemberSpec
+from langchain_core.language_models.fake_chat_models import FakeListChatModel
 
 
 @pytest.fixture
 def fake_model(monkeypatch):
     """Inject a deterministic fake chat model in place of the real LiteLLM one.
 
-    Patches :func:`agentship.models.resolve_model` (the engine's model seam) so
+    Patches :func:`agentship_langgraph.models.resolve_model` (the engine's model seam) so
     ``build_agent`` compiles its graph over a ``FakeListChatModel`` — proving the
     wiring end to end with zero network calls.
     """

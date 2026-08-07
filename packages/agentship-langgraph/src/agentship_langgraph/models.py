@@ -16,10 +16,9 @@ from __future__ import annotations
 from typing import Any
 
 import litellm
+from agentship.errors import ModelError, SpecError
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_litellm import ChatLiteLLM
-
-from .errors import ModelError, SpecError
 
 # On a failed call LiteLLM prints its own "Give Feedback / Get Help" + "LiteLLM.Info"
 # banner straight to stderr (not via the logging level), which buries AgentShip's

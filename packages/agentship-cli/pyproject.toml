@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agentship-cli"
+version = "0.0.1"
+description = "AgentShip CLI — the `agentship` command that loads a YAML spec, builds the agent, and runs (or streams) one turn."
+readme = "README.md"
+requires-python = ">=3.13"
+license = "Apache-2.0"
+dependencies = [
+    "agentship-core",
+    "click>=8",
+    "python-dotenv>=1",  # the CLI loads a .env for real runs (scoped to the entry point)
+]
+
+# The console script that owns the `agentship` command.
+[project.scripts]
+agentship = "agentship_cli.main:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agentship_cli"]

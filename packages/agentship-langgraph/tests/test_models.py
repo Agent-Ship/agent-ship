@@ -9,10 +9,9 @@ raises :class:`~agentship.errors.SpecError`.
 from __future__ import annotations
 
 import pytest
-from langchain_litellm import ChatLiteLLM
-
 from agentship.errors import SpecError
-from agentship.models import resolve_model
+from agentship_langgraph.models import resolve_model
+from langchain_litellm import ChatLiteLLM
 
 
 def test_resolve_model_builds_chatlitellm_with_model_and_temperature():

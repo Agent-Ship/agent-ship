@@ -7,7 +7,7 @@ LiteLLM-backed chat model and returns its answer. It declares ``streaming`` only
 the kernel's capability gate rejects specs that ask for them until then.
 
 **Model injection.** The chat model is resolved through
-:func:`agentship.models.resolve_model` (referenced via the module, not imported by
+:func:`agentship_langgraph.models.resolve_model` (referenced via the module, not imported by
 name), so offline tests monkeypatch that function to inject a fake model and run
 with no network. Production runs resolve a real ``ChatLiteLLM``.
 """
@@ -17,18 +17,17 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from agentship.engines.base import Engine, EngineCapabilities, Event, Result
 from langchain_core.messages import AIMessageChunk, HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
 from typing_extensions import TypedDict
 
-from ... import models
-from ..base import Engine, EngineCapabilities, Event, Result
+from . import models
 
 if TYPE_CHECKING:
+    from agentship.context import RunContext
+    from agentship.spec import AgentSpec
     from langchain_core.language_models.chat_models import BaseChatModel
-
-    from ...context import RunContext
-    from ...spec import AgentSpec
 
 
 class _AgentState(TypedDict):
@@ -71,7 +70,7 @@ class LangGraphEngine(Engine):
     Declares ``streaming`` only for now; ``tool_calling``/``structured_output``/
     ``multi_agent`` stay ``False`` so the capability gate honestly rejects those
     (they arrive in later phases). The model is resolved via
-    :func:`agentship.models.resolve_model`, which offline tests monkeypatch to
+    :func:`agentship_langgraph.models.resolve_model`, which offline tests monkeypatch to
     inject a fake chat model.
     """
 
@@ -83,7 +82,7 @@ class LangGraphEngine(Engine):
 
         Resolves the chat model from ``spec.model`` (raising
         :class:`~agentship.errors.SpecError` on an empty model via
-        :func:`~agentship.models.resolve_model`), then wires one ``agent`` node
+        :func:`~agentship_langgraph.models.resolve_model`), then wires one ``agent`` node
         that invokes it. Returns the compiled artifact the kernel hands back to
         ``run``/``stream``.
         """
@@ -112,7 +111,7 @@ class LangGraphEngine(Engine):
         the content of the final message (the model's reply). A provider/credential
         failure is turned into an actionable
         :class:`~agentship.errors.ModelError` via
-        :func:`agentship.models.map_model_error` (which names the missing env var);
+        :func:`agentship_langgraph.models.map_model_error` (which names the missing env var);
         the original exception is chained so ``--debug`` still shows the full cause.
         """
         try:
@@ -135,7 +134,7 @@ class LangGraphEngine(Engine):
         stream once the graph completes. A provider/credential failure raised while
         streaming is turned into an actionable
         :class:`~agentship.errors.ModelError` via
-        :func:`agentship.models.map_model_error`, chaining the original cause.
+        :func:`agentship_langgraph.models.map_model_error`, chaining the original cause.
         """
         stream = compiled.graph.astream(
             {"messages": compiled.initial_messages(text)},
