@@ -8,11 +8,14 @@ Mirrors the phase ladder in `architecture.md`. Detailed per-phase tasks live in
 |---|---|---|
 | 0 Foundation | [x] | walking skeleton green (4834a87); `agentship run` → `echo: hi`; 30 tests, ruff clean. CI workflow committed (runs on push). |
 | 1 Real model | [x] | LangGraph+LiteLLM single agent; clean errors + `.env` (G3/G4); provider-matrix infra + examples (G5, ae8ecbe); 59 pass/4 skip keyless, ruff clean. ⚠️ live proof still OpenAI-only — Claude/Gemini recording BLOCKED on working keys |
-| 2 Identity backbone | [ ] | |
+| **Packaging split** | [~] | chore: single package → monorepo of packages (agentship-core + -langgraph + -cli + agentship meta); do before P2 |
+| **Demo repo** | [~] | formalize `agentship-demo/`: git init, pin, .env.example, rewrite to single agent, cassette smoke test |
+| 1b Model tuning + local | [ ] | `params:` (temperature/max_tokens) + `api_base` → Ollama/vLLM/self-hosted |
+| 2 Sessions (multi-turn) | [ ] | caller session_id → LangGraph thread_id; remembers across turns |
 | 3 Tools | [ ] | |
-| 4 Structured output | [ ] | |
-| 5 Streaming | [ ] | |
-| 6 Multi-agent + handoffs | [ ] | |
+| 4 Structured I/O | [ ] | |
+| 5 Streaming polish | [ ] | cost + terminal error/done (delta over P1 chunking) |
+| 6 Multi-agent + handoffs | [ ] | incl. per-member models |
 | 7 Observability | [ ] | |
 | 8 Memory | [ ] | |
 | 9 Durable | [ ] | |

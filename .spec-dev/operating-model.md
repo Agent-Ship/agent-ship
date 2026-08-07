@@ -16,16 +16,32 @@ TEST (written FIRST)
    assert X". Routing asserts input-dependent branches; streaming asserts len(chunks)>1.
  □ If the capability has a live path, its cassette is recorded and replays in CI.
 GATE
- □ Full suite green locally AND CI green on the pushed branch.
+ □ Full suite green locally (all packages). CI green on the branch too — ONCE CI is
+   enabled; CI is currently OFF by owner's call, so until then local-green is the gate.
 DEMO
- □ examples/ exercises the new capability, with a test and refreshed recorded output.
-TRACKER (the moment CI is green)
+ □ examples/ exercises the new capability, with a test + refreshed recorded output; AND
+   the demo repo's smoke test still passes against the capability it uses.
+TRACKER (the moment it lands)
  □ phase file [~]→[x] with (commit SHA, proof test::name)
  □ tasks.md status reconciled
  □ Notion tracker row flipped, same SHA
 ```
 Anti-gaming rule: an `[x]` line must NAME the passing assertion that proves it. If you
 can't name one, it isn't done.
+
+## Phase-spec template (write this BEFORE building a phase — stops mid-build "gaps")
+The last phase discovered clean-errors, `.env`, and the provider matrix *mid-build* (G3/G4/G5)
+because its spec was thin. Every `phase-NN-*.md` must enumerate, up front:
+- **The new assertion** the phase proves (the delta over what already ships) + its demo.
+- **Tasks** (one commit each) with the failing test that defines each.
+- **User-facing states**: every error/edge a user hits (bad key, missing file, timeout…) and
+  the exact message — error UX is a task, not a gap.
+- **Secrets/credentials**: how any key is supplied (and that tests stay hermetic — no paid
+  calls from `pytest`).
+- **Live-proof plan**: which cassettes get recorded, with which model/provider, and how they
+  replay keyless.
+- **Package impact**: which package this phase creates/changes + any new entry-point group.
+- **Gaps**: a section to log anything found during the build, then fill it.
 
 ## The loop (per task)
 1. **Claim** one task; flip it `[ ]→[~]` in the phase file + Notion. Branch off `main`
