@@ -3,10 +3,22 @@
 The conformance matrix's whole value rests on two claims:
 
 1. *A declared-but-not-implemented capability makes its cell fail.* We prove this
-   **behaviourally**: a ``_LiarEngine`` declares ``streaming=True`` but its
-   ``stream()`` never emits the terminal ``done`` event the streaming contract
-   requires. Running that engine through the **real** ``_prove_streaming`` cell must
-   fail — a real behavioural lie, caught by the real cell, not a hard-coded raise.
+   **behaviourally** for every positive prove-cell: one throwaway "liar" engine per
+   capability declares the capability but does not deliver it, and running it through
+   the **real** prove cell must fail — a real behavioural lie, caught by the real cell,
+   not a hard-coded raise. The liars are:
+
+   - ``_LiarEngine`` declares ``streaming=True`` but its ``stream()`` never emits the
+     terminal ``done`` event the streaming contract requires;
+   - ``_StructuredOutputLiar`` declares ``structured_output="native"`` but its ``run()``
+     returns a plain ``str`` instead of a validated pydantic model;
+   - ``_MultiAgentLiar`` declares ``multi_agent=True`` but its built agent exposes no
+     coordinated ``members`` structure;
+   - ``_DurabilityLiar`` declares ``durability="checkpoint"`` but its built agent exposes
+     no ``checkpointer``/resume seam.
+
+   Each is non-vacuous: had the liar actually delivered the capability, its cell would
+   pass and the ``pytest.raises`` guarding the test would itself fail.
 
 2. *No capability field can be declared without being proven or explicitly deferred.*
    The coverage guard walks every ``EngineCapabilities`` field and asserts it is
@@ -69,12 +81,86 @@ class _LiarEngine(Engine):
         # No `done` event: the stream ends here, violating the streaming contract.
 
 
+class _StructuredOutputLiar(Engine):
+    """Declares native ``structured_output`` but its run returns a plain ``str``.
+
+    The gate passes at build time (the capability is declared), so the matrix takes
+    the positive branch and drives ``run()``. But ``run()`` returns a plain string, not
+    a validated pydantic model — exactly the over-claim ``_prove_structured_output``
+    exists to catch. If this engine actually returned a validated model, that cell would
+    pass and the ``pytest.raises`` guarding the test would itself fail; the raise proves
+    the cell is non-vacuous (it catches a real lie, not a hard-coded one).
+    """
+
+    name = "structured_output_liar"
+    capabilities = EngineCapabilities(structured_output="native")
+
+    def build(self, spec: Any) -> Any:
+        """Nothing to compile — hand the spec straight back like the echo engine."""
+        return spec
+
+    async def run(self, compiled: Any, text: str, ctx: Any) -> Result:
+        """Return a plain string, breaking the structured-output promise."""
+        return Result(output=f"liar: {text}")
+
+
+class _MultiAgentLiar(Engine):
+    """Declares ``multi_agent=True`` but its built agent exposes no coordinated members.
+
+    The request spec declares members and the gate passes (the capability is declared),
+    so the matrix drives the positive cell, which inspects the compiled artifact. This
+    engine's ``build`` returns a bare object with no ``members`` structure — the over-claim
+    ``_prove_multi_agent`` catches. Had ``build`` surfaced a real coordinated team, the
+    cell would pass and the ``pytest.raises`` would fail; the raise proves the cell is
+    non-vacuous.
+    """
+
+    name = "multi_agent_liar"
+    capabilities = EngineCapabilities(multi_agent=True)
+
+    def build(self, spec: Any) -> Any:
+        """Return a bare object with no ``members`` — nothing coordinated to inspect."""
+        return object()
+
+    async def run(self, compiled: Any, text: str, ctx: Any) -> Result:
+        """Echo-like; unused by the multi-agent cell (which inspects the artifact)."""
+        return Result(output=f"liar: {text}")
+
+
+class _DurabilityLiar(Engine):
+    """Declares ``durability="checkpoint"`` but exposes no ``checkpointer``/resume seam.
+
+    The request spec asks for checkpoint durability and the gate passes (the capability
+    is declared), so the matrix drives the positive cell, which inspects the compiled
+    artifact for a resume seam. This engine's ``build`` returns a bare object with no
+    ``checkpointer`` — the over-claim ``_prove_durability`` catches. Had ``build`` exposed
+    a real checkpointer, the cell would pass and the ``pytest.raises`` would fail; the
+    raise proves the cell is non-vacuous.
+    """
+
+    name = "durability_liar"
+    capabilities = EngineCapabilities(durability="checkpoint")
+
+    def build(self, spec: Any) -> Any:
+        """Return a bare object with no ``checkpointer`` — no resume seam to inspect."""
+        return object()
+
+    async def run(self, compiled: Any, text: str, ctx: Any) -> Result:
+        """Echo-like; unused by the durability cell (which inspects the artifact)."""
+        return Result(output=f"liar: {text}")
+
+
+def _capability(name: str):
+    """Return the descriptor named ``name`` from the shared catalogue."""
+    for capability in CAPABILITIES:
+        if capability.name == name:
+            return capability
+    raise AssertionError(f"{name} capability missing from the catalogue")
+
+
 def _streaming_capability():
     """Return the ``streaming`` descriptor from the shared catalogue."""
-    for capability in CAPABILITIES:
-        if capability.name == "streaming":
-            return capability
-    raise AssertionError("streaming capability missing from the catalogue")
+    return _capability("streaming")
 
 
 async def test_behavioural_liar_makes_the_streaming_cell_fail(registry_snapshot: None) -> None:
@@ -100,14 +186,98 @@ async def test_behavioural_liar_makes_the_streaming_cell_fail(registry_snapshot:
             await capability.prove(agent)
 
 
-def test_liar_engine_does_not_leak_after_the_meta_test() -> None:
-    """After the guarded meta-test, the liar is gone — the registry is clean again.
+async def test_behavioural_liar_makes_the_structured_output_cell_fail(
+    registry_snapshot: None,
+) -> None:
+    """A liar that declares structured_output but returns a plain ``str`` fails the cell.
 
-    Runs after ``test_behavioural_liar_makes_the_streaming_cell_fail`` (which
-    registered the liar under the snapshot guard) and asserts the throwaway engine
-    did not survive into the shared registry, so the parametrized matrix never sees it.
+    Registers the liar (auto-removed by ``registry_snapshot``), then runs the exact
+    positive cell the matrix would run for ``structured_output``. Because the engine
+    declares the capability (so the gate passes and the positive branch is taken) but
+    its ``run`` returns a plain string instead of a validated pydantic model, the real
+    ``_prove_structured_output`` cell must raise. Non-vacuity check: if the liar had
+    returned a validated model, the cell would pass and this ``pytest.raises`` would
+    fail — so a red here proves the cell catches a real behavioural lie.
     """
-    assert "liar" not in ENGINES.names()
+    ENGINES.register(_StructuredOutputLiar.name, _StructuredOutputLiar)
+    capability = _capability("structured_output")
+
+    # Sanity: the liar really declares the capability, so the matrix takes the positive
+    # branch (drives run) rather than the rejection branch.
+    assert capability.declared(_StructuredOutputLiar.capabilities)
+    assert capability.prove is not None
+
+    with offline(_StructuredOutputLiar.name):
+        agent = build_agent(capability.request_spec(_StructuredOutputLiar.name))
+        with pytest.raises(AssertionError, match="structured_output"):
+            await capability.prove(agent)
+
+
+async def test_behavioural_liar_makes_the_multi_agent_cell_fail(
+    registry_snapshot: None,
+) -> None:
+    """A liar that declares multi_agent but exposes no coordinated members fails the cell.
+
+    Registers the liar (auto-removed by ``registry_snapshot``), then runs the exact
+    positive cell the matrix would run for ``multi_agent``. The engine declares the
+    capability (so the gate passes and the positive branch is taken) but its ``build``
+    returns an artifact with no ``members`` structure, so the real ``_prove_multi_agent``
+    cell must raise. Non-vacuity check: if ``build`` had surfaced a real coordinated team,
+    the cell would pass and this ``pytest.raises`` would fail — so a red here proves the
+    cell catches a real over-claim.
+    """
+    ENGINES.register(_MultiAgentLiar.name, _MultiAgentLiar)
+    capability = _capability("multi_agent")
+
+    assert capability.declared(_MultiAgentLiar.capabilities)
+    assert capability.prove is not None
+
+    with offline(_MultiAgentLiar.name):
+        agent = build_agent(capability.request_spec(_MultiAgentLiar.name))
+        with pytest.raises(AssertionError, match="members"):
+            await capability.prove(agent)
+
+
+async def test_behavioural_liar_makes_the_durability_cell_fail(
+    registry_snapshot: None,
+) -> None:
+    """A liar that declares durability but exposes no resume seam fails the cell.
+
+    Registers the liar (auto-removed by ``registry_snapshot``), then runs the exact
+    positive cell the matrix would run for ``durability``. The engine declares the
+    capability (so the gate passes and the positive branch is taken) but its ``build``
+    returns an artifact with no ``checkpointer`` seam, so the real ``_prove_durability``
+    cell must raise. Non-vacuity check: if ``build`` had exposed a real checkpointer, the
+    cell would pass and this ``pytest.raises`` would fail — so a red here proves the cell
+    catches a real over-claim.
+    """
+    ENGINES.register(_DurabilityLiar.name, _DurabilityLiar)
+    capability = _capability("durability")
+
+    assert capability.declared(_DurabilityLiar.capabilities)
+    assert capability.prove is not None
+
+    with offline(_DurabilityLiar.name):
+        agent = build_agent(capability.request_spec(_DurabilityLiar.name))
+        with pytest.raises(AssertionError, match="checkpointer"):
+            await capability.prove(agent)
+
+
+def test_liar_engines_do_not_leak_after_the_meta_tests() -> None:
+    """After the guarded meta-tests, every throwaway liar is gone — the registry is clean.
+
+    Runs after the behavioural-liar tests (each of which registered its liar under the
+    snapshot guard) and asserts none of the throwaway engines survived into the shared
+    registry, so the parametrized matrix never sees them.
+    """
+    names = ENGINES.names()
+    for liar_name in (
+        "liar",
+        "structured_output_liar",
+        "multi_agent_liar",
+        "durability_liar",
+    ):
+        assert liar_name not in names, f"{liar_name!r} leaked into the shared registry"
 
 
 def test_every_capability_field_is_covered_or_explicitly_deferred() -> None:
