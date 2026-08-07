@@ -1,4 +1,4 @@
-# Phase 0 — Foundation (walking skeleton)  🔧 IN PROGRESS
+# Phase 0 — Foundation (walking skeleton)  ✅ DONE
 
 Goal: the smallest thing that runs end-to-end on a clean, scalable kernel, with the
 operating model (TDD + CI + tracking) in place from the first commit. No vendor code yet —

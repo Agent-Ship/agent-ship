@@ -18,6 +18,11 @@ TEST (written FIRST)
 GATE
  □ Full suite green locally (all packages). CI green on the branch too — ONCE CI is
    enabled; CI is currently OFF by owner's call, so until then local-green is the gate.
+ □ **Adversarial review passed.** Before a phase flips to done, an INDEPENDENT reviewer
+   (a subagent that did not build it) tries to BREAK it — edge cases, false "done" claims,
+   fakes that don't exercise the real mechanism, secrets/leaks, silent drops. Every real
+   finding is fixed or logged as a tracked gap in the phase file. A phase is not done until
+   someone tried to break it and failed (or the breaks are fixed).
 DEMO
  □ examples/ exercises the new capability, with a test + refreshed recorded output; AND
    the demo repo's smoke test still passes against the capability it uses.
