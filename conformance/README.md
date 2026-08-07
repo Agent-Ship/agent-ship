@@ -25,6 +25,7 @@ impossible to ship an engine that claims a capability it does not implement.
 | `engines.py` | per-engine offline harness (fake models) so cells never hit the network |
 | `test_matrix.py` | the parametrized grid: one cell per (engine, capability) |
 | `test_over_declaration.py` | meta-test: a throwaway liar engine proves the matrix catches over-claims |
+| `test_echo_vendor_free.py` | the neutrality proof: `echo` is the vendor-free, non-LangGraph engine implementing every base class with zero langchain/langgraph/litellm import — swap the engine, the base classes don't move |
 | `conftest.py` | live engine discovery + a registry snapshot guard (throwaway engines can't leak) |
 
 The grid is built live from the plugin registry (`ENGINES.names()`), so any

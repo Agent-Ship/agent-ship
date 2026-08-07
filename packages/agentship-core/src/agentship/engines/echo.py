@@ -4,6 +4,11 @@
 with no external dependencies, so the whole spine (author → build → run/stream →
 CLI) is exercisable without an LLM, an API key, or a heavy runtime. It stays
 forever as the conformance target every real engine is tested against.
+
+**Neutrality proof.** Echo is the vendor-free, non-LangGraph engine that proves the
+base classes hold when you swap the engine: it implements every base-class method
+with zero LangChain/LangGraph/LiteLLM import. ``conformance/test_echo_vendor_free.py``
+locks that in — it goes red the instant echo imports a vendor library.
 """
 
 from __future__ import annotations
