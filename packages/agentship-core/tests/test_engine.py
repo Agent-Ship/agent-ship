@@ -91,6 +91,20 @@ def test_assert_supports_spec_method_gates_a_spec():
         caps.assert_supports_spec(bad_spec)
 
 
+def test_assert_supports_uses_canonical_signature():
+    """``assert_supports`` matches canonical §13.5: ``(cap, value=True)``, no engine_name.
+
+    The low-level check takes only the capability name and expected value. ``value``
+    defaults to ``True`` so the common boolean case reads ``assert_supports("streaming")``.
+    A declared capability passes; an undeclared one raises ``CapabilityError``.
+    """
+    caps = EngineCapabilities(streaming=True)
+    caps.assert_supports("streaming")  # declared, value defaults to True → no raise
+    caps.assert_supports("streaming", True)  # explicit value → no raise
+    with pytest.raises(CapabilityError):
+        caps.assert_supports("tool_calling")  # not declared → raise
+
+
 def test_assert_spec_supported_wrapper_still_delegates():
     """The free ``assert_spec_supported`` wrapper still works (imported by the CLI)."""
     from agentship.engines.base import assert_spec_supported

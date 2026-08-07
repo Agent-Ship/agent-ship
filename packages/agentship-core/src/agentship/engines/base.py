@@ -90,16 +90,20 @@ class EngineCapabilities(BaseModel):
     #: Whether the engine can coordinate a multi-agent team (members).
     multi_agent: bool = False
 
-    def assert_supports(self, engine_name: str, cap: str, value: object = True) -> None:
+    def assert_supports(self, cap: str, value: object = True) -> None:
         """Raise :class:`CapabilityError` unless this engine declares ``cap == value``.
 
-        Low-level check used by capability-gated methods (e.g. the default
-        :meth:`Engine.stream`) to fail fast with an actionable message.
+        The canonical §13.5 low-level check: it takes only the capability name and the
+        expected value (defaulting to ``True`` for the common boolean case), so there is
+        a single canonical signature ``assert_supports(cap, value=True)``. It has no
+        engine-name argument — engine-name context belongs to the spec-level
+        :meth:`assert_supports_spec`, which knows the engine. Used by capability-gated
+        methods (e.g. the default :meth:`Engine.stream`) to fail fast.
         """
         actual = getattr(self, cap, None)
         if actual != value:
             raise CapabilityError(
-                f"engine {engine_name!r} does not support {cap}={value!r} "
+                f"capability {cap}={value!r} is not supported "
                 f"(declares {cap}={actual!r}); use a different engine or remove "
                 f"the requirement"
             )
@@ -235,7 +239,7 @@ class Engine(ABC):
         The default asserts the capability (raising :class:`CapabilityError` since
         it is not declared here) — streaming engines override this method.
         """
-        self.capabilities.assert_supports(self.name, "streaming", True)
+        self.capabilities.assert_supports("streaming", True)
         raise NotImplementedError  # pragma: no cover - overridden by streaming engines
         yield  # pragma: no cover - makes this an async generator for type-checkers
 
