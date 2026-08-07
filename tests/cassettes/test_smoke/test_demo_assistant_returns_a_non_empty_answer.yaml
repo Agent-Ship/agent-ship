@@ -1,0 +1,116 @@
+interactions:
+- request:
+    body: '{"messages":[{"content":"You are a concise research assistant. When asked
+      a question, answer directly and accurately in one or two short sentences. Prefer
+      concrete facts over hedging, and never pad the answer with filler.","role":"system"},{"content":"Give
+      one productivity tip.","role":"user"}],"model":"gpt-4o-mini"}'
+    headers:
+      accept:
+      - application/json
+      accept-encoding:
+      - gzip, deflate, zstd
+      authorization:
+      - REDACTED
+      connection:
+      - keep-alive
+      content-length:
+      - '318'
+      content-type:
+      - application/json
+      host:
+      - api.openai.com
+      user-agent:
+      - OpenAI/Python 2.53.0
+      x-stainless-arch:
+      - arm64
+      x-stainless-async:
+      - 'false'
+      x-stainless-lang:
+      - python
+      x-stainless-os:
+      - MacOS
+      x-stainless-package-version:
+      - 2.53.0
+      x-stainless-raw-response:
+      - 'true'
+      x-stainless-read-timeout:
+      - '600.0'
+      x-stainless-retry-count:
+      - '0'
+      x-stainless-runtime:
+      - CPython
+      x-stainless-runtime-version:
+      - 3.13.3
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAA/6rmUlBQykxRslJQSs5ILEnOLcjRdXU0yneqygIAAAD//4xSy27bMBC8+ysInqXA
+        ke3Yzge0KHop0BY9FIFAUSuJlcRlyVUeKPzvXUp2pDQJ0AsBzeysZna3b+nx+PDpw4+PhXPN8XP7
+        dWiNl0lUYPELNF1UVxpZB2TQTrT2oAhi1+v94WZ9k+0Pm5HosYQuympH6RbT3liTZutsm6736fXh
+        rG7QaAhc9pM/hfgzvtGnLeGR4XVyQXoIQdXA2KWIQY9dRKQKwQRSlmQykxotgR2tfw8gqAHxBdkW
+        ehTfQDfW/B7gVjygb0WFXmQ7wSYHgpDEYitItSCU2KUTLArO2gpCUSAGYo0eglC2FM5jOWgy94ae
+        rpYWPFRDUHEMdui6BaGsRVJxjGP4uzNzeo7bYc1di/CPVFY8xtDk7CTwCjhaIHRyZE/83o1jHV5M
+        SnKj3lFO2ML4u912aifnZc5ktjuTxAa7Gd8fkze65SWQMl1YrEVqpRsoZ+W8QzWUBhfEapH5tZm3
+        ek+5ja3/p/1MaA2OrzR3HkqjXwaeyzzEU3+v7HnGo2EZwN/z7eZkwMc9lFCpoZsOUIanQNDnvKwa
+        vPNmusLK5ZuNOhabw15ncnVa/QUAAP//AwBoU0AQkwMAAA==
+    headers:
+      access-control-expose-headers:
+      - X-Request-ID
+      - CF-Ray
+      - CF-Ray
+      alt-svc:
+      - h3=":443"; ma=86400
+      cf-cache-status:
+      - DYNAMIC
+      cf-ray:
+      - a272300b9d294346-EWR
+      connection:
+      - keep-alive
+      content-encoding:
+      - gzip
+      content-type:
+      - application/json
+      date:
+      - Fri, 07 Aug 2026 00:33:04 GMT
+      openai-organization:
+      - user-79ankten5jtxtqw6gkjhqs65
+      openai-processing-ms:
+      - '512'
+      openai-project:
+      - proj_ecZZRvNRll6W2v9rvdlNnbIv
+      openai-version:
+      - '2020-10-01'
+      server:
+      - cloudflare
+      set-cookie:
+      - __cf_bm=OLg9bHK01Psln.Kf6ZlWK62bslGJiBu7fWSUaUS4e4Q-1786062783.300667-1.0.1.1-oVaaXqPF.mAgGRqyIYp74R1j.1SPzgNkuJA4eqgxSboouW_vigvLpxtJ2fuHp5f6HXRLyzqU9VeiBccEan5EoXg5W3r2WahJ5JA0OaIrCAgbGJlkgB.OHqrF50BaOQEM;
+        HttpOnly; SameSite=None; Secure; Path=/; Domain=api.openai.com; Expires=Fri,
+        07 Aug 2026 01:03:04 GMT
+      strict-transport-security:
+      - max-age=31536000; includeSubDomains; preload
+      transfer-encoding:
+      - chunked
+      x-content-type-options:
+      - nosniff
+      x-openai-proxy-wasm:
+      - v0.1
+      x-ratelimit-limit-requests:
+      - '5000'
+      x-ratelimit-limit-tokens:
+      - '2000000'
+      x-ratelimit-remaining-requests:
+      - '4999'
+      x-ratelimit-remaining-tokens:
+      - '1999941'
+      x-ratelimit-reset-requests:
+      - 12ms
+      x-ratelimit-reset-tokens:
+      - 1ms
+      x-request-id:
+      - req_fb260184fbbf4ca4b23d594cfb207fd1
+    status:
+      code: 200
+      message: OK
+version: 1
