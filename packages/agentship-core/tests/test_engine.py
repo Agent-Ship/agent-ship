@@ -45,8 +45,8 @@ def test_multimodal_in_is_a_set_of_modalities():
 
 
 def test_modality_enum_has_the_canonical_members():
-    """``Modality`` is the canonical text/image/audio/video/pdf StrEnum."""
-    assert {m.value for m in Modality} == {"text", "image", "audio", "video", "pdf"}
+    """``Modality`` is the canonical text/image/audio/video/pdf/file StrEnum (DESIGN §3.1)."""
+    assert {m.value for m in Modality} == {"text", "image", "audio", "video", "pdf", "file"}
 
 
 def test_streaming_on_echo_is_allowed():

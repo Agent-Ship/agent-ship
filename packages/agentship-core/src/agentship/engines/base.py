@@ -36,6 +36,7 @@ class Modality(StrEnum):
     exactly which non-text inputs it handles — a set, not a bool, because "accepts
     images" and "accepts audio" are independent claims that must not collapse into
     one on/off flag. ``TEXT`` is listed for completeness; every engine handles text.
+    ``FILE`` covers a generic uploaded file that is not one of the typed media above.
     """
 
     TEXT = "text"
@@ -43,6 +44,7 @@ class Modality(StrEnum):
     AUDIO = "audio"
     VIDEO = "video"
     PDF = "pdf"
+    FILE = "file"
 
 
 class EngineCapabilities(BaseModel):
