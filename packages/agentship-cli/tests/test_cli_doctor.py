@@ -1,0 +1,97 @@
+"""Tests for ``agentship doctor`` — the offline config checker.
+
+``doctor`` loads every agent YAML, resolves its engine from the registry, and
+validates the spec against the engine's declared capabilities. These tests use
+click's ``CliRunner`` and never touch the network: a green agent exits 0 with an
+``OK`` line; an unknown-engine agent exits 1 with an actionable ``pip install``
+hint and no traceback; a capability-mismatch agent exits 1 with a clear reason.
+"""
+
+from __future__ import annotations
+
+from agentship_cli.main import main
+from click.testing import CliRunner
+
+
+def _write(path, text: str):
+    """Write ``text`` to ``path`` and return the path (test scaffolding helper)."""
+    path.write_text(text)
+    return path
+
+
+def test_doctor_green_agent_exits_zero_with_ok_line(tmp_path):
+    """A valid echo agent reports OK and exits 0."""
+    _write(tmp_path / "good.yaml", "name: good\nengine: echo\nprompt: hi\n")
+    runner = CliRunner()
+    result = runner.invoke(main, ["doctor", str(tmp_path / "good.yaml")])
+    assert result.exit_code == 0, result.output
+    assert "OK" in result.output
+    assert "good" in result.output
+
+
+def test_doctor_unknown_engine_gives_install_hint_no_traceback(tmp_path):
+    """An unknown-but-known engine name yields an actionable pip hint, exit 1, no traceback."""
+    _write(tmp_path / "bad.yaml", "name: bad\nengine: langgraph\nmodel: openai/gpt-4o-mini\n")
+    # Simulate langgraph not being installed by hiding it from the registry.
+    runner = CliRunner()
+    from agentship.engines.base import ENGINES
+
+    saved = ENGINES.get("langgraph")
+    ENGINES._providers.pop("langgraph", None)
+    ENGINES._discovered = True  # prevent re-discovery from re-adding it
+    try:
+        result = runner.invoke(main, ["doctor", str(tmp_path / "bad.yaml")])
+    finally:
+        if saved is not None:
+            ENGINES._providers["langgraph"] = saved
+        ENGINES._discovered = False
+    assert result.exit_code == 1
+    assert "langgraph" in result.output
+    assert "pip install" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_doctor_capability_mismatch_is_a_clear_reason(tmp_path):
+    """An echo agent asking for structured output (unsupported) exits 1 with a clear reason."""
+    _write(
+        tmp_path / "mismatch.yaml",
+        "name: mismatch\nengine: echo\noutput_schema: my.mod:Model\n",
+    )
+    runner = CliRunner()
+    result = runner.invoke(main, ["doctor", str(tmp_path / "mismatch.yaml")])
+    assert result.exit_code == 1
+    assert "mismatch" in result.output
+    assert "structured output" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_doctor_bad_yaml_is_a_clean_error(tmp_path):
+    """Malformed YAML reports a clean Error/status line, exit 1, no traceback."""
+    _write(tmp_path / "broken.yaml", "name: [unclosed\n")
+    runner = CliRunner()
+    result = runner.invoke(main, ["doctor", str(tmp_path / "broken.yaml")])
+    assert result.exit_code == 1
+    assert "Traceback" not in result.output
+
+
+def test_doctor_agents_dir_scans_every_yaml(tmp_path):
+    """--agents-dir validates every *.yaml; one bad agent fails the whole run."""
+    agents = tmp_path / "agents"
+    agents.mkdir()
+    _write(agents / "ok.yaml", "name: ok\nengine: echo\n")
+    _write(agents / "bad.yaml", "name: bad\nengine: echo\noutput_schema: m:M\n")
+    runner = CliRunner()
+    result = runner.invoke(main, ["doctor", "--agents-dir", str(agents)])
+    assert result.exit_code == 1
+    assert "ok" in result.output
+    assert "bad" in result.output
+
+
+def test_doctor_empty_dir_is_a_clean_error(tmp_path):
+    """An agents dir with no YAML files reports a clean error, not a crash."""
+    agents = tmp_path / "agents"
+    agents.mkdir()
+    runner = CliRunner()
+    result = runner.invoke(main, ["doctor", "--agents-dir", str(agents)])
+    assert result.exit_code == 1
+    assert "Traceback" not in result.output

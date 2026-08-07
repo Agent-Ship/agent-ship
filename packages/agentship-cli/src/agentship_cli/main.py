@@ -1,9 +1,17 @@
 """The ``agentship`` command-line interface.
 
-A thin wrapper over the harness: ``agentship run <file> --input ... [--stream]``
-loads a YAML spec, builds the agent, runs (or streams) one turn, and prints the
-output. Harness errors are caught and printed as a clean message with a non-zero
-exit code rather than a traceback.
+A thin wrapper over the harness. It offers:
+
+- ``agentship run <file> --input ... [--stream]`` — load a YAML spec, build the
+  agent, run (or stream) one turn, and print the output.
+- ``agentship doctor [--agents-dir DIR | FILE]`` — validate agent specs against
+  their engines' declared capabilities, with actionable install hints when an
+  engine's package is not installed.
+- ``agentship init [DIR]`` — scaffold a new single-tenant project.
+- ``agentship new-agent NAME`` — scaffold one starter agent spec.
+
+Harness errors are caught and printed as a clean message with a non-zero exit
+code rather than a traceback.
 """
 
 from __future__ import annotations
@@ -13,8 +21,32 @@ import sys
 from pathlib import Path
 
 import click
+from agentship.engines.base import ENGINES, assert_spec_supported
 from agentship.errors import AgentShipError
 from agentship.runtime import build_agent
+from agentship.spec import load_spec
+
+#: Known engine name → the ``pip install`` target that provides it. Used by
+#: ``doctor`` to turn "engine not installed" into an actionable fix instead of an
+#: opaque lookup miss. An engine not in this map gets a generic hint naming the
+#: conventional ``agentship-<name>`` package.
+ENGINE_PIP_TARGET = {
+    "langgraph": "agentship[langgraph]",
+    "pydantic-ai": "agentship-pydantic-ai",
+    "pydantic_ai": "agentship-pydantic-ai",
+    "adk": "agentship-adk",
+}
+
+
+def _install_hint(engine: str) -> str:
+    """Return the ``pip install`` command that provides ``engine``.
+
+    Looks the engine up in :data:`ENGINE_PIP_TARGET`; falls back to the
+    conventional ``agentship-<engine>`` package name for an unknown engine so the
+    message is always actionable rather than an opaque lookup miss.
+    """
+    target = ENGINE_PIP_TARGET.get(engine, f"agentship-{engine}")
+    return f"pip install {target}"
 
 
 def load_env_for_run(env_file: str | None) -> None:
@@ -115,3 +147,129 @@ async def _stream_turn(agent, input_text: str) -> None:
             click.echo(event.data, nl=False)
         elif event.type == "done":
             click.echo()  # newline terminating the streamed line
+
+
+def _check_agent(path: Path) -> str | None:
+    """Validate one agent spec; return an error reason string, or ``None`` if OK.
+
+    Loads the YAML into an :class:`~agentship.spec.AgentSpec`, resolves its engine
+    from the :data:`~agentship.engines.base.ENGINES` registry, and runs the
+    capability gate (:func:`~agentship.engines.base.assert_spec_supported`). Every
+    expected failure is turned into a clean one-line reason (never a traceback):
+
+    - a missing file / malformed YAML / unknown field raises ``SpecError`` →
+      its actionable message;
+    - an engine whose package is not installed → a reason naming the exact
+      ``pip install`` fix (via :func:`_install_hint`), not an opaque lookup miss;
+    - a capability mismatch raises ``CapabilityError`` → its actionable message.
+
+    Any :class:`~agentship.errors.AgentShipError` is caught here so the caller can
+    print a status line; unexpected errors propagate to be handled once at the
+    command level (and re-raised under ``--debug``).
+    """
+    spec = load_spec(path)  # SpecError on bad YAML / unknown field — caught by caller
+    if spec.engine not in ENGINES:
+        return (
+            f"engine {spec.engine!r} not installed — {_install_hint(spec.engine)} "
+            f"(installed: {ENGINES.names()})"
+        )
+    engine = ENGINES.get(spec.engine)()
+    assert_spec_supported(engine, spec)  # CapabilityError on mismatch — caught by caller
+    return None
+
+
+def _agent_files(agents_dir: Path) -> list[Path]:
+    """Return the sorted ``*.yaml``/``*.yml`` files directly under ``agents_dir``.
+
+    Only the directory's own specs are listed (not a deep walk), so a nested
+    Python package or fixtures folder is never mistaken for an agent spec.
+    """
+    files = sorted(p for p in agents_dir.iterdir() if p.suffix in (".yaml", ".yml"))
+    return files
+
+
+@main.command()
+@click.argument("target", type=click.Path(exists=True), required=False)
+@click.option(
+    "--agents-dir",
+    "agents_dir",
+    type=click.Path(exists=True, file_okay=False),
+    default=None,
+    help="Validate every *.yaml agent in this directory (default: ./agents).",
+)
+@click.option(
+    "--debug", is_flag=True, help="Re-raise on an unexpected failure for the full traceback."
+)
+def doctor(target: str | None, agents_dir: str | None, debug: bool) -> None:
+    """Validate agent specs against their engines' declared capabilities.
+
+    Give either a single spec FILE or ``--agents-dir DIR`` (default ``./agents``).
+    For each agent this loads the YAML, resolves its ``engine`` from the registry,
+    and runs the capability gate. It prints a per-agent status line — ``OK`` or
+    ``✗`` with the reason — and exits ``1`` if *any* agent is invalid, ``0`` when
+    all pass.
+
+    Every expected failure is a clean status/``Error:`` line, never a traceback:
+    a bad YAML, an unknown field, an engine whose package is not installed (the
+    reason names the exact ``pip install`` fix), or a capability mismatch. Pass
+    ``--debug`` to re-raise an *unexpected* error with its full traceback.
+    """
+    try:
+        files = _resolve_doctor_targets(target, agents_dir)
+    except AgentShipError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+    any_bad = False
+    for path in files:
+        try:
+            reason = _check_agent(path)
+        except AgentShipError as exc:
+            # Expected harness failure (bad spec / capability mismatch): show it as
+            # this agent's reason, keep checking the rest.
+            reason = str(exc)
+        except Exception as exc:  # noqa: BLE001 - unexpected; surface cleanly or re-raise
+            if debug:
+                raise
+            reason = f"{exc} (run with --debug for the full traceback)"
+        if reason is None:
+            click.echo(f"OK   {path.name}")
+        else:
+            any_bad = True
+            click.echo(f"✗    {path.name}: {reason}")
+
+    if any_bad:
+        sys.exit(1)
+
+
+def _resolve_doctor_targets(target: str | None, agents_dir: str | None) -> list[Path]:
+    """Resolve the doctor command's inputs to a non-empty list of spec files.
+
+    Precedence: an explicit ``target`` file/dir wins; otherwise ``--agents-dir``;
+    otherwise the default ``./agents`` directory. Raises
+    :class:`~agentship.errors.AgentShipError` with an actionable message when the
+    default ``./agents`` is missing or when a chosen directory holds no specs, so
+    the caller prints one clean ``Error:`` line rather than silently passing.
+    """
+    if target is not None:
+        path = Path(target)
+        if path.is_dir():
+            return _require_specs(path)
+        return [path]
+    if agents_dir is not None:
+        return _require_specs(Path(agents_dir))
+    default = Path("agents")
+    if not default.is_dir():
+        raise AgentShipError(
+            "no agents to check — pass a spec FILE, use --agents-dir DIR, or run "
+            "from a project with an ./agents directory (see `agentship init`)"
+        )
+    return _require_specs(default)
+
+
+def _require_specs(agents_dir: Path) -> list[Path]:
+    """Return the specs under ``agents_dir`` or raise when there are none."""
+    files = _agent_files(agents_dir)
+    if not files:
+        raise AgentShipError(f"no *.yaml agent specs found in {agents_dir}")
+    return files
