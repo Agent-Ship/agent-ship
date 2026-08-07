@@ -1,0 +1,51 @@
+# AgentShip demo — a separate, forkable app that depends on AgentShip strictly as
+# a *pinned* dependency. Its job is to prove the *published* packages actually work
+# end to end (it catches packaging bugs the in-tree suite can't: a missing
+# entry-point, an unwired extra, an import that only resolves from the source tree).
+#
+# INTENDED install once AgentShip is published to PyPI:
+#
+#     pip install "agentship[langgraph]==0.0.1"
+#
+# The pin below is the contract: this demo tracks exactly one framework version and
+# bumps deliberately. Until the framework is published, use the editable-local dev
+# mode instead (see the [dev] extra and the Makefile / requirements-dev.txt).
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agentship-demo"
+version = "0.0.1"
+description = "A small, forkable app built on AgentShip — proves the published framework runs a real single-agent turn."
+readme = "README.md"
+requires-python = ">=3.13"
+license = "Apache-2.0"
+
+# The pinned framework dependency. This is the whole point of the demo repo:
+# install AgentShip the way a real user would, by version.
+#
+# NOTE: this line is the *future* published form. It cannot be resolved from PyPI
+# yet because AgentShip is not published. Until then, install editable-local via
+# `make install` (or `pip install -r requirements-dev.txt`), which points at the
+# sibling monorepo checkout at ../agentship/packages/*.
+dependencies = [
+    "agentship[langgraph]==0.0.1",
+]
+
+[project.optional-dependencies]
+# Test tooling for the keyless cassette smoke test.
+test = [
+    "pytest>=8",
+    "pytest-recording>=0.13",
+]
+
+[tool.hatch.build.targets.wheel]
+# This repo ships YAML agents + tests, not an importable package.
+bypass-selection = true
+
+[tool.pytest.ini_options]
+# The framework's agents run async; the smoke test awaits agent.run(...).
+asyncio_mode = "auto"
+testpaths = ["tests"]

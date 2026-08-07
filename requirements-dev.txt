@@ -1,0 +1,19 @@
+# Dev / editable-local install of the AgentShip framework.
+#
+# The framework is not on PyPI yet, so the pinned `agentship[langgraph]==0.0.1` in
+# pyproject.toml cannot resolve from an index. Until it publishes, install the three
+# framework packages editable from the sibling monorepo checkout, plus the test
+# tooling. Run this from the demo repo root, inside a venv:
+#
+#     python -m venv .venv && source .venv/bin/activate
+#     pip install -r requirements-dev.txt
+#
+# (or just `make install`, which does exactly this.)
+
+-e ../agentship/packages/agentship-core
+-e ../agentship/packages/agentship-langgraph
+-e ../agentship/packages/agentship-cli
+
+pytest>=8
+pytest-asyncio>=0.24
+pytest-recording>=0.13

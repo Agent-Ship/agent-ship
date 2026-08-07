@@ -1,0 +1,13 @@
+# Python virtual environment (created locally via `make install`)
+.venv/
+
+# Byte-compiled / caches
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Real provider credentials — NEVER commit. Use .env.example as the template.
+.env
+
+# NOTE: tests/cassettes/ is intentionally NOT ignored — the recorded, redacted
+# HTTP round-trips are committed so the smoke test replays keyless in CI.

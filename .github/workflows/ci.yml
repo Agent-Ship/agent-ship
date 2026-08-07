@@ -1,0 +1,57 @@
+name: ci
+
+# Runs the demo's keyless cassette smoke test on every push / PR. No API key is
+# needed: the committed cassette in tests/cassettes/ is replayed offline.
+#
+# LIMITATION: AgentShip is not published to PyPI yet, so this workflow installs the
+# framework editable from a SIBLING CHECKOUT of the monorepo (it checks out the
+# `agentship` repo next to this one). Once the framework publishes, delete the
+# second checkout step and the editable install below and replace them with the
+# pinned form:
+#
+#     pip install "agentship[langgraph]==0.0.1"
+#
+# (matching the pin in pyproject.toml).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the demo repo
+        uses: actions/checkout@v4
+        with:
+          path: agentship-demo
+
+      # TEMPORARY: needed only until the framework is on PyPI. Assumes the framework
+      # monorepo lives at `<owner>/agentship`; adjust `repository`/`ref` as needed.
+      - name: Check out the AgentShip framework (sibling, editable-local install)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/agentship
+          path: agentship
+        continue-on-error: true  # tolerate until the framework repo/pin is public
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install (editable-local until framework is published)
+        working-directory: agentship-demo
+        run: |
+          python -m pip install --upgrade pip
+          # Once published, replace this whole block with:
+          #   pip install "agentship[langgraph]==0.0.1" pytest pytest-asyncio pytest-recording
+          pip install -r requirements-dev.txt
+
+      - name: Run the keyless cassette smoke test
+        working-directory: agentship-demo
+        env:
+          # Ensure no real key leaks into the run; the cassette is replayed offline.
+          OPENAI_API_KEY: ""
+        run: pytest -q
