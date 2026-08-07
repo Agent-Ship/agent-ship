@@ -114,11 +114,21 @@ def test_none_params_are_dropped_before_threading(capture_resolve):
     assert capture_resolve["kwargs"] == {"temperature": 0.5}
 
 
-def test_output_schema_rejected_by_capability_gate(fake_model):
-    """This engine does not declare structured_output — an output: spec fails fast."""
+def test_output_schema_is_accepted_native_structured_output(fake_model):
+    """This engine declares structured_output='native', so an output_schema builds fine."""
+    agent = build_agent(
+        AgentSpec(name="a", engine="langgraph", model="x", output_schema="mypkg:Answer")
+    )
+    assert agent.spec.output_schema == "mypkg:Answer"
+
+
+def test_durability_rejected_by_capability_gate(fake_model):
+    """This engine declares durability='none' — a checkpoint request fails fast."""
     with pytest.raises(CapabilityError) as exc:
-        build_agent(AgentSpec(name="a", engine="langgraph", model="x", output="MyModel"))
-    assert "structured output" in str(exc.value).lower()
+        build_agent(
+            AgentSpec(name="a", engine="langgraph", model="x", durability="checkpoint")
+        )
+    assert "durable" in str(exc.value).lower() or "durability" in str(exc.value).lower()
 
 
 def test_members_rejected_by_capability_gate(fake_model):

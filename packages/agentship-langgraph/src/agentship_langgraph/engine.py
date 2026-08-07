@@ -2,9 +2,11 @@
 
 :class:`LangGraphEngine` compiles an :class:`~agentship.spec.AgentSpec` into a
 minimal LangGraph graph: one node that sends ``[system prompt, user input]`` to a
-LiteLLM-backed chat model and returns its answer. It declares ``streaming`` only —
-``tool_calling``/``structured_output``/``multi_agent`` arrive in later phases, and
-the kernel's capability gate rejects specs that ask for them until then.
+LiteLLM-backed chat model and returns its answer. It honestly declares only what
+this minimal graph delivers — ``streaming``, ``tool_calling`` (the model can bind
+tools), ``structured_output="native"`` (LangChain validates), and the LiteLLM
+providers it reaches. ``multi_agent``/``durability`` stay off, so the kernel's
+capability gate rejects specs that ask for them until those phases land.
 
 **Model injection.** The chat model is resolved through
 :func:`agentship_langgraph.models.resolve_model` (referenced via the module, not imported by
@@ -67,15 +69,22 @@ class _CompiledAgent:
 class LangGraphEngine(Engine):
     """AgentShip's default engine — a single-agent LangGraph graph over LiteLLM.
 
-    Declares ``streaming`` only for now; ``tool_calling``/``structured_output``/
-    ``multi_agent`` stay ``False`` so the capability gate honestly rejects those
-    (they arrive in later phases). The model is resolved via
-    :func:`agentship_langgraph.models.resolve_model`, which offline tests monkeypatch to
-    inject a fake chat model.
+    Declares only what this minimal graph honestly delivers: ``streaming``,
+    ``tool_calling`` (LangChain models bind tools), ``structured_output="native"``
+    (LangChain validates the structured target), and the LiteLLM ``providers`` it
+    can reach. ``multi_agent`` and ``durability`` stay off so the capability gate
+    rejects those until their phases land. The model is resolved via
+    :func:`agentship_langgraph.models.resolve_model`, which offline tests
+    monkeypatch to inject a fake chat model.
     """
 
     name: ClassVar[str] = "langgraph"
-    capabilities: ClassVar[EngineCapabilities] = EngineCapabilities(streaming=True)
+    capabilities: ClassVar[EngineCapabilities] = EngineCapabilities(
+        providers=["openai", "anthropic", "gemini", "ollama"],
+        streaming=True,
+        tool_calling=True,
+        structured_output="native",
+    )
 
     def build(self, spec: AgentSpec) -> _CompiledAgent:
         """Compile the spec into a single-node graph over the resolved chat model.

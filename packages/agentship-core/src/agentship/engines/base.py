@@ -16,9 +16,9 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ..errors import CapabilityError
 from ..registry import Registry
@@ -29,17 +29,42 @@ if TYPE_CHECKING:  # avoid import cycles; these are only referenced in signature
 
 
 class EngineCapabilities(BaseModel):
-    """An engine's honest declaration of what it supports.
+    """An engine's honest declaration of what it supports (canonical, DESIGN §3.1).
 
     The kernel validates a spec against this before building. Anything not
-    declared is treated as unsupported and requesting it fails fast.
+    declared is treated as unsupported and requesting it fails fast (*declare,
+    don't fake*). Every field defaults to off/none so declaring the class is
+    non-breaking: an engine opts in only to what it truly supports.
+
+    A few fields are intentionally simpler than their final DESIGN §3.1 shape
+    (``hitl`` and ``multimodal_in`` are plain booleans, not the richer
+    ``Literal``/``set[Modality]`` forms) — the richer shapes arrive with the
+    phases that consume them; the kernel needs only the honest on/off signal now.
     """
 
+    #: LiteLLM provider prefixes this engine can reach (e.g. ``["openai", "anthropic"]``).
+    providers: list[str] = Field(default_factory=list)
+    #: Whether the engine can stream tokens/events for a turn.
     streaming: bool = False
+    #: Whether the engine can call tools during a turn.
     tool_calling: bool = False
-    structured_output: bool = False
+    #: Whether the engine supports human-in-the-loop pauses (plain bool for now).
+    hitl: bool = False
+    #: Durable-execution mode: ``"none"`` (crash = fail), ``"checkpoint"`` (core
+    #: drives ``resume``), or ``"workflow"`` (core re-attaches to an external runtime).
+    durability: Literal["none", "checkpoint", "workflow"] = "none"
+    #: Whether the engine's graph may contain cycles.
+    cycles: bool = False
+    #: Structured-output support: ``"none"``, ``"native"`` (engine validates), or
+    #: ``"assisted"`` (core middleware validates + retries).
+    structured_output: Literal["none", "native", "assisted"] = "none"
+    #: Whether the engine accepts non-text input (plain bool for now; the
+    #: ``set[Modality]`` form arrives in the multimodal phase).
+    multimodal_in: bool = False
+    #: Whether the engine supports live bidirectional (voice) streaming.
+    live_bidi: bool = False
+    #: Whether the engine can coordinate a multi-agent team (members).
     multi_agent: bool = False
-    resume: bool = False
 
     def assert_supports(self, engine_name: str, cap: str, value: object = True) -> None:
         """Raise :class:`CapabilityError` unless this engine declares ``cap == value``.
@@ -127,8 +152,9 @@ def assert_spec_supported(engine: Engine, spec: AgentSpec) -> None:
     an actionable :class:`~agentship.errors.CapabilityError` before the agent runs:
 
     - ``streaming`` → ``capabilities.streaming``
-    - ``output`` (a declared schema) → ``capabilities.structured_output``
+    - ``output_schema`` (a declared schema) → ``capabilities.structured_output != "none"``
     - ``members`` (a declared team) → ``capabilities.multi_agent``
+    - ``durability`` (other than ``"none"``) → ``capabilities.durability != "none"``
     """
     caps = engine.capabilities
     if spec.streaming and not caps.streaming:
@@ -136,15 +162,21 @@ def assert_spec_supported(engine: Engine, spec: AgentSpec) -> None:
             f"engine {spec.engine!r} does not support streaming, but the spec sets "
             f"streaming: true — use a streaming engine or remove the field"
         )
-    if spec.output and not caps.structured_output:
+    if spec.output_schema and caps.structured_output == "none":
         raise CapabilityError(
             f"engine {spec.engine!r} does not support structured output, but the spec "
-            f"declares output: {spec.output!r} — use a structured-output engine or "
-            f"remove the field"
+            f"declares output_schema: {spec.output_schema!r} — use a structured-output "
+            f"engine or remove the field"
         )
     if spec.members and not caps.multi_agent:
         raise CapabilityError(
             f"engine {spec.engine!r} does not support multi-agent coordination, but the "
             f"spec declares {len(spec.members)} member(s) — use a multi-agent engine or "
             f"remove the `members` field so they are not silently dropped"
+        )
+    if spec.durability != "none" and caps.durability == "none":
+        raise CapabilityError(
+            f"engine {spec.engine!r} does not support durable execution, but the spec "
+            f"requests durability: {spec.durability!r} — use a durable engine or remove "
+            f"the field"
         )
