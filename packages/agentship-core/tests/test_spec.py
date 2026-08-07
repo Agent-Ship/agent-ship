@@ -6,7 +6,7 @@ import textwrap
 
 import pytest
 from agentship.errors import SpecError
-from agentship.spec import AgentSpec, load_spec, resolve_code
+from agentship.spec import AgentSpec, ModelParams, load_spec, resolve_code
 
 
 def test_load_spec_parses_yaml(tmp_path):
@@ -40,6 +40,77 @@ def test_non_mapping_yaml_raises(tmp_path):
     """A YAML document that isn't a mapping is rejected with a clear message."""
     f = tmp_path / "a.yaml"
     f.write_text("- just\n- a\n- list\n")
+    with pytest.raises(SpecError):
+        load_spec(f)
+
+
+def test_params_block_loads_and_populates_model_params(tmp_path):
+    """A ``params:`` block loads into a ModelParams with its fields populated."""
+    f = tmp_path / "a.yaml"
+    f.write_text(
+        textwrap.dedent(
+            """
+            name: tuned
+            engine: langgraph
+            model: openai/gpt-4o-mini
+            params:
+              temperature: 0.2
+              max_tokens: 256
+              api_base: http://localhost:11434
+              timeout: 30
+            """
+        )
+    )
+    spec = load_spec(f)
+    assert isinstance(spec.params, ModelParams)
+    assert spec.params.temperature == 0.2
+    assert spec.params.max_tokens == 256
+    assert spec.params.api_base == "http://localhost:11434"
+    assert spec.params.timeout == 30
+
+
+def test_params_unknown_key_is_rejected(tmp_path):
+    """extra='forbid' on ModelParams: an unknown param key is a loud SpecError."""
+    f = tmp_path / "a.yaml"
+    f.write_text(
+        textwrap.dedent(
+            """
+            name: tuned
+            engine: langgraph
+            model: openai/gpt-4o-mini
+            params:
+              top_p: 0.9
+            """
+        )
+    )
+    with pytest.raises(SpecError) as exc:
+        load_spec(f)
+    # The offending key name appears in the error.
+    assert "top_p" in str(exc.value)
+
+
+def test_params_omitted_still_builds(tmp_path):
+    """A spec with no ``params:`` block loads with params defaulting to None."""
+    f = tmp_path / "a.yaml"
+    f.write_text("name: hello\nengine: langgraph\nmodel: openai/gpt-4o-mini\n")
+    spec = load_spec(f)
+    assert spec.params is None
+
+
+def test_params_bad_type_raises_spec_error(tmp_path):
+    """A non-numeric temperature is a validation error surfaced as SpecError."""
+    f = tmp_path / "a.yaml"
+    f.write_text(
+        textwrap.dedent(
+            """
+            name: tuned
+            engine: langgraph
+            model: openai/gpt-4o-mini
+            params:
+              temperature: hot
+            """
+        )
+    )
     with pytest.raises(SpecError):
         load_spec(f)
 

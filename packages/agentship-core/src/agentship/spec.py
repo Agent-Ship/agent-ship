@@ -37,6 +37,29 @@ class MemberSpec(BaseModel):
     model: str | None = None
 
 
+class ModelParams(BaseModel):
+    """Generation params applied to the resolved model (the tuning layer).
+
+    These are the knobs that tune how the model generates and where it is reached,
+    threaded to the engine's model call so a spec can be tuned or pointed at a
+    local / self-hosted server without touching code. Every field is optional; an
+    omitted field keeps the model's own default. Unknown keys are rejected so a
+    typo (e.g. ``top_p`` where the field is unsupported) fails loudly at load time.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: Sampling temperature (higher = more random). ``None`` keeps the model default.
+    temperature: float | None = None
+    #: Maximum number of tokens to generate. ``None`` keeps the model default.
+    max_tokens: int | None = None
+    #: Base URL of an OpenAI-compatible endpoint (e.g. a local Ollama/vLLM server).
+    #: ``None`` uses the provider's hosted endpoint.
+    api_base: str | None = None
+    #: Per-request timeout in seconds. ``None`` keeps the model default.
+    timeout: float | None = None
+
+
 class AgentSpec(BaseModel):
     """The declarative definition of an agent (the authoring/control layer).
 
@@ -51,6 +74,9 @@ class AgentSpec(BaseModel):
     code: str | None = None  # optional Python-authored build fn: "module:function"
     model: str | None = None
     prompt: str | None = None
+    #: Optional generation params (temperature/max_tokens/api_base/timeout) threaded
+    #: to the resolved model. ``None`` means the model keeps all its own defaults.
+    params: ModelParams | None = None
     members: list[MemberSpec] | None = None
     #: When true the agent asks to stream tokens; the capability gate rejects this
     #: at build time on an engine that does not declare streaming.

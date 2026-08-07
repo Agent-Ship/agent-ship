@@ -17,11 +17,12 @@ from .errors import (
 )
 from .middleware import Middleware
 from .runtime import RunnableAgent, build_agent
-from .spec import AgentSpec, MemberSpec, load_spec, resolve_code
+from .spec import AgentSpec, MemberSpec, ModelParams, load_spec, resolve_code
 
 __all__ = [
     "AgentSpec",
     "MemberSpec",
+    "ModelParams",
     "load_spec",
     "resolve_code",
     "RunContext",
