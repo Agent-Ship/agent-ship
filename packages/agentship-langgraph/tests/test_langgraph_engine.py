@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import agentship_langgraph.models as models_module
 import pytest
-from agentship.errors import CapabilityError
+from agentship.errors import CapabilityError, ModelError
 from agentship.runtime import build_agent
-from agentship.spec import AgentSpec, MemberSpec
+from agentship.spec import AgentSpec, MemberSpec, ModelParams
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
 
 
@@ -57,6 +57,63 @@ async def test_stream_yields_content_chunks_then_done(fake_model):
     assert sum(1 for e in events if e.type == "done") == 1
 
 
+@pytest.fixture
+def capture_resolve(monkeypatch):
+    """Patch resolve_model to record the (model, kwargs) it is called with.
+
+    Returns a dict the test reads after ``build_agent``; the fake model it hands
+    back keeps the graph offline. Proves the engine threads ``spec.params`` into
+    the model call — the real mechanism, not a constant.
+    """
+    calls: dict = {}
+    fake = FakeListChatModel(responses=["ok"])
+
+    def fake_resolve(model, **kwargs):
+        """Record the call and return a deterministic fake model."""
+        calls["model"] = model
+        calls["kwargs"] = kwargs
+        return fake
+
+    monkeypatch.setattr(models_module, "resolve_model", fake_resolve)
+    return calls
+
+
+def test_params_thread_into_resolve_model(capture_resolve):
+    """spec.params (temperature/api_base) reach resolve_model as kwargs."""
+    build_agent(
+        AgentSpec(
+            name="a",
+            engine="langgraph",
+            model="ollama/llama3",
+            params=ModelParams(temperature=0.2, api_base="http://localhost:11434"),
+        )
+    )
+    assert capture_resolve["model"] == "ollama/llama3"
+    assert capture_resolve["kwargs"]["temperature"] == 0.2
+    assert capture_resolve["kwargs"]["api_base"] == "http://localhost:11434"
+
+
+def test_no_params_passes_no_extra_kwargs(capture_resolve):
+    """A spec with no params threads no extra kwargs — the model keeps its defaults."""
+    build_agent(AgentSpec(name="a", engine="langgraph", model="openai/gpt-4o-mini"))
+    assert capture_resolve["model"] == "openai/gpt-4o-mini"
+    assert capture_resolve["kwargs"] == {}
+
+
+def test_none_params_are_dropped_before_threading(capture_resolve):
+    """A params block with only None fields threads no kwargs (exclude_none)."""
+    build_agent(
+        AgentSpec(
+            name="a",
+            engine="langgraph",
+            model="openai/gpt-4o-mini",
+            params=ModelParams(temperature=0.5),
+        )
+    )
+    # Only the supplied field is threaded; the unset (None) ones are dropped.
+    assert capture_resolve["kwargs"] == {"temperature": 0.5}
+
+
 def test_output_schema_rejected_by_capability_gate(fake_model):
     """This engine does not declare structured_output — an output: spec fails fast."""
     with pytest.raises(CapabilityError) as exc:
@@ -72,3 +129,34 @@ def test_members_rejected_by_capability_gate(fake_model):
     with pytest.raises(CapabilityError) as exc:
         build_agent(spec)
     assert "multi-agent" in str(exc.value).lower()
+
+
+async def test_dead_api_base_surfaces_clean_model_error(monkeypatch):
+    """A connection failure (e.g. dead api_base) surfaces as ModelError, not a traceback.
+
+    Simulates the local-model "server not running" case offline: the fake model
+    raises a connection-style error on invoke; the engine must map it through
+    ``map_model_error``'s generic branch into a clean ModelError naming the model.
+    """
+
+    class _DeadModel:
+        """A stand-in model whose call fails as if the api_base were unreachable."""
+
+        def invoke(self, messages):
+            """Raise a connection-style error, as a dead local server would."""
+            raise ConnectionError("Connection refused to http://localhost:11434")
+
+    monkeypatch.setattr(models_module, "resolve_model", lambda *a, **k: _DeadModel())
+    agent = build_agent(
+        AgentSpec(
+            name="a",
+            engine="langgraph",
+            model="ollama/llama3",
+            params=ModelParams(api_base="http://localhost:11434"),
+        )
+    )
+    with pytest.raises(ModelError) as exc:
+        await agent.run("hi")
+    # The generic branch names the model and carries the cause — no credential demand.
+    assert "ollama/llama3" in str(exc.value)
+    assert "OPENAI_API_KEY" not in str(exc.value)

@@ -82,11 +82,14 @@ class LangGraphEngine(Engine):
 
         Resolves the chat model from ``spec.model`` (raising
         :class:`~agentship.errors.SpecError` on an empty model via
-        :func:`~agentship_langgraph.models.resolve_model`), then wires one ``agent`` node
-        that invokes it. Returns the compiled artifact the kernel hands back to
-        ``run``/``stream``.
+        :func:`~agentship_langgraph.models.resolve_model`), threading any
+        ``spec.params`` (temperature/max_tokens/api_base/timeout) as generation
+        params — ``None`` fields are dropped so the model keeps its own defaults.
+        Then wires one ``agent`` node that invokes it and returns the compiled
+        artifact the kernel hands back to ``run``/``stream``.
         """
-        model = models.resolve_model(spec.model or "")
+        params = spec.params.model_dump(exclude_none=True) if spec.params else {}
+        model = models.resolve_model(spec.model or "", **params)
         graph = self._build_graph(model)
         return _CompiledAgent(graph, spec.prompt, spec.model or "")
 
