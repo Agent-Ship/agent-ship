@@ -115,6 +115,41 @@ def test_params_bad_type_raises_spec_error(tmp_path):
         load_spec(f)
 
 
+def test_output_schema_and_durability_load_from_yaml(tmp_path):
+    """The first-class ``output_schema`` ref and ``durability`` mode load from YAML."""
+    f = tmp_path / "a.yaml"
+    f.write_text(
+        textwrap.dedent(
+            """
+            name: structured
+            engine: echo
+            output_schema: mypkg.models:Answer
+            durability: checkpoint
+            """
+        )
+    )
+    spec = load_spec(f)
+    assert spec.output_schema == "mypkg.models:Answer"
+    assert spec.durability == "checkpoint"
+
+
+def test_output_schema_and_durability_default_to_none(tmp_path):
+    """With neither field set, output_schema is None and durability is 'none'."""
+    f = tmp_path / "a.yaml"
+    f.write_text("name: plain\nengine: echo\n")
+    spec = load_spec(f)
+    assert spec.output_schema is None
+    assert spec.durability == "none"
+
+
+def test_bad_durability_value_is_rejected(tmp_path):
+    """An out-of-range durability value is a loud SpecError, not a silent accept."""
+    f = tmp_path / "a.yaml"
+    f.write_text("name: a\nengine: echo\ndurability: forever\n")
+    with pytest.raises(SpecError):
+        load_spec(f)
+
+
 def test_code_hook_resolves_file_ref(tmp_path):
     """A ``code: path.py:function`` reference resolves to the real callable, which runs."""
     mod = tmp_path / "author.py"

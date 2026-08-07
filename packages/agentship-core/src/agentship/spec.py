@@ -13,6 +13,7 @@ import importlib
 import importlib.util
 from collections.abc import Callable
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -81,9 +82,15 @@ class AgentSpec(BaseModel):
     #: When true the agent asks to stream tokens; the capability gate rejects this
     #: at build time on an engine that does not declare streaming.
     streaming: bool = False
-    #: A declared output schema reference; the gate rejects it on an engine that
-    #: does not declare structured output. Held as a reference string for now.
-    output: str | None = None
+    #: First-class declared structured-output target (DESIGN §13.11), a
+    #: ``"module:Model"`` reference resolved when the structured-output middleware
+    #: lands. The gate rejects it on an engine whose ``structured_output`` is
+    #: ``"none"``. Held as a reference string for now; optional.
+    output_schema: str | None = None
+    #: Requested durable-execution mode. ``"none"`` (default) needs nothing; the
+    #: gate rejects ``"checkpoint"``/``"workflow"`` on an engine that declares
+    #: ``durability="none"`` so a crash-recovery promise is never silently dropped.
+    durability: Literal["none", "checkpoint", "workflow"] = "none"
 
 
 def load_spec(path: str | Path) -> AgentSpec:
