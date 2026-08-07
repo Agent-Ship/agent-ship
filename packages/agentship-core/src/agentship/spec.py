@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
 from .errors import SpecError
 
@@ -73,6 +73,22 @@ class AgentSpec(BaseModel):
     name: str
     engine: str = "echo"
     code: str | None = None  # optional Python-authored build fn: "module:function"
+    #: Which pre-written build body the engine should generate for this agent.
+    #: ``"single"`` (one model + tools, zero author code), ``"graph"`` (a fillable
+    #: supervisor scaffold), or ``"deepagents"`` (a configured autonomous agent).
+    #: ``None`` (default) means the engine's own default build path, or — when
+    #: ``code:`` is set — a custom Python-authored body. ``template`` and ``code``
+    #: are mutually exclusive: a template *is* a pre-written body, so pairing it
+    #: with a custom one is contradictory (see :meth:`_check_coherence`).
+    template: Literal["single", "graph", "deepagents"] | None = None
+    #: Tool references this agent may call, each a ``"mcp:<server>"`` or
+    #: ``"module:function"`` string. These are **parsed and validated only** here;
+    #: actual tool *execution* (MCP resolution + guarded invocation) lands in Phase
+    #: 03, so a tool listed today is accepted by the spec but not yet executed —
+    #: the field exists now so a ``single``/``graph`` template can declare its tools
+    #: and the capability gate can reason about tool use honestly. ``None`` means
+    #: "no tools", distinct from an explicit empty list.
+    tools: list[str] | None = None
     model: str | None = None
     prompt: str | None = None
     #: Optional generation params (temperature/max_tokens/api_base/timeout) threaded
@@ -91,6 +107,46 @@ class AgentSpec(BaseModel):
     #: gate rejects ``"checkpoint"``/``"workflow"`` on an engine that declares
     #: ``durability="none"`` so a crash-recovery promise is never silently dropped.
     durability: Literal["none", "checkpoint", "workflow"] = "none"
+
+    # NOTE: ``memory`` / ``guardrails`` / ``auth`` blocks are deliberately absent
+    # here. Per the grow-per-pillar rule they land with their own phases — memory
+    # (P08), guardrails (P07), auth (P04) — each carrying the validation and the
+    # engine wiring that makes the block real. Adding empty stubs now would be an
+    # over-claim the capability gate could not honour, so they are left out.
+
+    @model_validator(mode="after")
+    def _check_coherence(self) -> AgentSpec:
+        """Reject spec-field combinations that contradict each other (fail-fast).
+
+        These are cross-field rules the per-field types cannot express, checked once
+        at construction so an incoherent spec fails loudly at load time rather than
+        as a confusing mid-build error. Provider/durability/streaming coherence is
+        *not* re-checked here — those depend on the resolved engine's declared
+        capabilities and are gated at build time by
+        :meth:`~agentship.engines.base.EngineCapabilities.assert_supports_spec`.
+
+        Rules enforced:
+
+        - ``template`` and ``code`` are mutually exclusive — a ``template`` *is* a
+          pre-written build body, so pairing it with a custom Python one is
+          contradictory; one must win, never both silently.
+        - ``template: "deepagents"`` requires ``engine: "langgraph"`` — the
+          deepagents autonomous archetype is a LangGraph-only template, so asking
+          for it on another engine can never be satisfied.
+        """
+        if self.template is not None and self.code is not None:
+            raise SpecError(
+                f"spec {self.name!r} sets both template: {self.template!r} and "
+                f"code: {self.code!r} — a template is a pre-written build body, so it "
+                f"cannot be combined with a custom code: body. Choose one."
+            )
+        if self.template == "deepagents" and self.engine != "langgraph":
+            raise SpecError(
+                f"template 'deepagents' is only available on engine 'langgraph', but "
+                f"spec {self.name!r} sets engine: {self.engine!r} — use "
+                f"engine: langgraph or a different template."
+            )
+        return self
 
 
 def load_spec(path: str | Path) -> AgentSpec:

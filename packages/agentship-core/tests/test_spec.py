@@ -150,6 +150,83 @@ def test_bad_durability_value_is_rejected(tmp_path):
         load_spec(f)
 
 
+def test_template_and_tools_round_trip_from_yaml(tmp_path):
+    """A ``template:`` + ``tools:`` YAML round-trips into the spec's fields."""
+    f = tmp_path / "a.yaml"
+    f.write_text(
+        textwrap.dedent(
+            """
+            name: quickstart
+            engine: langgraph
+            template: single
+            model: openai/gpt-4o-mini
+            prompt: You are helpful.
+            tools:
+              - mcp:postgres
+              - my.tools:search
+            """
+        )
+    )
+    spec = load_spec(f)
+    assert spec.template == "single"
+    assert spec.tools == ["mcp:postgres", "my.tools:search"]
+
+
+def test_template_defaults_to_none(tmp_path):
+    """With no ``template:`` set, the field defaults to None (engine's own default)."""
+    f = tmp_path / "a.yaml"
+    f.write_text("name: a\nengine: langgraph\nmodel: openai/gpt-4o-mini\n")
+    spec = load_spec(f)
+    assert spec.template is None
+    assert spec.tools is None
+
+
+def test_bad_template_value_is_rejected(tmp_path):
+    """A template outside the closed set is a loud SpecError, not a silent accept."""
+    f = tmp_path / "a.yaml"
+    f.write_text("name: a\nengine: langgraph\ntemplate: wizard\n")
+    with pytest.raises(SpecError):
+        load_spec(f)
+
+
+def test_deepagents_template_requires_langgraph_engine():
+    """template 'deepagents' only exists on the langgraph engine — else SpecError."""
+    with pytest.raises(SpecError) as exc:
+        AgentSpec(name="a", engine="echo", template="deepagents")
+    msg = str(exc.value).lower()
+    assert "deepagents" in msg and "langgraph" in msg
+
+
+def test_deepagents_template_on_langgraph_is_allowed():
+    """template 'deepagents' is coherent on the langgraph engine (no error)."""
+    spec = AgentSpec(name="a", engine="langgraph", template="deepagents", model="x")
+    assert spec.template == "deepagents"
+
+
+def test_template_and_code_are_mutually_exclusive():
+    """Setting both ``template:`` and ``code:`` is contradictory — SpecError."""
+    with pytest.raises(SpecError) as exc:
+        AgentSpec(
+            name="a", engine="langgraph", template="single", code="my.mod:build"
+        )
+    msg = str(exc.value).lower()
+    assert "template" in msg and "code" in msg
+
+
+def test_template_alone_and_code_alone_are_fine():
+    """Either template or code on its own is coherent — only together is an error."""
+    assert AgentSpec(name="a", engine="langgraph", template="single").template == "single"
+    assert AgentSpec(name="a", engine="langgraph", code="my.mod:build").code == "my.mod:build"
+
+
+def test_coherence_error_is_spec_error_from_yaml(tmp_path):
+    """An incoherent spec loaded from YAML surfaces the coherence failure as SpecError."""
+    f = tmp_path / "a.yaml"
+    f.write_text("name: a\nengine: echo\ntemplate: deepagents\n")
+    with pytest.raises(SpecError):
+        load_spec(f)
+
+
 def test_code_hook_resolves_file_ref(tmp_path):
     """A ``code: path.py:function`` reference resolves to the real callable, which runs."""
     mod = tmp_path / "author.py"
