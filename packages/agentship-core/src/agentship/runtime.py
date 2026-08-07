@@ -15,7 +15,7 @@ import uuid
 from collections.abc import AsyncIterator, Sequence
 from typing import TYPE_CHECKING, Any
 
-from .context import RunContext, current_run
+from .context import Principal, RunContext, RunMode, current_run
 from .engines.base import ENGINES, Event, Result, assert_spec_supported
 from .errors import EngineNotFoundError
 from .spec import AgentSpec, load_spec
@@ -122,19 +122,23 @@ class RunnableAgent:
         self.middlewares: tuple[Middleware, ...] = tuple(middlewares)
 
     def _make_context(
-        self, text: str, *, user_id: str, session_id: str | None
+        self, text: str, *, user_id: str, session_id: str | None, mode: RunMode
     ) -> RunContext:
         """Build a fresh :class:`RunContext` for one turn.
 
-        ``session_id`` is caller-supplied and stable across a conversation's turns;
-        it is only minted (``uuid4().hex``) when the caller passes none. ``run_id``
-        is always minted fresh, identifying this single turn.
+        Wraps ``user_id`` in a single-tenant :class:`Principal` (``tenant_id`` falls
+        back to ``"default"``), so a project with no auth just works. ``session_id``
+        is caller-supplied and stable across a conversation's turns; it is only
+        minted (``uuid4().hex``) when the caller passes none. ``run_id`` is always
+        minted fresh, identifying this single turn. ``mode`` marks whether the turn
+        is an invoke or a stream so engines branch off it, not an invented key.
         """
         return RunContext(
-            user_id=user_id,
+            principal=Principal(user_id=user_id),
             session_id=session_id if session_id is not None else uuid.uuid4().hex,
             run_id=uuid.uuid4().hex,
             agent_name=self.spec.name,
+            mode=mode,
             input_text=text,
         )
 
@@ -154,7 +158,9 @@ class RunnableAgent:
         runs in reverse order for observation, then the original exception is
         re-raised unchanged. The contextvar is always reset in ``finally``.
         """
-        ctx = self._make_context(text, user_id=user_id, session_id=session_id)
+        ctx = self._make_context(
+            text, user_id=user_id, session_id=session_id, mode=RunMode.INVOKE
+        )
         pipeline = (*self.middlewares, *middlewares)
         token = current_run.set(ctx)
         try:
@@ -195,7 +201,9 @@ class RunnableAgent:
         only touches ``current_run`` at the ``yield`` boundary; the caller never
         observes a leak whether the stream completes or is abandoned.
         """
-        ctx = self._make_context(text, user_id=user_id, session_id=session_id)
+        ctx = self._make_context(
+            text, user_id=user_id, session_id=session_id, mode=RunMode.STREAM
+        )
         scope = _StreamRunContextScope(ctx)
         scope.arm()
         try:

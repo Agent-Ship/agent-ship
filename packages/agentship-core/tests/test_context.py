@@ -4,17 +4,50 @@ from __future__ import annotations
 
 import asyncio
 
-from agentship.context import RunContext, current_run, get_run_context
+from agentship.context import Principal, RunContext, RunMode, current_run, get_run_context
 from agentship.runtime import build_agent
 from agentship.spec import AgentSpec
 
 
-def test_memory_scope_is_user_and_agent():
-    """memory_scope is (user_id, agent_name) — never keyed on session."""
-    ctx = RunContext(
-        user_id="u1", session_id="s1", run_id="r1", agent_name="assistant"
-    )
-    assert ctx.memory_scope == ("u1", "assistant")
+def _ctx(**overrides) -> RunContext:
+    """Build a RunContext with sensible defaults, overridable per test."""
+    fields = {
+        "principal": Principal(user_id="u1"),
+        "session_id": "s1",
+        "run_id": "r1",
+        "agent_name": "assistant",
+        "mode": RunMode.INVOKE,
+    }
+    fields.update(overrides)
+    return RunContext(**fields)
+
+
+def test_memory_scope_is_tenant_and_user():
+    """memory_scope is (tenant_id, user_id) per DESIGN §13.4 — never keyed on agent/session."""
+    ctx = _ctx(principal=Principal(tenant_id="acme", user_id="u1"))
+    assert ctx.memory_scope == ("acme", "u1")
+
+
+def test_principal_single_tenant_default():
+    """A project with no auth just works: tenant_id defaults to 'default'."""
+    p = Principal(user_id="alice")
+    assert p.tenant_id == "default"
+    ctx = _ctx(principal=p)
+    assert ctx.tenant_id == "default"
+    assert ctx.user_id == "alice"
+    assert ctx.memory_scope == ("default", "alice")
+
+
+def test_run_context_mirrors_principal_identity():
+    """user_id/tenant_id on the context mirror the principal (one source of truth)."""
+    ctx = _ctx(principal=Principal(tenant_id="t7", user_id="bob"))
+    assert ctx.user_id == "bob"
+    assert ctx.tenant_id == "t7"
+
+
+def test_trace_id_defaults_to_none():
+    """trace_id is optional and unset until the observer stamps it."""
+    assert _ctx().trace_id is None
 
 
 def test_get_run_context_is_none_outside_a_run():

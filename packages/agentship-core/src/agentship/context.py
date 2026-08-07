@@ -1,17 +1,51 @@
-"""The identity backbone: :class:`RunContext` and the ``current_run`` contextvar.
+"""The identity backbone: :class:`RunContext`, :class:`Principal`, ``current_run``.
 
 One compiled agent serves many concurrent turns, so *all* per-turn state lives in
 a contextvar rather than on the agent instance. :class:`RunContext` carries the
-four identity fields every later pillar reads — ``user_id``, ``session_id``,
-``run_id``, ``agent_name`` — and nothing more. The invariant (architecture §5) is
-that ``session_id`` is stable across the turns of a conversation and later equals
-the engine's thread id and the checkpoint key; ``run_id`` is minted fresh per turn.
+identity a later pillar reads — who the caller is (:class:`Principal`), which
+conversation and turn this is, how it is being driven (:class:`RunMode`), and the
+optional trace id — and nothing more. The invariant (architecture §5) is that
+``session_id`` is stable across the turns of a conversation and later equals the
+engine's thread id and the checkpoint key; ``run_id`` is minted fresh per turn.
+
+**Single-tenant default (DESIGN Clean-Build "reusability fixes").** A project with
+no auth just works: :class:`Principal` defaults ``tenant_id="default"``, so nothing
+has to plumb a tenant. Tenancy is opt-in hardening, never a baseline tax.
 """
 
 from __future__ import annotations
 
 from contextvars import ContextVar
 from dataclasses import dataclass
+from enum import StrEnum
+
+from pydantic import BaseModel
+
+
+class RunMode(StrEnum):
+    """How a turn is being driven — engines select a sub-path off this, not a string.
+
+    Kept minimal for now: :attr:`INVOKE` (one-shot request/response) and
+    :attr:`STREAM` (token/event streaming). The ``LIVE`` (voice) mode arrives with
+    the voice phase; adding it later is non-breaking.
+    """
+
+    INVOKE = "invoke"
+    STREAM = "stream"
+
+
+class Principal(BaseModel):
+    """The authenticated caller (DESIGN §13.2 canonical, KISS subset).
+
+    The ``(tenant_id, user_id)`` pair scopes long-term memory and the re-identify
+    vault (§13.4). ``tenant_id`` defaults to ``"default"`` so a single-tenant
+    project needs no auth plumbing; ``user_id`` is required — even in dev it is a
+    stable anonymous id — so memory/vault reads are always attributable to a
+    caller. Scopes/auth-method land with the auth phase (04); they are omitted now.
+    """
+
+    tenant_id: str = "default"
+    user_id: str
 
 
 @dataclass
@@ -19,12 +53,13 @@ class RunContext:
     """Per-turn identity and state, carried through the middleware pipeline.
 
     Held in the :data:`current_run` contextvar so concurrent turns never collide.
-    The field set is deliberately small; later phases read these fields (memory
-    scope, trace ids, durable resume) but must not invent new identity keys here.
+    The field set is deliberately small (KISS, grow-per-pillar); later phases read
+    these fields but must not invent new identity keys here. ``user_id`` and
+    ``tenant_id`` are read-only mirrors of :attr:`principal` — one source of truth.
     """
 
-    #: The authenticated caller. Stable across a caller's sessions; scopes memory.
-    user_id: str
+    #: The authenticated caller. Its ``(tenant_id, user_id)`` scopes memory + vault.
+    principal: Principal
     #: Stable across the turns of one conversation. Later equals the engine thread
     #: id and the checkpoint key (architecture §5). Minted once when the caller
     #: passes none, then threaded by the caller on subsequent turns.
@@ -35,18 +70,34 @@ class RunContext:
     run_id: str
     #: The name of the agent serving this turn.
     agent_name: str
+    #: How this turn is driven (invoke | stream); engines branch off this, not a
+    #: made-up key.
+    mode: RunMode = RunMode.INVOKE
+    #: The observability trace id for this turn; the observer stamps it (phase 05).
+    trace_id: str | None = None
     #: The turn's input text, so middleware can read/augment it before the engine.
     input_text: str = ""
 
     @property
-    def memory_scope(self) -> tuple[str, str]:
-        """Return ``(user_id, agent_name)`` — the scope key for long-term memory.
+    def user_id(self) -> str:
+        """The caller's user id — a read-only mirror of ``principal.user_id``."""
+        return self.principal.user_id
 
-        Long-term memory partitions by *caller* and *agent*, never by session, so
-        that facts learned in one session are recalled in the next. This pair is
-        the canonical scope key every memory backend reads.
+    @property
+    def tenant_id(self) -> str:
+        """The caller's tenant id — a read-only mirror of ``principal.tenant_id``."""
+        return self.principal.tenant_id
+
+    @property
+    def memory_scope(self) -> tuple[str, str]:
+        """Return ``(tenant_id, user_id)`` — the scope key for long-term memory.
+
+        Long-term memory and the re-identify vault partition by *tenant* and
+        *caller*, never by session or agent (DESIGN §13.4), so a fact learned in
+        one session re-identifies when recalled in the next. This pair is the
+        canonical scope key every memory/vault backend reads.
         """
-        return (self.user_id, self.agent_name)
+        return (self.tenant_id, self.user_id)
 
 
 #: The active :class:`RunContext` for the current turn, or unset outside a turn.

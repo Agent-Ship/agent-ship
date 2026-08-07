@@ -7,7 +7,7 @@ the identity backbone, the runtime, and the error taxonomy.
 
 from __future__ import annotations
 
-from .context import RunContext, get_run_context
+from .context import Principal, RunContext, RunMode, get_run_context
 from .engines.base import Engine, EngineCapabilities, Event, Result
 from .errors import (
     AgentShipError,
@@ -25,7 +25,9 @@ __all__ = [
     "ModelParams",
     "load_spec",
     "resolve_code",
+    "Principal",
     "RunContext",
+    "RunMode",
     "get_run_context",
     "RunnableAgent",
     "build_agent",
