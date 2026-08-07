@@ -151,15 +151,18 @@ class EngineCapabilities(BaseModel):
         """Gate the ``model:`` provider prefix against declared ``providers``.
 
         The provider is the segment before the first ``/`` in ``spec.model`` (e.g.
-        ``"openai"`` in ``"openai/gpt-4o-mini"``). If ``providers`` is empty the
-        engine is *unconstrained* and any provider is allowed (this check is
-        skipped). A model with no ``/`` prefix carries no provider to gate, so it is
-        allowed too. Otherwise the provider must be in ``providers`` or the build
-        fails fast — never a silent call to an unreachable provider.
+        ``"openai"`` in ``"openai/gpt-4o-mini"``), compared case-insensitively —
+        LiteLLM (and the model seam's ``_provider_env_var``) lowercase the prefix, so
+        the gate must too, or ``"OpenAI/…"`` would be wrongly rejected. If
+        ``providers`` is empty the engine is *unconstrained* and any provider is
+        allowed (this check is skipped). A model with no ``/`` prefix carries no
+        provider to gate, so it is allowed too. Otherwise the provider must be in
+        ``providers`` or the build fails fast — never a silent call to an
+        unreachable provider.
         """
         if not self.providers or not spec.model or "/" not in spec.model:
             return
-        provider = spec.model.split("/", 1)[0]
+        provider = spec.model.split("/", 1)[0].lower()
         if provider not in self.providers:
             raise CapabilityError(
                 f"engine {spec.engine!r} cannot reach provider {provider!r} (from "

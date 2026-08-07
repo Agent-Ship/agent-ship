@@ -162,6 +162,37 @@ def test_provider_gate_allows_declared_provider():
     caps.assert_supports_spec(spec)  # no raise
 
 
+def test_provider_gate_is_case_insensitive_on_the_prefix():
+    """A mixed-case provider prefix matches a lowercase declared provider.
+
+    LiteLLM (and the model seam's _provider_env_var) lowercase the prefix, so the
+    gate must too — ``OpenAI/…`` on an engine that declares ``openai`` must build,
+    not be wrongly rejected.
+    """
+    caps = EngineCapabilities(providers={"openai", "anthropic"})
+    spec = AgentSpec(name="a", engine="langgraph", model="OpenAI/gpt-4o-mini")
+    caps.assert_supports_spec(spec)  # no raise
+
+
+def test_provider_gate_still_rejects_undeclared_provider_case_insensitively():
+    """Case-folding does not weaken the gate: a genuinely undeclared provider still fails."""
+    caps = EngineCapabilities(providers={"openai", "anthropic"})
+    spec = AgentSpec(name="a", engine="langgraph", model="Cohere/command-r")
+    with pytest.raises(CapabilityError) as exc:
+        caps.assert_supports_spec(spec)
+    assert "cohere" in str(exc.value).lower()
+
+
+def test_langgraph_build_accepts_mixed_case_provider():
+    """End-to-end: building a langgraph agent on ``OpenAI/…`` builds (case-insensitive gate).
+
+    Skipped if the langgraph engine package is not installed in this environment.
+    """
+    pytest.importorskip("agentship_langgraph")
+    spec = AgentSpec(name="a", engine="langgraph", model="OpenAI/gpt-4o-mini")
+    build_agent(spec)  # no raise — gate accepts the declared provider regardless of case
+
+
 def test_provider_gate_skipped_when_providers_empty():
     """Empty ``providers`` means unconstrained — any provider is allowed."""
     caps = EngineCapabilities()  # providers == set()
