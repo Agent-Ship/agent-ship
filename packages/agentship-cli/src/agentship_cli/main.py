@@ -26,6 +26,8 @@ from agentship.errors import AgentShipError
 from agentship.runtime import build_agent
 from agentship.spec import load_spec
 
+from . import scaffold
+
 #: Known engine name → the ``pip install`` target that provides it. Used by
 #: ``doctor`` to turn "engine not installed" into an actionable fix instead of an
 #: opaque lookup miss. An engine not in this map gets a generic hint naming the
@@ -273,3 +275,74 @@ def _require_specs(agents_dir: Path) -> list[Path]:
     if not files:
         raise AgentShipError(f"no *.yaml agent specs found in {agents_dir}")
     return files
+
+
+def _write_new_file(path: Path, text: str) -> None:
+    """Write ``text`` to ``path``, refusing to overwrite an existing file.
+
+    Scaffolding never clobbers a user's work: an existing target raises
+    :class:`~agentship.errors.AgentShipError` so the caller reports a clean error
+    instead of silently replacing content. Parent directories are created first.
+    """
+    if path.exists():
+        raise AgentShipError(f"refusing to overwrite existing file: {path}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+
+
+@main.command()
+@click.argument("directory", type=click.Path(file_okay=False), default=".")
+def init(directory: str) -> None:
+    """Scaffold a new single-tenant AgentShip project in DIRECTORY (default ``.``).
+
+    Creates an ``agents/`` folder with a starter ``assistant.yaml`` (the default
+    ``langgraph`` engine over ``openai/gpt-4o-mini``), a ``.env.example`` naming the
+    one key the quickstart needs, and a ``README.md`` showing the ``agentship run``
+    path. The scaffold is single-tenant — no auth or tenancy concepts — so a fresh
+    project just runs.
+
+    Existing files are never overwritten: if any target already exists the command
+    reports a clean ``Error:`` and exits ``1`` without touching your files.
+    """
+    root = Path(directory)
+    try:
+        _write_new_file(root / "agents" / "assistant.yaml", scaffold.ASSISTANT_YAML)
+        _write_new_file(root / ".env.example", scaffold.ENV_EXAMPLE)
+        _write_new_file(root / "README.md", scaffold.README)
+    except AgentShipError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+    click.echo(f"Scaffolded an AgentShip project in {root}/")
+    click.echo("Next: cp .env.example .env  # set OPENAI_API_KEY")
+    click.echo('      agentship run agents/assistant.yaml --input "hello"')
+
+
+@main.command(name="new-agent")
+@click.argument("name")
+@click.option(
+    "--engine", default="langgraph", show_default=True, help="Engine the agent runs on."
+)
+@click.option(
+    "--agents-dir",
+    "agents_dir",
+    type=click.Path(file_okay=False),
+    default="agents",
+    show_default=True,
+    help="Directory to write the agent spec into.",
+)
+def new_agent(name: str, engine: str, agents_dir: str) -> None:
+    """Scaffold one starter agent spec at ``<agents-dir>/NAME.yaml``.
+
+    Writes a single-agent spec (a prompt plus, for the default ``langgraph``
+    engine, a ``model`` line) so the agent runs as-is. The command refuses to
+    overwrite an existing spec, reporting a clean ``Error:`` and exiting ``1``.
+    """
+    path = Path(agents_dir) / f"{name}.yaml"
+    try:
+        _write_new_file(path, scaffold.new_agent_yaml(name, engine))
+    except AgentShipError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+    click.echo(f"Wrote {path}")
+    click.echo(f'Run it: agentship run {path} --input "hello"')
