@@ -19,7 +19,7 @@ agentship-demo/
     conftest.py             # VCR config — redacts credentials, replays keyless
     test_smoke.py           # loads the agent, runs it, asserts a non-empty answer
     cassettes/              # committed, redacted HTTP recordings (replayed in CI)
-  pyproject.toml            # pins agentship[langgraph]==0.0.1 (future PyPI install)
+  pyproject.toml            # pins agentship[starter]==0.0.1 (future PyPI install)
   requirements-dev.txt      # editable-local install of the framework (dev mode)
   Makefile                  # install / test / run shortcuts
   .env.example              # credentials template — copy to .env and fill in
@@ -56,10 +56,11 @@ make install
 
 ### Later (pinned pip — once AgentShip is published)
 
-The intended install for a real user, matching the pin in `pyproject.toml`:
+The intended install for a real user, matching the pin in `pyproject.toml`.
+`[starter]` is AgentShip's documented default stack (kernel + LangGraph engine + CLI):
 
 ```bash
-pip install "agentship[langgraph]==0.0.1"
+pip install "agentship[starter]==0.0.1"
 ```
 
 When that works, the editable-local step above (and the sibling-checkout step in
