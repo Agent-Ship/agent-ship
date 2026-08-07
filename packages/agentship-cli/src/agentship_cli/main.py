@@ -9,6 +9,9 @@ A thin wrapper over the harness. It offers:
   engine's package is not installed.
 - ``agentship init [DIR]`` — scaffold a new single-tenant project.
 - ``agentship new-agent NAME`` — scaffold one starter agent spec.
+- ``agentship db upgrade [--allow-migrations]`` — the single, gated owning
+  entry point for all schema migrations (DDL). Plan-only by default; only
+  ``--allow-migrations`` may apply anything (§13.9).
 
 Harness errors are caught and printed as a clean message with a non-zero exit
 code rather than a traceback.
@@ -17,6 +20,7 @@ code rather than a traceback.
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 from pathlib import Path
 
@@ -27,6 +31,12 @@ from agentship.runtime import build_agent
 from agentship.spec import load_spec
 
 from . import scaffold
+from .migrations import REGISTERED_MIGRATIONS, Migration
+
+#: Environment variables consulted (in order) for the database DSN when
+#: ``--database-url`` is not given. ``AGENTSHIP_DATABASE_URL`` is preferred; a
+#: generic ``DATABASE_URL`` is accepted as a fallback for common deployments.
+DATABASE_URL_ENV_VARS = ("AGENTSHIP_DATABASE_URL", "DATABASE_URL")
 
 #: Known engine name → the ``pip install`` target that provides it. Used by
 #: ``doctor`` to turn "engine not installed" into an actionable fix instead of an
@@ -346,3 +356,129 @@ def new_agent(name: str, engine: str, agents_dir: str) -> None:
         sys.exit(1)
     click.echo(f"Wrote {path}")
     click.echo(f'Run it: agentship run {path} --input "hello"')
+
+
+@main.group()
+def db() -> None:
+    """Database schema commands (the gated owner of all DDL)."""
+
+
+def _pending_migrations() -> list[Migration]:
+    """Return the registered migrations sorted by ``version`` (apply order).
+
+    This is the full plan for a fresh database. Because every migration is
+    idempotent, applying already-present ones is a safe no-op, so the runner
+    does not need to track applied state to be correct today. Later phases that
+    add real DDL may add a version ledger; the KISS Week-1 runner does not.
+    """
+    return sorted(REGISTERED_MIGRATIONS, key=lambda m: m.version)
+
+
+def _resolve_database_url(database_url: str | None) -> str | None:
+    """Resolve the database DSN from the flag, then the environment.
+
+    Precedence: an explicit ``--database-url`` wins; otherwise the first set of
+    :data:`DATABASE_URL_ENV_VARS`. Returns ``None`` when no DSN is available so
+    the caller can decide whether that is fatal (it is only fatal when there are
+    pending migrations to apply).
+    """
+    if database_url:
+        return database_url
+    for name in DATABASE_URL_ENV_VARS:
+        value = os.environ.get(name)
+        if value:
+            return value
+    return None
+
+
+def _print_plan(migrations: list[Migration]) -> None:
+    """Print the human-readable upgrade plan (what *would* run)."""
+    if not migrations:
+        click.echo("No migrations registered — nothing to apply.")
+        return
+    click.echo(f"{len(migrations)} migration(s) would be applied:")
+    for migration in migrations:
+        click.echo(f"  {migration.version}  {migration.description}")
+
+
+@db.command()
+@click.option(
+    "--database-url",
+    "database_url",
+    default=None,
+    help="Database DSN to migrate (falls back to $AGENTSHIP_DATABASE_URL / $DATABASE_URL).",
+)
+@click.option(
+    "--allow-migrations",
+    is_flag=True,
+    help="Actually apply pending migrations. Without this flag the command is plan-only.",
+)
+@click.option(
+    "--debug", is_flag=True, help="Re-raise on an unexpected failure for the full traceback."
+)
+def upgrade(database_url: str | None, allow_migrations: bool, debug: bool) -> None:
+    """Apply pending database migrations — the single, gated owner of all DDL.
+
+    This is the *only* sanctioned migration runner (§13.9): every phase that
+    needs schema registers its idempotent, version-stamped migration in
+    ``agentship_cli.migrations.REGISTERED_MIGRATIONS`` rather than shipping its
+    own runner.
+
+    **Plan-only by default.** With no ``--allow-migrations`` flag the command
+    only *prints* what would run and touches no database — the apply path is
+    unreachable, so ungated DDL is impossible by construction.
+
+    **With ``--allow-migrations``** it applies the pending migrations in
+    ``version`` order and prints an ``applied N migrations (M pending)``
+    summary. If migrations are pending but no DSN is available (neither
+    ``--database-url`` nor an environment variable), it refuses with a clean
+    ``Error:`` naming the missing DSN. With zero registered migrations it
+    succeeds as a no-op even without a DSN. On an unexpected failure it prints a
+    concise ``Error:`` (no traceback) and exits ``1``; ``--debug`` re-raises.
+    """
+    migrations = _pending_migrations()
+
+    if not allow_migrations:
+        # Plan-only: never resolve or touch a database. The apply path below is
+        # simply not reached, which is what makes ungated DDL impossible.
+        _print_plan(migrations)
+        click.echo("Plan-only — pass --allow-migrations to apply.")
+        return
+
+    try:
+        _apply_migrations(migrations, database_url)
+    except AgentShipError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+    except Exception as exc:  # noqa: BLE001 - unexpected; surface cleanly or re-raise
+        if debug:
+            raise
+        click.echo(f"Error: {exc} (run with --debug for the full traceback)", err=True)
+        sys.exit(1)
+
+
+def _apply_migrations(migrations: list[Migration], database_url: str | None) -> None:
+    """Apply ``migrations`` in order against the resolved DSN.
+
+    This is the *only* code path that may run DDL, and it is reachable only from
+    ``upgrade`` when ``--allow-migrations`` was passed — that is the gate. With
+    no pending migrations it is a pure no-op and needs no DSN. With pending
+    migrations and no resolvable DSN it raises
+    :class:`~agentship.errors.AgentShipError` naming the missing DSN.
+    """
+    if not migrations:
+        click.echo("applied 0 migrations (0 pending)")
+        return
+
+    resolved = _resolve_database_url(database_url)
+    if resolved is None:
+        raise AgentShipError(
+            "no database URL — pass --database-url or set "
+            f"{DATABASE_URL_ENV_VARS[0]} (or {DATABASE_URL_ENV_VARS[1]})"
+        )
+
+    for migration in migrations:
+        click.echo(f"applying {migration.version}  {migration.description}")
+        migration.apply(resolved)
+
+    click.echo(f"applied {len(migrations)} migrations (0 pending)")
