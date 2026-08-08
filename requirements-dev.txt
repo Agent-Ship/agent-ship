@@ -14,6 +14,10 @@
 -e ../agentship/packages/agentship-langgraph
 -e ../agentship/packages/agentship-cli
 
+# The `deepagents` template is an opt-in extra of agentship-langgraph; the demo's
+# deepagents slice needs it to build/compile the prebuilt deep-agent graph.
+deepagents==0.6.12
+
 pytest>=8
 pytest-asyncio>=0.24
 pytest-recording>=0.13

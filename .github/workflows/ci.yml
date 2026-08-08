@@ -1,7 +1,8 @@
 name: ci
 
-# Runs the demo's keyless cassette smoke test on every push / PR. No API key is
-# needed: the committed cassette in tests/cassettes/ is replayed offline.
+# Runs the demo's keyless test suite (one slice per Phase 00-01 capability) and the
+# `make demo` runner on every push / PR. No API key is needed: offline slices run
+# live, and the real-model slices replay committed cassettes in tests/cassettes/.
 #
 # LIMITATION: AgentShip is not published to PyPI yet, so this workflow installs the
 # framework editable from a SIBLING CHECKOUT of the monorepo (it checks out the
@@ -49,9 +50,15 @@ jobs:
           #   pip install "agentship[langgraph]==0.0.1" pytest pytest-asyncio pytest-recording
           pip install -r requirements-dev.txt
 
-      - name: Run the keyless cassette smoke test
+      - name: Run the keyless test suite (one slice per capability)
         working-directory: agentship-demo
         env:
-          # Ensure no real key leaks into the run; the cassette is replayed offline.
+          # Ensure no real key leaks into the run; cassettes are replayed offline.
           OPENAI_API_KEY: ""
         run: pytest -q
+
+      - name: Run the demo runner (every capability, keyless)
+        working-directory: agentship-demo
+        env:
+          OPENAI_API_KEY: ""
+        run: python demos/run_all.py
