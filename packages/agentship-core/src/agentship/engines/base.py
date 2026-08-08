@@ -188,6 +188,28 @@ class Event(BaseModel):
     data: Any = None
 
 
+class ResumeToken(BaseModel):
+    """An opaque ticket an engine mints so a crashed/paused run can resume (DESIGN §13.1).
+
+    One shape across every engine: :attr:`engine` names the engine that minted it,
+    and :attr:`blob` carries everything that engine needs to continue — its contents
+    are **opaque to core**. A LangGraph token puts ``{thread_id, checkpoint_id, …}``
+    inside ``blob``; a workflow engine puts a workflow handle there. Core never reads
+    ``blob``: it stores it verbatim (e.g. as JSONB in the ``/tasks`` row) and hands
+    it back to the same engine's :meth:`Engine.resume`, which is the only code that
+    interprets it. Keeping the fields flat and ``blob`` opaque is what lets the
+    persistence layer round-trip a token without knowing any engine's internals.
+    """
+
+    #: The name of the engine that minted this token — the only engine that may
+    #: interpret its ``blob``. :meth:`Engine.resume` rejects a token whose ``engine``
+    #: does not match, so a token can never be replayed on the wrong engine.
+    engine: str
+    #: Everything the minting engine needs to resume, opaque to core. Stored verbatim
+    #: and never inspected outside the engine that produced it.
+    blob: dict = Field(default_factory=dict)
+
+
 class Engine(ABC):
     """The runtime seam every engine implements.
 
@@ -252,6 +274,35 @@ class Engine(ABC):
         self.capabilities.assert_supports("streaming", True)
         raise NotImplementedError  # pragma: no cover - overridden by streaming engines
         yield  # pragma: no cover - makes this an async generator for type-checkers
+
+    async def resume(self, compiled: Any, token: ResumeToken, ctx: RunContext) -> Result:
+        """Continue a paused/crashed run from a :class:`ResumeToken` (capability-gated).
+
+        Core *drives* resume for a ``durability="checkpoint"`` engine (§3.1): given a
+        token this engine minted, it replays from the checkpoint the token names. The
+        base implementation is the honest gate every engine inherits:
+
+        - a token minted by a *different* engine is always rejected with
+          :class:`~agentship.errors.CapabilityError` — a token can never be replayed
+          on the wrong engine, even before durability is considered;
+        - an engine that declares ``durability="none"`` cannot resume anything, so it
+          raises :class:`CapabilityError` too (declare, don't fake).
+
+        A durable engine (LangGraph once its checkpointer lands in Phase 02) overrides
+        this to perform the real replay. Until then this base method is the whole
+        behaviour: the seam exists and fails honestly rather than faking a resume.
+        """
+        if token.engine != self.name:
+            raise CapabilityError(
+                f"resume token was minted by engine {token.engine!r} but this is "
+                f"engine {self.name!r} — a token can only be resumed on the engine "
+                f"that minted it"
+            )
+        self.capabilities.assert_supports("durability", "checkpoint")
+        raise NotImplementedError(  # pragma: no cover - overridden by durable engines
+            f"engine {self.name!r} declares durable execution but has not implemented "
+            f"resume yet"
+        )
 
 
 #: The single shared registry of engines, discovered via the entry-point group.

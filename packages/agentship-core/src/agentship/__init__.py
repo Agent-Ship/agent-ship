@@ -8,7 +8,7 @@ the identity backbone, the runtime, and the error taxonomy.
 from __future__ import annotations
 
 from .context import Caller, RunContext, RunMode, get_run_context
-from .engines.base import Engine, EngineCapabilities, Event, Result
+from .engines.base import Engine, EngineCapabilities, Event, Result, ResumeToken
 from .errors import (
     AgentShipError,
     CapabilityError,
@@ -43,6 +43,7 @@ __all__ = [
     "Engine",
     "EngineCapabilities",
     "Event",
+    "ResumeToken",
     "Result",
     "AgentShipError",
     "SpecError",
