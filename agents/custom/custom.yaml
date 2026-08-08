@@ -1,0 +1,11 @@
+# A custom LangGraph agent authored in native LangGraph (the custom `build_graph` path).
+#
+# The `code:` reference points at a Python factory that returns a LangGraphAgent
+# subclass whose `build_graph` writes a real StateGraph. The harness wires the
+# model and drives the run — the author never wires a vendor. Run from the demo
+# repo root so the repo-root-relative `code:` path resolves:
+#
+#   agentship run agents/custom/custom.yaml --input "Name three primary colors."
+name: custom-assistant
+engine: langgraph
+code: agents/custom/agent.py:build_agent
