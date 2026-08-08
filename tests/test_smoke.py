@@ -20,38 +20,15 @@ Then verify it replays keyless:
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
-import litellm
 import pytest
 from agentship import build_agent
 
-# LiteLLM's async path defaults to an aiohttp transport that vcrpy (httpx/urllib3
-# based) cannot intercept. Forcing the plain httpx transport lets the cassette both
-# record and replay the real round-trip.
-litellm.disable_aiohttp_transport = True
-
-# Keep the cost map local so no extra HTTP fetch pollutes the cassette (and so
-# replay never reaches for githubusercontent).
-os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
-
-# The demo's own agent — loaded by path, exactly as `agentship run` would.
+# The demo's own agent — loaded by path, exactly as `agentship run` would. The
+# LiteLLM transport / cost-map setup and the `openai_key_for_replay` fixture live
+# in conftest.py, shared with the other cassette-backed slices.
 AGENT = str(Path(__file__).resolve().parents[1] / "agents" / "assistant.yaml")
-
-
-@pytest.fixture
-def openai_key_for_replay(monkeypatch):
-    """Inject a placeholder OpenAI key when none is set, so replay's client builds.
-
-    The OpenAI SDK refuses to construct a client without a key — even just to replay
-    a recorded response. When no real key is present (CI / keyless replay), inject a
-    harmless placeholder; VCR matches on URI + body, not the (redacted) auth header,
-    so replay is unaffected. When a real key *is* present (recording), it is left
-    untouched.
-    """
-    if not os.environ.get("OPENAI_API_KEY"):
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-test-placeholder-for-replay")
 
 
 @pytest.mark.vcr

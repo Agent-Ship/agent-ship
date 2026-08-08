@@ -14,7 +14,33 @@ method + host + path + body — a keyless request still resolves to the recordin
 
 from __future__ import annotations
 
+import os
+
+import litellm
 import pytest
+
+# LiteLLM's async path defaults to an aiohttp transport that vcrpy (httpx/urllib3
+# based) cannot intercept. Forcing the plain httpx transport lets cassettes both
+# record and replay the real round-trip. Set once here for every cassette test.
+litellm.disable_aiohttp_transport = True
+
+# Keep the cost map local so no extra HTTP fetch pollutes any cassette (and so
+# replay never reaches for githubusercontent).
+os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
+
+
+@pytest.fixture
+def openai_key_for_replay(monkeypatch):
+    """Inject a placeholder OpenAI key when none is set, so replay's client builds.
+
+    The OpenAI SDK refuses to construct a client without a key — even just to replay
+    a recorded response. When no real key is present (CI / keyless replay), inject a
+    harmless placeholder; VCR matches on URI + body, not the (redacted) auth header,
+    so replay is unaffected. When a real key *is* present (recording), it is left
+    untouched. Shared by every cassette-backed slice (assistant, graph, custom).
+    """
+    if not os.environ.get("OPENAI_API_KEY"):
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test-placeholder-for-replay")
 
 
 @pytest.fixture(scope="module")
