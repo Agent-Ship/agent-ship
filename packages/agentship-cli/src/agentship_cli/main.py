@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -326,17 +327,43 @@ def _require_specs(agents_dir: Path) -> list[Path]:
     return files
 
 
-def _write_new_file(path: Path, text: str) -> None:
-    """Write ``text`` to ``path``, refusing to overwrite an existing file.
+def _write_new_file(path: Path, text: str, *, force: bool = False) -> None:
+    """Write ``text`` to ``path``, refusing to overwrite unless ``force`` is set.
 
-    Scaffolding never clobbers a user's work: an existing target raises
+    Scaffolding never clobbers a user's work by default: an existing target raises
     :class:`~agentship.errors.AgentShipError` so the caller reports a clean error
-    instead of silently replacing content. Parent directories are created first.
+    instead of silently replacing content. Passing ``force=True`` (from
+    ``--force``) allows the overwrite — for re-scaffolding an agent on purpose.
+    Parent directories are created first.
     """
-    if path.exists():
-        raise AgentShipError(f"refusing to overwrite existing file: {path}")
+    if path.exists() and not force:
+        raise AgentShipError(
+            f"refusing to overwrite existing file: {path} (pass --force to replace it)"
+        )
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
+
+
+#: The agent-name pattern the spec's registry key must match: a lowercase
+#: identifier (letter first, then letters/digits/underscore). Validated by
+#: ``new-agent`` *before* any file is written so a bad name fails fast and cleanly
+#: rather than producing a spec that later fails to load or a broken Python
+#: class name in a ``graph`` scaffold.
+_AGENT_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
+
+
+def _validate_agent_name(name: str) -> None:
+    """Raise :class:`AgentShipError` if ``name`` is not a valid agent identifier.
+
+    Keeps scaffolding total: the name becomes the spec's ``name``, the YAML file
+    stem, and (for ``graph``) a Python class prefix, so it must be a plain
+    lowercase identifier. An invalid name is refused before any file is touched.
+    """
+    if not _AGENT_NAME_PATTERN.match(name):
+        raise AgentShipError(
+            f"invalid agent name {name!r} — use lowercase letters, digits and "
+            f"underscores, starting with a letter (e.g. 'ticket_router')"
+        )
 
 
 @main.command()
@@ -367,10 +394,20 @@ def init(directory: str) -> None:
     click.echo('      agentship run agents/assistant.yaml --input "hello"')
 
 
+#: The templates ``new-agent`` can scaffold. ``single`` and ``deepagents`` are
+#: pure-YAML (the langgraph engine ships their build body); ``graph`` is a
+#: custom-authoring scaffold that also writes a companion ``agent.py``.
+_TEMPLATE_CHOICES = ("single", "graph", "deepagents")
+
+
 @main.command(name="new-agent")
 @click.argument("name")
 @click.option(
-    "--engine", default="langgraph", show_default=True, help="Engine the agent runs on."
+    "--template",
+    type=click.Choice(_TEMPLATE_CHOICES),
+    default="single",
+    show_default=True,
+    help="Which agent template to scaffold.",
 )
 @click.option(
     "--agents-dir",
@@ -380,21 +417,67 @@ def init(directory: str) -> None:
     show_default=True,
     help="Directory to write the agent spec into.",
 )
-def new_agent(name: str, engine: str, agents_dir: str) -> None:
-    """Scaffold one starter agent spec at ``<agents-dir>/NAME.yaml``.
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Overwrite existing scaffold files instead of refusing.",
+)
+def new_agent(name: str, template: str, agents_dir: str, force: bool) -> None:
+    """Scaffold one starter agent from a template at ``<agents-dir>/NAME.yaml``.
 
-    Writes a single-agent spec (a prompt plus, for the default ``langgraph``
-    engine, a ``model`` line) so the agent runs as-is. The command refuses to
-    overwrite an existing spec, reporting a clean ``Error:`` and exiting ``1``.
+    ``--template single`` (default) and ``--template deepagents`` write a single
+    pure-YAML spec — no companion Python — that the ``langgraph`` engine turns into
+    a runnable agent from the YAML alone. ``--template graph`` writes both
+    ``NAME.yaml`` and a companion ``NAME/agent.py``: a fillable
+    :class:`~agentship_langgraph.agent.LangGraphAgent` supervisor scaffold whose
+    ``build_graph`` carries ``# TODO(author)`` markers, with the YAML's ``code:``
+    pointing at it (written as an absolute path so the spec builds regardless of the
+    working directory it is loaded from).
+
+    ``NAME`` is validated against the agent-name pattern before any file is written,
+    so a bad name fails fast and cleanly. Existing files are never clobbered: the
+    command reports a clean ``Error:`` and exits ``1`` unless ``--force`` is passed.
     """
-    path = Path(agents_dir) / f"{name}.yaml"
     try:
-        _write_new_file(path, scaffold.new_agent_yaml(name, engine))
+        _validate_agent_name(name)
+        written = _scaffold_agent(name, template, Path(agents_dir), force=force)
     except AgentShipError as exc:
         click.echo(f"Error: {exc}", err=True)
         sys.exit(1)
-    click.echo(f"Wrote {path}")
-    click.echo(f'Run it: agentship run {path} --input "hello"')
+    for path in written:
+        click.echo(f"Wrote {path}")
+    yaml_path = Path(agents_dir) / f"{name}.yaml"
+    click.echo(f'Run it: agentship run {yaml_path} --input "hello"')
+
+
+def _scaffold_agent(name: str, template: str, agents_dir: Path, *, force: bool) -> list[Path]:
+    """Write the files for ``template`` and return the paths written (YAML first).
+
+    Dispatches on ``template``: ``single``/``deepagents`` write one pure-YAML spec;
+    ``graph`` writes ``NAME.yaml`` plus a companion ``NAME/agent.py`` supervisor
+    scaffold, with the YAML's ``code:`` referencing the ``agent.py`` by its absolute
+    path so :func:`agentship.spec.resolve_code` finds it from any working directory.
+    Refuses to overwrite an existing file unless ``force`` is set (via
+    :func:`_write_new_file`). An unknown ``template`` is impossible here — Click's
+    ``Choice`` rejects it at parse time — but is still guarded so a future caller
+    gets a clean error rather than a silent miss.
+    """
+    yaml_path = agents_dir / f"{name}.yaml"
+    if template == "single":
+        _write_new_file(yaml_path, scaffold.single_template_yaml(name), force=force)
+        return [yaml_path]
+    if template == "deepagents":
+        _write_new_file(yaml_path, scaffold.deepagents_template_yaml(name), force=force)
+        return [yaml_path]
+    if template == "graph":
+        agent_py = (agents_dir / name / "agent.py").resolve()
+        code_ref = f"{agent_py}:build_agent"
+        # Write the companion agent.py first so a mid-way failure never leaves a
+        # YAML whose code: points at a missing file.
+        _write_new_file(agent_py, scaffold.graph_template_agent_py(name), force=force)
+        _write_new_file(yaml_path, scaffold.graph_template_yaml(name, code_ref), force=force)
+        return [yaml_path, agent_py]
+    raise AgentShipError(f"unknown template {template!r} — choose one of {_TEMPLATE_CHOICES}")
 
 
 @main.group()
