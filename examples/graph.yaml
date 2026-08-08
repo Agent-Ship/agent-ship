@@ -1,0 +1,11 @@
+# The `graph` template — a fillable supervisor scaffold (coordinator → worker).
+# Zero author Python: this YAML alone yields a compilable multi-agent starting
+# point. The scaffold routes a coordinator to one worker; open
+# agentship_langgraph/templates/graph.py and follow the `# TODO(author)` markers to
+# add specialists, tools, and richer routing. A full durable multi-agent runtime is
+# Phase 02 — this is the authoring scaffold.
+name: triage
+engine: langgraph
+template: graph
+model: openai/gpt-4o-mini
+prompt: Route the user request to the right specialist, then answer.

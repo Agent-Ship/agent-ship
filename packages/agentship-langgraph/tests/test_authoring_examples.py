@@ -22,6 +22,7 @@ from langchain_core.language_models.fake_chat_models import FakeListChatModel
 REPO_ROOT = Path(__file__).resolve().parents[3]
 QUICKSTART = str(REPO_ROOT / "examples" / "quickstart.yaml")
 CUSTOM = str(REPO_ROOT / "examples" / "custom" / "custom.yaml")
+GRAPH = str(REPO_ROOT / "examples" / "graph.yaml")
 
 
 @pytest.fixture
@@ -36,6 +37,19 @@ async def test_quickstart_single_template_example_runs(fake_model):
     """examples/quickstart.yaml (template: single) builds and answers, zero author code."""
     agent = build_agent(QUICKSTART)
     assert agent.spec.template == "single"
+    result = await agent.run("Name the primary colors.")
+    assert result.output == "The primary colors are red, blue, and yellow."
+
+
+async def test_graph_template_example_runs(fake_model):
+    """examples/graph.yaml (template: graph) builds the supervisor scaffold and answers.
+
+    Loads the exact shipped file a user would run and drives it offline: the
+    coordinator routes to the worker, whose reply is the answer. Proves the graph
+    template example is real (not just parseable) end to end with zero author python.
+    """
+    agent = build_agent(GRAPH)
+    assert agent.spec.template == "graph"
     result = await agent.run("Name the primary colors.")
     assert result.output == "The primary colors are red, blue, and yellow."
 

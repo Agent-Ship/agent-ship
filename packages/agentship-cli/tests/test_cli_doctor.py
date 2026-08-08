@@ -65,6 +65,43 @@ def test_doctor_capability_mismatch_is_a_clear_reason(tmp_path):
     assert "Traceback" not in result.output
 
 
+def test_doctor_deepagents_version_drift_is_flagged(tmp_path):
+    """A template: deepagents agent is flagged when the pinned deepagents version drifts.
+
+    The version guard reads the langgraph adapter's pinned version; simulating a
+    drift (patching the pin) must make doctor exit 1 with an actionable pip hint —
+    proving the guard is wired, not dormant. Non-vacuous: without the drift the same
+    agent is green.
+    """
+    import pytest
+
+    pytest.importorskip("deepagents")
+    import agentship_langgraph.templates.deepagents_tpl as tpl
+
+    _write(
+        tmp_path / "da.yaml",
+        "name: researcher\nengine: langgraph\ntemplate: deepagents\n"
+        "model: openai/gpt-4o-mini\nprompt: be autonomous\n",
+    )
+    runner = CliRunner()
+
+    # Green when the pin matches the installed version.
+    ok_result = runner.invoke(main, ["doctor", str(tmp_path / "da.yaml")])
+    assert ok_result.exit_code == 0, ok_result.output
+
+    # Flagged when the pin drifts from what is installed.
+    saved = tpl.PINNED_DEEPAGENTS_VERSION
+    tpl.PINNED_DEEPAGENTS_VERSION = "9.9.9"
+    try:
+        drift_result = runner.invoke(main, ["doctor", str(tmp_path / "da.yaml")])
+    finally:
+        tpl.PINNED_DEEPAGENTS_VERSION = saved
+    assert drift_result.exit_code == 1
+    assert "deepagents" in drift_result.output
+    assert "pip install" in drift_result.output
+    assert "Traceback" not in drift_result.output
+
+
 def test_doctor_bad_yaml_is_a_clean_error(tmp_path):
     """Malformed YAML reports a clean Error/status line, exit 1, no traceback."""
     _write(tmp_path / "broken.yaml", "name: [unclosed\n")

@@ -187,7 +187,46 @@ def _check_agent(path: Path) -> str | None:
         )
     engine = ENGINES.get(spec.engine)()
     assert_spec_supported(engine, spec)  # CapabilityError on mismatch — caught by caller
+    deepagents_reason = _check_deepagents_version(spec)
+    if deepagents_reason is not None:
+        return deepagents_reason
     return None
+
+
+def _check_deepagents_version(spec) -> str | None:
+    """Guard a ``template: deepagents`` spec against a missing/drifted deepagents install.
+
+    deepagents is pre-1.0 (its ``create_deep_agent`` signature can drift), so a
+    ``deepagents`` spec is only healthy when the pinned version is installed. This
+    reads the langgraph adapter's version guard *if that adapter is importable*
+    (``doctor`` runs in projects that may not have it), returning an actionable
+    reason when deepagents is absent or the wrong version, or ``None`` when the spec
+    is not a deepagents one or the install is fine. Never raises: an import failure
+    just means the guard is skipped (the capability gate already vouched for the
+    engine).
+    """
+    if getattr(spec, "template", None) != "deepagents":
+        return None
+    try:
+        from agentship_langgraph.templates.deepagents_tpl import (
+            PINNED_DEEPAGENTS_VERSION,
+            deepagents_version_ok,
+        )
+    except ImportError:
+        return None  # langgraph adapter not importable here — skip the extra guard
+    ok, installed = deepagents_version_ok()
+    if ok:
+        return None
+    if installed is None:
+        return (
+            "template 'deepagents' needs the deepagents package — "
+            "pip install 'agentship-langgraph[deepagents]'"
+        )
+    return (
+        f"template 'deepagents' is pinned to deepagents=={PINNED_DEEPAGENTS_VERSION} "
+        f"but {installed} is installed — pip install "
+        f"'deepagents=={PINNED_DEEPAGENTS_VERSION}' (pre-1.0 API can drift)"
+    )
 
 
 def _agent_files(agents_dir: Path) -> list[Path]:

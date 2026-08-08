@@ -16,6 +16,13 @@ dependencies = [
     "langchain-litellm>=0.1",  # the default model source: one `model:` string routes to any provider
 ]
 
+# The `deepagents` template is opt-in: `pip install agentship-langgraph[deepagents]`.
+# Pinned to 0.6.12 (pre-1.0) because create_deep_agent's signature can drift; the
+# template imports it lazily, so the base engine installs and runs without it, and
+# `agentship doctor` flags a version mismatch (see templates/deepagents_tpl.py).
+[project.optional-dependencies]
+deepagents = ["deepagents==0.6.12"]
+
 # Registers the LangGraph engine with the core harness (discovered via importlib.metadata),
 # so `engine: langgraph` in a spec resolves here.
 [project.entry-points."agentship.engines"]

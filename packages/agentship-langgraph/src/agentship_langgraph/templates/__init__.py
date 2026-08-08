@@ -6,14 +6,16 @@ Python. Each template exposes a ``build_<name>(spec)`` factory returning a
 :class:`~agentship_langgraph.agent.LangGraphAgent` would implement — so the engine
 drives templated and custom agents through the identical seam.
 
-Only ``single`` ships in this wave (``graph`` and ``deepagents`` land later). The
-engine dispatches on ``spec.template`` via :func:`resolve_template`.
+``single``, ``graph``, and ``deepagents`` all ship now. The engine dispatches on
+``spec.template`` via :func:`resolve_template`.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol
 
+from .deepagents_tpl import build_deepagents_template
+from .graph import build_graph_template
 from .single import build_single
 
 if TYPE_CHECKING:
@@ -31,7 +33,11 @@ class BuildGraph(Protocol):
 
 
 #: Maps a template name to the factory that produces its ``build_graph`` body.
-_TEMPLATES = {"single": build_single}
+_TEMPLATES = {
+    "single": build_single,
+    "graph": build_graph_template,
+    "deepagents": build_deepagents_template,
+}
 
 
 def resolve_template(spec: AgentSpec) -> BuildGraph | None:
@@ -54,4 +60,10 @@ def resolve_template(spec: AgentSpec) -> BuildGraph | None:
     return factory(spec)
 
 
-__all__ = ["BuildGraph", "build_single", "resolve_template"]
+__all__ = [
+    "BuildGraph",
+    "build_deepagents_template",
+    "build_graph_template",
+    "build_single",
+    "resolve_template",
+]

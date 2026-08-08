@@ -53,6 +53,32 @@ The offline test proves it builds and runs with an injected fake model (no
 network) — and that the build actually dispatches through `create_react_agent`,
 not the engine's default single-node graph.
 
+## `graph.yaml` — the `graph` template (supervisor scaffold)
+
+A `template: graph` agent: a fillable multi-agent starting point. The generated
+build body is a real, compilable supervisor `StateGraph` that routes a
+**coordinator** to one **worker**, with `# TODO(author)` markers where you add
+specialists, tools, and richer routing (in
+`agentship_langgraph/templates/graph.py`). This is the authoring scaffold only — a
+full *durable* multi-agent runtime is Phase 02.
+
+```yaml
+name: triage
+engine: langgraph
+template: graph
+model: openai/gpt-4o-mini
+prompt: Route the user request to the right specialist, then answer.
+```
+
+```bash
+export OPENAI_API_KEY=sk-...
+agentship run examples/graph.yaml --input "Help me plan a trip."
+```
+
+The offline test builds the scaffold with a fake model and drives a turn end to
+end (coordinator routes → worker answers), proving the scaffold is a real routed
+graph, not a single node.
+
 ## `custom/` — a custom LangGraph agent (native authoring)
 
 Full control: subclass `LangGraphAgent` and write native LangGraph in
