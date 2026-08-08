@@ -8,7 +8,7 @@ VENV := .venv
 PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
 
-.PHONY: install test run clean
+.PHONY: install test demo run clean
 
 ## install: create .venv and install the framework editable-local + test tooling
 install:
@@ -16,9 +16,14 @@ install:
 	$(PIP) install --upgrade pip
 	$(PIP) install -r requirements-dev.txt
 
-## test: run the keyless cassette smoke test (no API key needed)
+## test: run the keyless test suite — one slice per capability (no API key needed)
 test:
 	env -u OPENAI_API_KEY $(VENV)/bin/pytest -q
+
+## demo: SEE every Phase 00-01 capability run keyless, one labeled block each.
+##   Exits non-zero if any slice fails. Needs no API key.
+demo:
+	env -u OPENAI_API_KEY $(PY) demos/run_all.py
 
 ## run: run the demo agent for one turn (needs a real OPENAI_API_KEY in .env)
 ##   usage: make run INPUT="Give one productivity tip."
