@@ -1,0 +1,16 @@
+# The `deepagents` template — the deepagents library's prebuilt autonomous agent.
+#
+# Zero author Python: this YAML builds `create_deep_agent` over the wired model,
+# using `prompt` as its system prompt.
+#
+# HONEST LABEL: today this template BUILDS / COMPILES into a deep-agent graph. A
+# full autonomous tool-using turn needs tool execution, which is Phase 03. The
+# demo asserts it compiles offline (fake model) and prints the graph type; it does
+# NOT claim a live autonomous answer.
+name: researcher
+engine: langgraph
+template: deepagents
+model: openai/gpt-4o-mini
+prompt: >-
+  You are an autonomous research agent. Break the request into steps, use your
+  tools to gather what you need, and return a concise, well-supported answer.
