@@ -24,6 +24,7 @@ impossible to ship an engine that claims a capability it does not implement.
 | `capabilities.py` | the capability catalogue (`CAPABILITIES`) — **the main extension point** |
 | `engines.py` | per-engine offline harness (fake models) so cells never hit the network |
 | `test_matrix.py` | the parametrized grid: one cell per (engine, capability) |
+| `test_engine_conformance.py` | engine-parametrized behavioural cells (P01 T7): `capability_fail_fast`, `run_stream_parity`, `context_isolation`, `router_purity`, and the P02-deferred `durable_resume_after_kill` (xfail with reason `P02: durability`) |
 | `test_over_declaration.py` | meta-test: a throwaway liar engine proves the matrix catches over-claims |
 | `test_echo_vendor_free.py` | the neutrality proof: `echo` is the vendor-free, non-LangGraph engine implementing every base class with zero langchain/langgraph/litellm import — swap the engine, the base classes don't move |
 | `conftest.py` | live engine discovery + a registry snapshot guard (throwaway engines can't leak) |
