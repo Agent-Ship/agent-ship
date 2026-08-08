@@ -121,16 +121,25 @@ class LangGraphEngine(Engine):
         """
         model = self._resolve_model(spec)
         tools = self._resolve_tools(spec)
+        # The default single-node graph and custom-authored graphs consume the
+        # ``messages`` the run loop seeds, so the engine must seed the system prompt
+        # for them. Templates (``single``/``graph``/``deepagents``) build on
+        # ``create_react_agent(prompt=...)``, which injects the system prompt inside
+        # the graph itself — seeding it again here would send the system message
+        # twice. So only the template path hands prompt ownership to the graph.
+        prompt_owned_by_graph = False
         if isinstance(authored, LangGraphAgent):
             graph = authored.build_graph(model, tools)
         else:
             template_body = resolve_template(spec)
             if template_body is not None:
                 graph = template_body(model, tools)
+                prompt_owned_by_graph = True
             else:
                 graph = self._build_graph(model)
         compiled = graph if isinstance(graph, CompiledStateGraph) else graph.compile()
-        return _CompiledAgent(compiled, spec.prompt, spec.model or "")
+        system_prompt = None if prompt_owned_by_graph else spec.prompt
+        return _CompiledAgent(compiled, system_prompt, spec.model or "")
 
     def _resolve_model(self, spec: AgentSpec) -> BaseChatModel:
         """Resolve the LiteLLM-backed chat model for ``spec`` (honouring routing).

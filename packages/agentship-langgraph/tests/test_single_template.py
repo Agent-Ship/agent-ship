@@ -100,6 +100,45 @@ def test_default_build_does_not_call_the_react_prebuilt(fake_model, monkeypatch)
     assert called["hit"] is False
 
 
+async def test_single_template_does_not_duplicate_the_system_prompt(monkeypatch):
+    """The single template seeds the system prompt exactly once, not twice.
+
+    ``create_react_agent(prompt=...)`` injects the system prompt inside the graph,
+    so the engine must not *also* seed it in the run loop's initial messages — doing
+    so sends the system message twice. A capturing fake model records the messages
+    it is invoked with; the assertion pins exactly one system message. This fails if
+    the engine re-seeds ``spec.prompt`` for a template-built graph (the bug this
+    guards), making it non-vacuous.
+    """
+    seen: dict = {}
+
+    class _CapturingModel(FakeListChatModel):
+        """A fake chat model that records the messages of its final invocation."""
+
+        def _generate(self, messages, *args, **kwargs):
+            """Record the message list, then defer to the fake's canned response."""
+            seen["messages"] = messages
+            return super()._generate(messages, *args, **kwargs)
+
+    capturing = _CapturingModel(responses=["ok"])
+    monkeypatch.setattr(models_module, "resolve_model", lambda *a, **k: capturing)
+
+    agent = build_agent(
+        AgentSpec(
+            name="quickstart",
+            engine="langgraph",
+            template="single",
+            model="x",
+            prompt="You are a helpful assistant.",
+        )
+    )
+    await agent.run("Name three primary colors.")
+
+    system_msgs = [m for m in seen["messages"] if m.type == "system"]
+    assert len(system_msgs) == 1
+    assert system_msgs[0].content == "You are a helpful assistant."
+
+
 def test_single_template_needs_no_code_field(fake_model):
     """The single template requires no ``code:`` — the YAML/spec alone is enough."""
     spec = AgentSpec(
