@@ -26,15 +26,31 @@ agentship-demo/
   .github/workflows/ci.yml  # keyless cassette smoke test on push / PR
 ```
 
-The agent itself is four lines of YAML:
+The agent itself is a few lines of YAML:
 
 ```yaml
 name: assistant
 engine: langgraph
+template: single           # zero-author-code build via LangGraph's ReAct prebuilt
 model: openai/gpt-4o-mini
 prompt: >-
   You are a concise research assistant. ...
 ```
+
+### Authoring options
+
+This demo uses `template: single` — the whole build body is generated for you (a
+prebuilt ReAct agent), so a runnable agent comes from the YAML *alone*, no Python.
+That is one of AgentShip's authoring paths. The others (documented in the
+framework's [`examples/README.md`](../agentship/examples/README.md)):
+
+- `template: single` — zero author code (what this demo uses).
+- `template: graph` — a fillable multi-agent supervisor scaffold.
+- `template: deepagents` — a prebuilt autonomous deep-agent.
+- **custom `build_graph`** — full control: subclass `LangGraphAgent` and write
+  native LangGraph in `build_graph(model, tools)`, referenced from the spec's
+  `code:` field. The harness wires the `model` and drives `run`/`stream`; you never
+  wire a vendor. See `examples/custom/` in the framework.
 
 > A multi-agent **team** demo (a supervisor routing work between members) arrives
 > when the framework reaches **Phase 6**. Today the framework ships a single

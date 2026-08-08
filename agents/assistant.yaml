@@ -1,5 +1,6 @@
 name: assistant
 engine: langgraph
+template: single
 model: openai/gpt-4o-mini
 prompt: >-
   You are a concise research assistant. When asked a question, answer directly
