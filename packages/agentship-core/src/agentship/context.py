@@ -77,6 +77,13 @@ class RunContext:
     trace_id: str | None = None
     #: The turn's input text, so middleware can read/augment it before the engine.
     input_text: str = ""
+    #: The request-time chosen model id (a plain LiteLLM model string such as
+    #: ``"openai/gpt-4o-mini"``), stamped by the ``route`` step before the engine
+    #: runs (DESIGN §13.5). The engine adapter *reads* this to resolve its model; it
+    #: never routes itself. ``None`` until the routing step stamps it — the adapter
+    #: then falls back to ``spec.model``. Kept a plain string (KISS): routing is a
+    #: choice among model ids, so the chosen id is all the adapter needs.
+    routed_model: str | None = None
 
     @property
     def user_id(self) -> str:

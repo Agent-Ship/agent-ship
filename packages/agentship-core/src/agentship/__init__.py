@@ -16,6 +16,11 @@ from .errors import (
     SpecError,
 )
 from .middleware import Middleware
+from .primitives.model_router import (
+    DefaultModelRouter,
+    ModelRouter,
+    resolve_model_router,
+)
 from .runtime import RunnableAgent, build_agent
 from .spec import AgentSpec, MemberSpec, ModelParams, load_spec, resolve_code
 
@@ -32,6 +37,9 @@ __all__ = [
     "RunnableAgent",
     "build_agent",
     "Middleware",
+    "ModelRouter",
+    "DefaultModelRouter",
+    "resolve_model_router",
     "Engine",
     "EngineCapabilities",
     "Event",

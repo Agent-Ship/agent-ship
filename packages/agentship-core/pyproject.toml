@@ -20,5 +20,10 @@ dependencies = [
 [project.entry-points."agentship.engines"]
 echo = "agentship.engines.echo:EchoEngine"
 
+# The built-in deterministic model router registers here; a project ships its own
+# ModelRouter under the same group to swap routing policy without a core edit.
+[project.entry-points."agentship.model_routers"]
+default = "agentship.primitives.model_router:DefaultModelRouter"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/agentship"]

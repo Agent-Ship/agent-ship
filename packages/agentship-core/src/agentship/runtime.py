@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 from .context import Caller, RunContext, RunMode, current_run
 from .engines.base import ENGINES, Event, Result, assert_spec_supported
 from .errors import EngineNotFoundError, SpecError
+from .primitives.model_router import stamp_routed_model
 from .spec import AgentSpec, load_spec, resolve_code
 
 if TYPE_CHECKING:
@@ -164,6 +165,9 @@ class RunnableAgent:
         pipeline = (*self.middlewares, *middlewares)
         token = current_run.set(ctx)
         try:
+            # The ``route`` step: stamp the chosen model id on the context before the
+            # engine runs, so the adapter reads it and never routes itself (§13.5).
+            stamp_routed_model(self.spec, ctx)
             for mw in pipeline:
                 await mw.on_request(ctx)
             result = await self.engine.run(self.compiled, ctx.input_text, ctx)
@@ -207,6 +211,9 @@ class RunnableAgent:
         scope = _StreamRunContextScope(ctx)
         scope.arm()
         try:
+            # The ``route`` step (mirrors ``run``): stamp the chosen model id before
+            # the engine streams, so the adapter reads it and never routes (§13.5).
+            stamp_routed_model(self.spec, ctx)
             for mw in self.middlewares:
                 await mw.on_request(ctx)
             async for event in self.engine.stream(self.compiled, ctx.input_text, ctx):
