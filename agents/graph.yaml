@@ -1,0 +1,13 @@
+# The `graph` template — a fillable supervisor scaffold (coordinator -> worker).
+#
+# Zero author Python: this YAML alone yields a compilable multi-agent starting
+# point. The generated build body is a real, routed StateGraph — the coordinator
+# routes to one worker, whose reply is the answer.
+#
+# HONEST LABEL: this is the authoring SCAFFOLD only. A full DURABLE multi-agent
+# runtime (persistent members, richer routing, checkpoints) is Phase 02.
+name: triage
+engine: langgraph
+template: graph
+model: openai/gpt-4o-mini
+prompt: Route the user request to the right specialist, then answer concisely.
