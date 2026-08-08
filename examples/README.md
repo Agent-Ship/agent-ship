@@ -1,5 +1,22 @@
 # Examples
 
+## The four authoring paths
+
+AgentShip gives you four ways to author an agent, trading zero code for full
+control. Each has a runnable example here:
+
+| Path | One-liner | Example | Run |
+|---|---|---|---|
+| `template: single` | Zero author code — a prebuilt ReAct agent from the YAML alone. | `quickstart.yaml` | `agentship run examples/quickstart.yaml --input "..."` |
+| `template: graph` | A fillable multi-agent supervisor scaffold (coordinator → worker) with `# TODO(author)` seams. | `graph.yaml` | `agentship run examples/graph.yaml --input "..."` |
+| `template: deepagents` | A prebuilt autonomous deep-agent (deepagents library). | `deepagents.yaml` | `agentship run examples/deepagents.yaml --input "..."` |
+| custom `build_graph` via `code:` | Full control — subclass `LangGraphAgent` and write native LangGraph; the harness wires `model`/`tools`. | `custom/agent.py` + `custom/custom.yaml` | `agentship run examples/custom/custom.yaml --input "..."` |
+
+Each template needs no Python; the custom path is the only one you write code for.
+All four are proven offline (fake model) by
+`packages/agentship-langgraph/tests/test_authoring_examples.py`. The sections below
+detail each, plus provider swapping and generation tuning.
+
 ## `hello.yaml` — the walking skeleton
 
 A single agent on the zero-dependency `echo` engine. No API key, no model — it
@@ -78,6 +95,31 @@ agentship run examples/graph.yaml --input "Help me plan a trip."
 The offline test builds the scaffold with a fake model and drives a turn end to
 end (coordinator routes → worker answers), proving the scaffold is a real routed
 graph, not a single node.
+
+## `deepagents.yaml` — the `deepagents` template (autonomous prebuilt)
+
+A `template: deepagents` agent: the build body is the deepagents library's
+prebuilt autonomous deep-agent (`create_deep_agent`) over the wired model, using
+`spec.prompt` as its system prompt — zero author code. A full autonomous turn uses
+tools (tool execution lands in Phase 03); the template *builds and compiles* today.
+
+```yaml
+name: researcher
+engine: langgraph
+template: deepagents
+model: openai/gpt-4o-mini
+prompt: You are an autonomous research agent. ...
+```
+
+```bash
+pip install 'agentship[langgraph]'   # deepagents ships with the langgraph extra
+export OPENAI_API_KEY=sk-...
+agentship run examples/deepagents.yaml --input "Research the fastest land animal."
+```
+
+The offline test builds this exact file with a fake model and asserts it compiles
+into a deep-agent graph (not the engine's default single node). `agentship doctor`
+pins the supported deepagents version, since the library is pre-1.0.
 
 ## `custom/` — a custom LangGraph agent (native authoring)
 

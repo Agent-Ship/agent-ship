@@ -1,0 +1,7 @@
+name: researcher
+engine: langgraph
+template: deepagents
+model: openai/gpt-4o-mini
+prompt: >-
+  You are an autonomous research agent. Break the request into steps, use your
+  tools to gather what you need, and return a concise, well-supported answer.
