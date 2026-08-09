@@ -20,19 +20,28 @@ New slices arrive **one per phase** as the framework ships each capability.
 Every Phase 00-01 capability, with the slice that demonstrates it, how to run it,
 and what you see. `make demo` runs the whole column top to bottom.
 
-| # | Capability | Slice artifact | Run it | What you see |
-|---|---|---|---|---|
-| 1 | **Echo walking skeleton** (keyless kernel) | `agents/echo.yaml` | `agentship run agents/echo.yaml --input "hi"` | `echo: hi` — no model, no key |
-| 2 | **Streaming** (real `gpt-4o-mini`) | `agents/streaming.yaml` + `--stream` | `agentship run agents/streaming.yaml --input "Name the 8 planets." --stream` | the answer arrives as **multiple real tokens** — `chunk#1 'Merc'`, `chunk#2 'ury'`, … (18 chunks) — reassembling to the full answer (replayed cassette). The echo `--stream` path stays only as the zero-dependency skeleton. |
-| 3 | **`template: single`** (zero author code) | `agents/assistant.yaml` | `agentship run agents/assistant.yaml --input "Give one productivity tip."` | a real `gpt-4o-mini` answer (replayed cassette) |
-| 4 | **`template: graph`** (supervisor scaffold) | `agents/graph.yaml` | `agentship run agents/graph.yaml --input "Help me plan a trip."` | coordinator routes → worker answers (replayed cassette). **Scaffold only — durable multi-agent runtime = Phase 02.** |
-| 5 | **`template: deepagents`** (prebuilt) | `agents/deepagents.yaml` | `agentship run agents/deepagents.yaml --input "..."` | `deepagents graph compiled: <type>`. **Compiles only today — autonomous tool-using turn = Phase 03.** |
-| 6 | **Custom `build_graph`** (native LangGraph) | `agents/custom/custom.yaml` + `agents/custom/agent.py` | `agentship run agents/custom/custom.yaml --input "Name three primary colors."` | the *author's* graph answers (replayed cassette) |
-| 7 | **`ModelRouter`** (routing mechanism) | `tests/test_router.py` / `demos/run_all.py` | `make demo` (slice 7) | `DefaultModelRouter` picks the id, the route step stamps `ctx.routed_model`, the engine adapter reads it — no LLM call |
+| # | Capability | Slice artifact | Run it | What you see | Test this slice (no key) |
+|---|---|---|---|---|---|
+| 1 | **Echo walking skeleton** (keyless kernel) | `agents/echo.yaml` | `agentship run agents/echo.yaml --input "hi"` | `echo: hi` — no model, no key | `env -u OPENAI_API_KEY python -m pytest tests/test_echo.py -q` |
+| 2 | **Streaming** (real `gpt-4o-mini`) | `agents/streaming.yaml` + `--stream` | `agentship run agents/streaming.yaml --input "Name the 8 planets." --stream` | the answer arrives as **multiple real tokens** — `chunk#1 'Merc'`, `chunk#2 'ury'`, … (18 chunks) — reassembling to the full answer (replayed cassette). The echo `--stream` path stays only as the zero-dependency skeleton. | `env -u OPENAI_API_KEY python -m pytest tests/test_streaming.py::test_demo_streams_multiple_real_tokens -q` |
+| 3 | **`template: single`** (zero author code) | `agents/assistant.yaml` | `agentship run agents/assistant.yaml --input "Give one productivity tip."` | a real `gpt-4o-mini` answer (replayed cassette) | `env -u OPENAI_API_KEY python -m pytest tests/test_smoke.py::test_demo_assistant_returns_a_non_empty_answer -q` |
+| 4 | **`template: graph`** (supervisor scaffold) | `agents/graph.yaml` | `agentship run agents/graph.yaml --input "Help me plan a trip."` | coordinator routes → worker answers (replayed cassette). **Scaffold only — durable multi-agent runtime = Phase 02.** | `env -u OPENAI_API_KEY python -m pytest tests/test_graph.py::test_graph_scaffold_routes_and_returns_a_non_empty_answer -q` |
+| 5 | **`template: deepagents`** (prebuilt) | `agents/deepagents.yaml` | `agentship run agents/deepagents.yaml --input "..."` | `deepagents graph compiled: <type>`. **Compiles only today — autonomous tool-using turn = Phase 03.** | `env -u OPENAI_API_KEY python -m pytest tests/test_deepagents.py::test_deepagents_template_compiles_into_a_deep_agent_graph -q` |
+| 6 | **Custom `build_graph`** (native LangGraph) | `agents/custom/custom.yaml` + `agents/custom/agent.py` | `agentship run agents/custom/custom.yaml --input "Name three primary colors."` | the *author's* graph answers (replayed cassette) | `env -u OPENAI_API_KEY python -m pytest tests/test_custom.py::test_custom_build_graph_answers_via_the_authors_graph -q` |
+| 7 | **`ModelRouter`** (routing mechanism) | `tests/test_router.py` / `demos/run_all.py` | `make demo` (slice 7) | `DefaultModelRouter` picks the id, the route step stamps `ctx.routed_model`, the engine adapter reads it — no LLM call | `env -u OPENAI_API_KEY python -m pytest tests/test_router.py -q` |
 
 Each slice ships its artifact under `agents/` (YAML, or `agents/custom/` for the
 code path), a **keyless test** under `tests/` that asserts its real
 output/behavior, and an entry in the `make demo` runner.
+
+**Test one slice vs. run all.** Each row's last column is a copy-paste command that
+runs *only that slice's* test, keyless — target a single test node with the
+`tests/<file>::<node>` pattern (the `-u OPENAI_API_KEY` unsets the key to prove it
+needs none). To run **every** slice's test at once, use the whole keyless suite:
+
+```bash
+env -u OPENAI_API_KEY python -m pytest -q     # or: make test
+```
 
 ```bash
 make demo    # runs every slice keyless; prints a labeled block per capability
