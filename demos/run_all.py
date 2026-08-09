@@ -1,18 +1,18 @@
-"""`make demo` runner — SEE every Phase 00-01 capability run, keyless, in one shot.
+"""`make demo` runner — SEE every capability run for real against OpenAI.
 
-This executes one runnable slice per shipped capability and prints a clear,
-labeled block for each so a reader can watch every feature actually run with **no
-API key**:
+This is a LIVE demo. It executes one real slice per shipped capability and prints a
+clear, labeled block for each, so a reader can watch every feature actually run:
+each slice makes a real call to OpenAI and prints the real result. The streaming
+slice prints tokens as they arrive. There are no fakes, no recordings, and no
+offline stand-ins.
 
-* offline slices (echo, stream, router, deepagents) run live against the kernel /
-  a fake model — no network;
-* real-model slices (single, graph, custom) replay a committed, redacted VCR
-  cassette — the exact recorded round-trip, no key, no network.
+It needs a real ``OPENAI_API_KEY`` (the ``agentship run`` CLI and this runner both
+read a ``.env`` in the current directory). If no key is set, it prints a clear
+message and exits non-zero — it never falls back to anything fake.
 
-It exits non-zero if any slice fails, so `make demo` is a real gate, not a demo
-reel. Honest labels are printed inline: `graph` is the authoring scaffold (durable
-multi-agent runtime = Phase 02); `deepagents` is compiles-only today (autonomous
-tool-using turn = Phase 03).
+It exits non-zero if any slice fails, so `make demo` is a real gate. Honest labels
+are printed inline: `graph` is the authoring scaffold (durable multi-agent runtime =
+Phase 02); the default model router is a simple pass-through today.
 
 Run it with:  make demo   (or: python demos/run_all.py)
 """
@@ -24,55 +24,18 @@ import os
 import sys
 from pathlib import Path
 
-# Keyless & hermetic: never let a stray real key change behaviour, and make the
-# cassette replays' OpenAI client construct without one. Set before importing the
-# framework / vcr so replay is deterministic.
-os.environ.pop("OPENAI_API_KEY", None)
-os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
+import litellm
+from agentship import build_agent
+from agentship.primitives.model_router import DefaultModelRouter
+from agentship.spec import AgentSpec
 
-import litellm  # noqa: E402
-
+# Force the plain httpx transport (LiteLLM's aiohttp path can misbehave for
+# streaming across environments); keep the model cost map local.
 litellm.disable_aiohttp_transport = True
-
-import vcr  # noqa: E402  (pulled in by pytest-recording; used to replay cassettes here)
-from agentship import build_agent  # noqa: E402
-from agentship.context import Caller, RunContext, RunMode  # noqa: E402
-from agentship.engines.base import (  # noqa: E402
-    ENGINES,
-    Engine,
-    EngineCapabilities,
-    Result,
-)
-from agentship.primitives.model_router import (  # noqa: E402
-    DefaultModelRouter,
-    stamp_routed_model,
-)
-from agentship.spec import AgentSpec  # noqa: E402
-from langchain_core.language_models.fake_chat_models import (  # noqa: E402
-    FakeListChatModel,
-)
+os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 AGENTS = REPO_ROOT / "agents"
-CASSETTES = REPO_ROOT / "tests" / "cassettes"
-
-# A placeholder key so the OpenAI SDK can build a client for cassette *replay*
-# (VCR matches on URI + body, not the redacted auth header).
-os.environ["OPENAI_API_KEY"] = "sk-test-placeholder-for-replay"
-
-# VCR replay config mirrors tests/conftest.py: strip the key query param, match on
-# method+host+path+body (not query), and never reach the network (record_mode=none).
-_VCR = vcr.VCR(
-    filter_headers=[
-        ("authorization", "REDACTED"),
-        ("api-key", "REDACTED"),
-        ("x-api-key", "REDACTED"),
-        ("x-goog-api-key", "REDACTED"),
-    ],
-    filter_query_parameters=[("key", "REDACTED"), ("api_key", "REDACTED")],
-    match_on=["method", "host", "path", "body"],
-    record_mode="none",
-)
 
 
 def _banner(n: int, title: str, label: str) -> None:
@@ -84,116 +47,63 @@ def _banner(n: int, title: str, label: str) -> None:
     print("=" * 72)
 
 
-async def slice_echo() -> None:
-    """1. Echo walking skeleton — keyless kernel run, real `echo: <input>` output."""
-    _banner(1, "Echo walking skeleton (engine: echo)", "keyless · real kernel output · no model")
-    agent = build_agent(str(AGENTS / "echo.yaml"))
-    result = await agent.run("hello from the demo")
-    print(f"  run  agents/echo.yaml --input 'hello from the demo'")
-    print(f"  -> {result.output}")
-    assert result.output == "echo: hello from the demo"
-
-
-async def slice_stream() -> None:
-    """2. Streaming — a REAL gpt-4o-mini turn streamed token by token, replayed keyless.
-
-    This is the streaming proof: it replays a recorded real-provider round-trip and
-    prints each arriving token as its own ``chunk#N '<text>'`` line, so a reader
-    SEES the answer assemble one real token at a time — not an echo. (The echo
-    ``--stream`` path remains only as the zero-dependency skeleton behind slice 1's
-    engine; it is no longer the streaming demonstration.)
-    """
-    _banner(
-        2,
-        "Streaming (real gpt-4o-mini, --stream)",
-        "real openai/gpt-4o-mini · replayed keyless · token by token",
-    )
-    cassette = CASSETTES / "test_streaming" / "test_demo_streams_multiple_real_tokens.yaml"
-    print("  run  agents/streaming.yaml --input 'Name the 8 planets, comma-separated.' --stream")
-    chunks: list[str] = []
-    with _VCR.use_cassette(str(cassette)):
-        agent = build_agent(str(AGENTS / "streaming.yaml"))
-        async for event in agent.stream("Name the 8 planets, comma-separated."):
-            if event.type == "content":
-                chunks.append(event.data)
-                print(f"  -> chunk#{len(chunks)} {event.data!r}")
-    # Prove it genuinely streamed: many small real tokens, then the whole answer.
-    assert len(chunks) > 1, f"expected multiple real token chunks, got {len(chunks)}"
-    print(f"  -> streamed {len(chunks)} real tokens; reassembled: {''.join(chunks).strip()!r}")
-
-
 async def slice_single() -> None:
-    """3. `template: single` — the real-model assistant, replayed from a cassette."""
-    _banner(3, "template: single (real gpt-4o-mini)", "keyless · replayed cassette · zero author code")
-    cassette = CASSETTES / "test_smoke" / "test_demo_assistant_returns_a_non_empty_answer.yaml"
-    with _VCR.use_cassette(str(cassette)):
-        agent = build_agent(str(AGENTS / "assistant.yaml"))
-        result = await agent.run("Give one productivity tip.")
+    """1. `template: single` — one real ``gpt-4o-mini`` turn, real answer."""
+    _banner(1, "template: single (real gpt-4o-mini)", "LIVE · real answer · zero author code")
+    agent = build_agent(str(AGENTS / "assistant.yaml"))
+    result = await agent.run("Give one productivity tip in one short sentence.")
     print("  run  agents/assistant.yaml --input 'Give one productivity tip.'")
     print(f"  -> {result.output.strip()}")
     assert result.output.strip() != ""
 
 
-async def slice_graph() -> None:
-    """4. `template: graph` — routed coordinator -> worker turn, replayed."""
+async def slice_stream() -> None:
+    """2. Streaming — a real ``gpt-4o-mini`` turn streamed token by token, live."""
     _banner(
-        4,
-        "template: graph (supervisor scaffold, real gpt-4o-mini)",
-        "keyless · replayed cassette · SCAFFOLD only — durable multi-agent runtime = Phase 02",
+        2,
+        "Streaming (real gpt-4o-mini, --stream)",
+        "LIVE · real token-by-token stream",
     )
-    cassette = CASSETTES / "test_graph" / "test_graph_scaffold_routes_and_returns_a_non_empty_answer.yaml"
-    with _VCR.use_cassette(str(cassette)):
-        agent = build_agent(str(AGENTS / "graph.yaml"))
-        assert agent.spec.template == "graph"
-        result = await agent.run("Help me plan a weekend trip to the mountains.")
+    print("  run  agents/streaming.yaml --input 'Name the 8 planets, comma-separated.' --stream")
+    chunks: list[str] = []
+    agent = build_agent(str(AGENTS / "streaming.yaml"))
+    async for event in agent.stream("Name the 8 planets, comma-separated."):
+        if event.type == "content":
+            chunks.append(event.data)
+            print(f"  -> chunk#{len(chunks)} {event.data!r}")
+    # Prove it genuinely streamed: many small real tokens, then the whole answer.
+    assert len(chunks) > 1, f"expected multiple real token chunks, got {len(chunks)}"
+    print(f"  -> streamed {len(chunks)} real tokens; reassembled: {''.join(chunks).strip()!r}")
+
+
+async def slice_graph() -> None:
+    """3. `template: graph` — real routed coordinator -> worker turn, real answer."""
+    _banner(
+        3,
+        "template: graph (supervisor scaffold, real gpt-4o-mini)",
+        "LIVE · real answer · SCAFFOLD only — durable multi-agent runtime = Phase 02",
+    )
+    agent = build_agent(str(AGENTS / "graph.yaml"))
+    assert agent.spec.template == "graph"
+    result = await agent.run("Help me plan a weekend trip to the mountains.")
     print("  run  agents/graph.yaml --input 'Help me plan a weekend trip to the mountains.'")
     print(f"  -> coordinator routed -> worker answered: {result.output.strip()[:200]}")
     assert result.output.strip() != ""
 
 
-def slice_deepagents() -> None:
-    """5. `template: deepagents` — HONEST compiles-only proof (no live-turn claim)."""
-    _banner(
-        5,
-        "template: deepagents (prebuilt autonomous agent)",
-        "keyless · fake model · COMPILES ONLY — autonomous tool-using turn = Phase 03",
-    )
-    try:
-        import deepagents  # noqa: F401
-    except ImportError:
-        print("  -> deepagents extra not installed (pip install deepagents==0.6.12); slice SKIPPED")
-        return
-
-    # Build offline with a fake model — no live-turn claim, just a compiled graph.
-    import agentship_langgraph.models as models_module
-
-    fake = FakeListChatModel(responses=["ok"])
-    original = models_module.resolve_model
-    models_module.resolve_model = lambda *a, **k: fake  # type: ignore[assignment]
-    try:
-        agent = build_agent(str(AGENTS / "deepagents.yaml"))
-    finally:
-        models_module.resolve_model = original  # type: ignore[assignment]
-    assert agent.compiled is not None
-    print("  build agents/deepagents.yaml (offline, fake model)")
-    print(f"  -> deepagents graph compiled: {type(agent.compiled).__name__}")
-
-
 async def slice_custom() -> None:
-    """6. Custom `build_graph` — the author's native LangGraph answered, replayed."""
+    """4. Custom `build_graph` — the author's native LangGraph answers for real."""
     _banner(
-        6,
+        4,
         "custom build_graph (native LangGraph via code:)",
-        "keyless · replayed cassette · the AUTHOR'S graph answered",
+        "LIVE · real answer · the AUTHOR'S graph answered",
     )
-    cassette = CASSETTES / "test_custom" / "test_custom_build_graph_answers_via_the_authors_graph.yaml"
     cwd = os.getcwd()
     os.chdir(REPO_ROOT)  # the code: path is repo-root-relative
     try:
-        with _VCR.use_cassette(str(cassette)):
-            agent = build_agent(str(AGENTS / "custom" / "custom.yaml"))
-            assert agent.spec.name == "custom-assistant"
-            result = await agent.run("Name three primary colors.")
+        agent = build_agent(str(AGENTS / "custom" / "custom.yaml"))
+        assert agent.spec.name == "custom-assistant"
+        result = await agent.run("Name three primary colors.")
     finally:
         os.chdir(cwd)
     print("  run  agents/custom/custom.yaml --input 'Name three primary colors.'")
@@ -202,77 +112,48 @@ async def slice_custom() -> None:
 
 
 async def slice_router() -> None:
-    """7. `ModelRouter` mechanism — route step stamps, adapter reads (keyless, real)."""
+    """5. `ModelRouter` — the router picks the model, then a real turn runs through it."""
     _banner(
-        7,
-        "ModelRouter mechanism (DefaultModelRouter)",
-        "keyless · real mechanism · no LLM call — route step stamps, engine reads",
+        5,
+        "ModelRouter (DefaultModelRouter picks, then a real turn runs)",
+        "LIVE · the router picks the model id, then that model answers for real",
     )
-    spec = AgentSpec(name="a", engine="langgraph", model="openai/gpt-4o-mini")
-    chosen = DefaultModelRouter().pick(spec)
-    print(f"  DefaultModelRouter picked: {chosen}")
-
-    # Prove the runtime stamps it *before* the engine, and the engine (adapter) reads it.
-    seen: dict = {}
-
-    class _RecordingEngine(Engine):
-        """Records the routed_model the route step stamped, at run time."""
-
-        name = "demo_runner_recording_router"
-        capabilities = EngineCapabilities()
-
-        def build(self, spec, authored=None):
-            """Nothing to compile — the spec is the artifact."""
-            return spec
-
-        async def run(self, compiled, text, ctx):
-            """Capture what the route step stamped on the context, then echo."""
-            seen["routed_model"] = ctx.routed_model
-            return Result(output=text)
-
-    ENGINES.register("demo_runner_recording_router", _RecordingEngine)
-    try:
-        agent = build_agent(
-            AgentSpec(name="a", engine="demo_runner_recording_router", model="openai/gpt-4o-mini")
-        )
-        await agent.run("route me")
-    finally:
-        ENGINES._providers.pop("demo_runner_recording_router", None)
-
-    # Also show the stamping primitive directly on a bare context.
-    ctx = RunContext(
-        caller=Caller(user_id="u1"),
-        session_id="s1",
-        run_id="r1",
-        agent_name="a",
-        mode=RunMode.INVOKE,
+    spec = AgentSpec(
+        name="router-demo",
+        engine="langgraph",
+        template="single",
+        model="openai/gpt-4o-mini",
+        prompt="You are a concise assistant. Answer in one short sentence.",
     )
-    stamp_routed_model(spec, ctx)
-    print(f"  route step stamped ctx.routed_model: {ctx.routed_model}")
-    print(f"  engine adapter READ routed_model at run time: {seen['routed_model']}")
-    assert seen["routed_model"] == "openai/gpt-4o-mini"
-    assert ctx.routed_model == "openai/gpt-4o-mini"
+    # The default router is a simple pass-through today: it returns spec.model.
+    picked = DefaultModelRouter().pick(spec)
+    print(f"  DefaultModelRouter picked model: {picked}  (default router = simple pass-through today)")
+
+    agent = build_agent(spec)
+    result = await agent.run("Name one primary color.")
+    print(f"  -> real turn through {picked} answered: {result.output.strip()}")
+    assert picked == "openai/gpt-4o-mini"
+    assert result.output.strip() != ""
 
 
 async def main() -> int:
-    """Run every slice in order; return 0 if all pass, 1 if any raises."""
-    print("\nAgentShip demo — every Phase 00-01 capability, running keyless.\n")
+    """Run every live slice in order; return 0 if all pass, 1 if any raises."""
+    if not os.environ.get("OPENAI_API_KEY"):
+        print("This demo is live — set OPENAI_API_KEY in .env to run it.")
+        return 1
+
+    print("\nAgentShip demo — every capability, running LIVE against OpenAI.\n")
     failures: list[str] = []
     steps = [
-        ("echo", slice_echo()),
-        ("stream", slice_stream()),
         ("single", slice_single()),
+        ("stream", slice_stream()),
         ("graph", slice_graph()),
-        ("deepagents", slice_deepagents),  # sync
         ("custom", slice_custom()),
         ("router", slice_router()),
     ]
     for name, step in steps:
         try:
-            if asyncio.iscoroutine(step):
-                await step
-            else:
-                step()  # sync slice
+            await step
         except Exception as exc:  # noqa: BLE001 - report per-slice, keep going
             failures.append(name)
             print(f"\n  !! slice {name!r} FAILED: {type(exc).__name__}: {exc}")
@@ -282,7 +163,7 @@ async def main() -> int:
         print(f"  DEMO FAILED — {len(failures)} slice(s) broke: {', '.join(failures)}")
         print("=" * 72)
         return 1
-    print("  DEMO OK — every Phase 00-01 capability ran keyless.")
+    print("  DEMO OK — every capability ran LIVE against OpenAI.")
     print("=" * 72)
     return 0
 
