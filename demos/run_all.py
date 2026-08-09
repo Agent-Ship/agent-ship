@@ -95,16 +95,31 @@ async def slice_echo() -> None:
 
 
 async def slice_stream() -> None:
-    """2. Streaming — the echo agent streamed, keyless; show events arrive."""
-    _banner(2, "Streaming (engine: echo, --stream)", "keyless · real streamed events")
-    agent = build_agent(str(AGENTS / "echo.yaml"))
-    print("  run  agents/echo.yaml --input 'stream this' --stream")
+    """2. Streaming — a REAL gpt-4o-mini turn streamed token by token, replayed keyless.
+
+    This is the streaming proof: it replays a recorded real-provider round-trip and
+    prints each arriving token as its own ``chunk#N '<text>'`` line, so a reader
+    SEES the answer assemble one real token at a time — not an echo. (The echo
+    ``--stream`` path remains only as the zero-dependency skeleton behind slice 1's
+    engine; it is no longer the streaming demonstration.)
+    """
+    _banner(
+        2,
+        "Streaming (real gpt-4o-mini, --stream)",
+        "real openai/gpt-4o-mini · replayed keyless · token by token",
+    )
+    cassette = CASSETTES / "test_streaming" / "test_demo_streams_multiple_real_tokens.yaml"
+    print("  run  agents/streaming.yaml --input 'Name the 8 planets, comma-separated.' --stream")
     chunks: list[str] = []
-    async for event in agent.stream("stream this"):
-        print(f"  -> event: type={event.type!r}" + (f" data={event.data!r}" if event.data else ""))
-        if event.type == "content":
-            chunks.append(event.data)
-    assert "".join(chunks) == "echo: stream this"
+    with _VCR.use_cassette(str(cassette)):
+        agent = build_agent(str(AGENTS / "streaming.yaml"))
+        async for event in agent.stream("Name the 8 planets, comma-separated."):
+            if event.type == "content":
+                chunks.append(event.data)
+                print(f"  -> chunk#{len(chunks)} {event.data!r}")
+    # Prove it genuinely streamed: many small real tokens, then the whole answer.
+    assert len(chunks) > 1, f"expected multiple real token chunks, got {len(chunks)}"
+    print(f"  -> streamed {len(chunks)} real tokens; reassembled: {''.join(chunks).strip()!r}")
 
 
 async def slice_single() -> None:
