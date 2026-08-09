@@ -1,8 +1,13 @@
 # AgentShip demo — dev workflow.
 #
+# This demo is LIVE: `make demo` and `make test` call the real OpenAI API and need a
+# real OPENAI_API_KEY. Load one from a local .env (copy .env.example to .env and set
+# it) or from the sibling framework checkout:
+#
+#     set -a; source ../agentship/.env; set +a
+#
 # Until the framework is published to PyPI, `make install` installs it editable from
-# the sibling monorepo checkout (../agentship/packages/*). Once published, the
-# pinned form is `pip install "agentship[langgraph]==0.0.1"` (see pyproject.toml).
+# the sibling monorepo checkout (../agentship/packages/*).
 
 VENV := .venv
 PY := $(VENV)/bin/python
@@ -16,16 +21,17 @@ install:
 	$(PIP) install --upgrade pip
 	$(PIP) install -r requirements-dev.txt
 
-## test: run the keyless test suite — one slice per capability (no API key needed)
+## test: run the LIVE test suite — every test calls the real API (needs OPENAI_API_KEY).
+##   Without a key the tests skip cleanly.
 test:
-	env -u OPENAI_API_KEY $(VENV)/bin/pytest -q
+	$(VENV)/bin/pytest -q
 
-## demo: SEE every Phase 00-01 capability run keyless, one labeled block each.
-##   Exits non-zero if any slice fails. Needs no API key.
+## demo: SEE every capability run LIVE against OpenAI, one labeled block each.
+##   Needs a real OPENAI_API_KEY; exits non-zero if unset or if any slice fails.
 demo:
-	env -u OPENAI_API_KEY $(PY) demos/run_all.py
+	$(PY) demos/run_all.py
 
-## run: run the demo agent for one turn (needs a real OPENAI_API_KEY in .env)
+## run: run the demo agent for one real turn (needs a real OPENAI_API_KEY in .env)
 ##   usage: make run INPUT="Give one productivity tip."
 INPUT ?= Give one productivity tip.
 run:

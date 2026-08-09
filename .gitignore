@@ -13,6 +13,3 @@ __pycache__/
 .env.*
 .env*
 !.env.example
-
-# NOTE: tests/cassettes/ is intentionally NOT ignored — the recorded, redacted
-# HTTP round-trips are committed so the smoke test replays keyless in CI.

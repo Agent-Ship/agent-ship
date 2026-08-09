@@ -1,6 +1,6 @@
 # Dev / editable-local install of the AgentShip framework.
 #
-# The framework is not on PyPI yet, so the pinned `agentship[langgraph]==0.0.1` in
+# The framework is not on PyPI yet, so the pinned `agentship[starter]==0.0.1` in
 # pyproject.toml cannot resolve from an index. Until it publishes, install the three
 # framework packages editable from the sibling monorepo checkout, plus the test
 # tooling. Run this from the demo repo root, inside a venv:
@@ -14,10 +14,5 @@
 -e ../agentship/packages/agentship-langgraph
 -e ../agentship/packages/agentship-cli
 
-# The `deepagents` template is an opt-in extra of agentship-langgraph; the demo's
-# deepagents slice needs it to build/compile the prebuilt deep-agent graph.
-deepagents==0.6.12
-
 pytest>=8
 pytest-asyncio>=0.24
-pytest-recording>=0.13

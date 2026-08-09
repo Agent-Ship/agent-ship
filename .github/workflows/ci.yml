@@ -1,18 +1,14 @@
 name: ci
 
-# Runs the demo's keyless test suite (one slice per Phase 00-01 capability) and the
-# `make demo` runner on every push / PR. No API key is needed: offline slices run
-# live, and the real-model slices replay committed cassettes in tests/cassettes/.
+# Runs the demo's LIVE test suite (one slice per capability) on every push / PR.
+# Every test makes a real call to the OpenAI API, so this needs the OPENAI_API_KEY
+# repo secret. Set it under Settings -> Secrets and variables -> Actions. Without it,
+# the tests skip cleanly (they never fake-pass), so the workflow still succeeds.
 #
 # LIMITATION: AgentShip is not published to PyPI yet, so this workflow installs the
-# framework editable from a SIBLING CHECKOUT of the monorepo (it checks out the
-# `agentship` repo next to this one). Once the framework publishes, delete the
-# second checkout step and the editable install below and replace them with the
-# pinned form:
-#
-#     pip install "agentship[langgraph]==0.0.1"
-#
-# (matching the pin in pyproject.toml).
+# framework editable from a SIBLING CHECKOUT of the monorepo. Once the framework
+# publishes, delete the second checkout step and the editable install and replace
+# them with:  pip install "agentship[starter]==0.0.1"
 
 on:
   push:
@@ -20,7 +16,7 @@ on:
   pull_request:
 
 jobs:
-  smoke:
+  live:
     runs-on: ubuntu-latest
     steps:
       - name: Check out the demo repo
@@ -46,19 +42,10 @@ jobs:
         working-directory: agentship-demo
         run: |
           python -m pip install --upgrade pip
-          # Once published, replace this whole block with:
-          #   pip install "agentship[langgraph]==0.0.1" pytest pytest-asyncio pytest-recording
           pip install -r requirements-dev.txt
 
-      - name: Run the keyless test suite (one slice per capability)
+      - name: Run the LIVE test suite (needs the OPENAI_API_KEY secret; skips without it)
         working-directory: agentship-demo
         env:
-          # Ensure no real key leaks into the run; cassettes are replayed offline.
-          OPENAI_API_KEY: ""
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: pytest -q
-
-      - name: Run the demo runner (every capability, keyless)
-        working-directory: agentship-demo
-        env:
-          OPENAI_API_KEY: ""
-        run: python demos/run_all.py

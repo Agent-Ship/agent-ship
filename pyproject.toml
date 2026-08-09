@@ -37,10 +37,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Test tooling for the keyless cassette smoke test.
+# Test tooling for the live test suite (every test calls the real API).
 test = [
     "pytest>=8",
-    "pytest-recording>=0.13",
+    "pytest-asyncio>=0.24",
 ]
 
 [tool.hatch.build.targets.wheel]
