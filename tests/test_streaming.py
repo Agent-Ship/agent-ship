@@ -1,40 +1,33 @@
-"""Real-provider streaming proof: the demo streams multiple tokens, replayed keyless.
+"""Live streaming proof: the demo streams multiple real tokens from OpenAI.
 
-This is the demo's streaming proof — it replaces the zero-dependency echo slice as
-the *streaming* demonstration. It loads the demo's own ``agents/streaming.yaml``
-through the installed AgentShip framework and streams one turn against a real
-``gpt-4o-mini``, asserting the answer arrives as **more than one** ``content``
-event (genuine token-by-token streaming from a real provider), reassembling to a
-non-empty answer, ended by a single terminal ``done``. The streaming HTTP
-round-trip is recorded once (credentials redacted) into ``tests/cassettes/`` and
-replayed on every later run with **no key**.
+This loads the demo's own ``agents/streaming.yaml`` through the installed AgentShip
+framework and streams one real turn against ``gpt-4o-mini``, asserting the answer
+arrives as **more than one** ``content`` event — genuine token-by-token streaming
+from a real provider — that reassembles into a non-empty answer, ended by a single
+terminal ``done``. There is no recording: this makes a live call to OpenAI.
 
-To (re-)record the cassette, with a real key present:
+Run it (with a key set):
 
     set -a; source ../agentship/.env; set +a
-    pytest tests/test_streaming.py --record-mode=once
+    pytest tests/test_streaming.py -q
 
-Then verify it replays keyless:
-
-    env -u OPENAI_API_KEY pytest -q
+Without a key the test skips cleanly.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 from agentship import build_agent
+from conftest import requires_live_key
 
-# The demo's own streaming agent — loaded by path, exactly as `agentship run
-# --stream` would. Transport / cost-map setup and the `openai_key_for_replay`
-# fixture live in conftest.py, shared with the other cassette-backed slices.
+# The demo's own streaming agent — loaded by path, as `agentship run --stream` would.
 AGENT = str(Path(__file__).resolve().parents[1] / "agents" / "streaming.yaml")
 
 
-@pytest.mark.vcr
-async def test_demo_streams_multiple_real_tokens(openai_key_for_replay):
-    """The demo streaming agent yields >1 content chunk from a real model (via cassette)."""
+@requires_live_key
+async def test_demo_streams_multiple_real_tokens():
+    """The demo streaming agent yields >1 real content chunk from a live model."""
     agent = build_agent(AGENT)
     assert agent.spec.engine == "langgraph"
     assert agent.spec.streaming is True

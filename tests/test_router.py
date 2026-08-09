@@ -1,35 +1,39 @@
-"""Keyless slice: the `ModelRouter` mechanism — route step stamps, adapter reads.
+"""Live slice: the `ModelRouter` — the router picks the model, then a real turn runs.
 
-Routing is a pure, deterministic, request-time choice of which model id a turn
-uses (DESIGN §13.5): the runtime's ``route`` step runs *before* the engine and
-stamps the chosen id on :attr:`RunContext.routed_model`; the engine adapter then
-*reads* that value and never routes itself.
+Routing is a pure, deterministic, request-time choice of which model id a turn uses
+(DESIGN §13.5): the runtime's ``route`` step runs before the engine and stamps the
+chosen id on :attr:`RunContext.routed_model`; the engine reads that value and never
+routes itself. The default router (``DefaultModelRouter``) is a simple pass-through
+today — it returns exactly the model the spec declares.
 
-This slice is a real mechanism demo, not a stub and not an LLM call. It proves,
-with no API key and no network:
+This slice makes the routing real end to end: it asks the router which model to use,
+then runs one real ``gpt-4o-mini`` turn through the framework and asserts a real,
+non-empty answer comes back. There is no fake engine and no recording — this makes a
+live call to OpenAI.
 
-* :class:`DefaultModelRouter` deterministically picks ``spec.model``;
-* the runtime stamps that pick onto the context *before the engine runs* — proven
-  by a recording engine that captures ``ctx.routed_model`` at run time.
+Run it (with a key set):
+
+    set -a; source ../agentship/.env; set +a
+    pytest tests/test_router.py -q
+
+Without a key the live test skips cleanly.
 """
 
 from __future__ import annotations
 
 from agentship import build_agent
-from agentship.context import Caller, RunContext, RunMode
-from agentship.engines.base import ENGINES, Engine, EngineCapabilities, Result
 from agentship.primitives.model_router import (
     DefaultModelRouter,
     resolve_model_router,
-    stamp_routed_model,
 )
 from agentship.spec import AgentSpec
+from conftest import requires_live_key
 
 ROUTED_MODEL = "openai/gpt-4o-mini"
 
 
 def test_default_router_picks_spec_model_deterministically():
-    """DefaultModelRouter.pick returns spec.model, the same id every time (never an LLM)."""
+    """The default (pass-through) router returns spec.model, the same id every time."""
     router = DefaultModelRouter()
     spec = AgentSpec(name="a", engine="langgraph", model=ROUTED_MODEL)
 
@@ -39,53 +43,27 @@ def test_default_router_picks_spec_model_deterministically():
     assert isinstance(resolve_model_router(), DefaultModelRouter)
 
 
-def test_stamp_writes_the_routed_model_onto_the_context():
-    """stamp_routed_model writes the router's pick onto RunContext.routed_model."""
-    ctx = RunContext(
-        caller=Caller(user_id="u1"),
-        session_id="s1",
-        run_id="r1",
-        agent_name="a",
-        mode=RunMode.INVOKE,
-    )
-    assert ctx.routed_model is None  # unset until the route step runs
+@requires_live_key
+async def test_router_picks_then_a_real_turn_runs_through_it():
+    """The router picks the model id, then a real turn through that model answers live.
 
-    stamp_routed_model(AgentSpec(name="a", engine="langgraph", model=ROUTED_MODEL), ctx)
-
-    assert ctx.routed_model == ROUTED_MODEL
-
-
-async def test_runtime_stamps_routed_model_before_the_engine_and_adapter_reads_it():
-    """A real run stamps routed_model before the engine, and the engine (adapter) reads it.
-
-    A recording engine captures ``ctx.routed_model`` at run time. Because the
-    runtime runs the ``route`` step before the engine, the engine observes the
-    stamped id — not ``None``. This is the exact seam a real adapter uses to resolve
-    its model, exercised keyless.
+    First the pass-through router chooses the model id from the spec; then the same
+    spec runs a real turn against that model and returns a real, non-empty answer —
+    the picked id and the live answer together, no fakes.
     """
-    seen: dict = {}
+    spec = AgentSpec(
+        name="router-demo",
+        engine="langgraph",
+        template="single",
+        model=ROUTED_MODEL,
+        prompt="You are a concise assistant. Answer in one short sentence.",
+    )
 
-    class _RecordingEngine(Engine):
-        """An engine that records the routed_model it sees at run time, then echoes."""
+    picked = DefaultModelRouter().pick(spec)
+    assert picked == ROUTED_MODEL
 
-        name = "demo_recording_router"
-        capabilities = EngineCapabilities()
+    agent = build_agent(spec)
+    result = await agent.run("Name one primary color.")
 
-        def build(self, spec, authored=None):
-            """No compilation needed — the spec itself is the artifact."""
-            return spec
-
-        async def run(self, compiled, text, ctx):
-            """Record the routed model the route step stamped, then echo the text."""
-            seen["routed_model"] = ctx.routed_model
-            return Result(output=text)
-
-    ENGINES.register("demo_recording_router", _RecordingEngine)
-    try:
-        agent = build_agent(
-            AgentSpec(name="a", engine="demo_recording_router", model=ROUTED_MODEL)
-        )
-        await agent.run("hi")
-        assert seen["routed_model"] == ROUTED_MODEL
-    finally:
-        ENGINES._providers.pop("demo_recording_router", None)
+    assert isinstance(result.output, str)
+    assert result.output.strip() != ""

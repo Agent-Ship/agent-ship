@@ -1,43 +1,37 @@
-"""Anti-rot smoke test: the demo's agent actually runs against a real model.
+"""Live slice: the `template: single` assistant answers for real.
 
 This is the whole reason the demo repo exists. It loads the demo's own
 ``agents/assistant.yaml`` through the *installed* AgentShip framework (the public
-``build_agent`` entry point), runs one turn against a real ``gpt-4o-mini``, and
-asserts a non-empty answer comes back. The real HTTP round-trip is recorded once
-into ``tests/cassettes/`` (credentials redacted) and replayed on every later run
-with **no key** — so CI proves the published packages wire up end to end, without
-secrets.
+``build_agent`` entry point), runs one real turn against ``gpt-4o-mini``, and
+asserts a real, non-empty answer comes back. There is no recording and no fake
+model — this makes a live call to OpenAI.
 
-To (re-)record the cassette, with a real key present:
+Run it (with a key set):
 
     set -a; source ../agentship/.env; set +a
-    pytest tests/test_smoke.py --record-mode=once
+    pytest tests/test_smoke.py -q
 
-Then verify it replays keyless:
-
-    env -u OPENAI_API_KEY pytest -q
+Without a key the test skips cleanly.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 from agentship import build_agent
+from conftest import requires_live_key
 
-# The demo's own agent — loaded by path, exactly as `agentship run` would. The
-# LiteLLM transport / cost-map setup and the `openai_key_for_replay` fixture live
-# in conftest.py, shared with the other cassette-backed slices.
+# The demo's own agent — loaded by path, exactly as `agentship run` would.
 AGENT = str(Path(__file__).resolve().parents[1] / "agents" / "assistant.yaml")
 
 
-@pytest.mark.vcr
-async def test_demo_assistant_returns_a_non_empty_answer(openai_key_for_replay):
-    """The demo assistant, loaded from its YAML, returns a non-empty answer (via cassette)."""
+@requires_live_key
+async def test_demo_assistant_returns_a_non_empty_answer():
+    """The demo assistant, loaded from its YAML, returns a real non-empty answer."""
     agent = build_agent(AGENT)
     assert agent.spec.engine == "langgraph"
 
-    result = await agent.run("Give one productivity tip.")
+    result = await agent.run("Give one productivity tip in one short sentence.")
 
     assert isinstance(result.output, str)
     assert result.output.strip() != ""

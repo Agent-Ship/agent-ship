@@ -1,34 +1,36 @@
-"""Keyless slice: the `graph` template — real routed coordinator -> worker turn.
+"""Live slice: the `graph` template — a real routed coordinator -> worker turn.
 
 The ``graph`` template generates a real, compilable supervisor ``StateGraph`` that
 routes a coordinator to one worker. This test loads the demo's own
-``agents/graph.yaml`` through the framework, runs one real ``gpt-4o-mini`` turn
-(coordinator routes -> worker answers), and asserts a non-empty answer. The real
-HTTP round-trip is recorded once (credentials redacted) and replayed keyless.
+``agents/graph.yaml`` through the framework and runs one real ``gpt-4o-mini`` turn
+(coordinator routes -> worker answers), asserting a real non-empty answer. There is
+no recording: this makes a live call to OpenAI.
 
-HONEST LABEL: this is the authoring SCAFFOLD only — a full DURABLE multi-agent
+HONEST LABEL: this is the authoring SCAFFOLD only — a full durable multi-agent
 runtime is Phase 02. The test proves the scaffold is a real routed graph that
 answers, not that a durable multi-agent runtime exists.
 
-To (re-)record the cassette, with a real key present:
+Run it (with a key set):
 
     set -a; source ../agentship/.env; set +a
-    pytest tests/test_graph.py --record-mode=once
+    pytest tests/test_graph.py -q
+
+Without a key the test skips cleanly.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 from agentship import build_agent
+from conftest import requires_live_key
 
 AGENT = str(Path(__file__).resolve().parents[1] / "agents" / "graph.yaml")
 
 
-@pytest.mark.vcr
-async def test_graph_scaffold_routes_and_returns_a_non_empty_answer(openai_key_for_replay):
-    """agents/graph.yaml (template: graph) routes coordinator -> worker and answers (via cassette)."""
+@requires_live_key
+async def test_graph_scaffold_routes_and_returns_a_non_empty_answer():
+    """agents/graph.yaml (template: graph) routes coordinator -> worker and answers live."""
     agent = build_agent(AGENT)
     assert agent.spec.template == "graph"
 
