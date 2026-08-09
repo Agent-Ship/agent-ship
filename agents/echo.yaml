@@ -1,9 +1,0 @@
-# The walking-skeleton agent — the zero-dependency `echo` engine (Phase 00).
-#
-# No model, no API key, no network: this proves the whole spine
-# (author -> build -> run/stream -> CLI) end to end with nothing but the kernel.
-# `agentship run agents/echo.yaml --input "hi"` prints `echo: hi`; add `--stream`
-# to see the same answer arrive as streamed events.
-name: echo
-engine: echo
-prompt: You are a helpful assistant.
