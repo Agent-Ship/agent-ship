@@ -44,9 +44,25 @@ agentship run examples/assistant.yaml --input "Name three primary colors."
 # → e.g. "The three primary colors are red, blue, and yellow."
 ```
 
+`run` returns the model's **whole** answer as one result. `--stream` streams the
+answer as **real tokens** from the provider — the model emits many small chunks
+(e.g. `Merc` · `ury` · `,` · …) that reassemble into the full text:
+
+```bash
+agentship run examples/assistant.yaml --input "Name the 8 planets." --stream
+# → Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, Neptune.  (arrives token by token)
+```
+
 The offline test suite proves this wiring with an injected fake model (no
-network); the live path is proven by a recorded, replayed cassette (no key needed
-to replay).
+network). Two live paths are proven by recorded, replayed cassettes (no key needed
+to replay): `run` returns the full answer
+(`tests/test_live_model.py`), and `--stream` yields **multiple real token chunks**
+(`tests/test_streaming_live.py` asserts more than one `content` event, reassembling
+to the full answer). Real token streaming requires the chat model to be built with
+`streaming=True` (see `resolve_model`); without it a real provider returns one whole
+message and `--stream` would yield nothing — the engine also carries a fallback that
+emits the whole answer as a single `content` event if a model ever refuses to stream,
+so `--stream` never silently produces zero output.
 
 ## `quickstart.yaml` — the `single` template (zero author code)
 
