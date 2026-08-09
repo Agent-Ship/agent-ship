@@ -110,6 +110,21 @@ message and `--stream` would yield nothing — the engine also carries a fallbac
 emits the whole answer as a single `content` event if a model ever refuses to stream,
 so `--stream` never silently produces zero output.
 
+The saved-recording test above shows streaming comes out in many pieces, but a
+recording plays back instantly, so it can't show the pieces really arrived one at a
+time. To check that — that tokens genuinely stream in over time, and we didn't
+quietly slip back to "wait for the whole answer, then hand it out in pieces" — there
+is a separate test that calls the real OpenAI API and confirms the pieces arrive
+spread out over time (`tests/test_streaming_sends_tokens_as_they_arrive.py`, tagged
+`live`). It needs a real key, so it stays out of the normal no-key tests (it skips
+itself without `OPENAI_API_KEY`) and runs in the daily real-API job
+(`.github/workflows/daily-real-api-tests.yml`):
+
+```bash
+set -a; source .env; set +a   # real OPENAI_API_KEY
+python -m pytest -m live -q
+```
+
 **Test it (no key):**
 
 ```bash

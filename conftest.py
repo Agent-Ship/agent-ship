@@ -23,7 +23,18 @@ keyless request still resolves to the recorded interaction.
 
 from __future__ import annotations
 
+import os
+
 import pytest
+
+# Captured at conftest import time — the earliest point in a pytest session, before
+# any test module is collected. Importing ``litellm`` (which many test modules do)
+# loads a local ``.env`` via python-dotenv and injects provider keys into
+# ``os.environ``; that pollution would defeat the keyless ``skipif`` on the
+# key-required live tests when a dev box has a ``.env`` on disk. Recording the real
+# key state here, before that happens, gives those tests a trustworthy signal. In CI
+# there is no ``.env``, so this simply reflects whether the secret was provided.
+HAS_OPENAI_KEY_AT_STARTUP = bool(os.environ.get("OPENAI_API_KEY"))
 
 
 @pytest.fixture(scope="module")

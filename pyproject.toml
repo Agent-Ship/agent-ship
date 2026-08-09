@@ -17,3 +17,7 @@ asyncio_mode = "auto"
 # top-level engine×capability matrix (DESIGN §11) that runs over every registered
 # engine and fails the build on any over-declared capability.
 testpaths = ["packages", "conformance"]
+# The `live` marker tags tests that need a real API key and actually call OpenAI
+# (for example, the test that checks streaming really sends tokens one at a time).
+# They skip themselves in the normal no-key tests and run in the daily real-API job.
+markers = ["live: needs a real API key; runs in the daily real-API job, not the normal no-key tests"]

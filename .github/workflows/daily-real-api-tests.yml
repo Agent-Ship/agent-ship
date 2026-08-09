@@ -1,0 +1,43 @@
+# Daily tests against the real OpenAI API.
+#
+# Most of our tests run with no API key — they replay saved recordings, so they
+# are fast and free. A few things can only be checked by actually calling OpenAI,
+# for example: is streaming real (do tokens arrive one by one over time), and has
+# OpenAI changed its API in a way that would break us. Those checks need a real
+# key, so they can't run in the normal no-key tests. This job runs them once a day
+# on their own.
+#
+# TO TURN IT ON: add an `OPENAI_API_KEY` secret to the repo
+# (Settings -> Secrets and variables -> Actions). Without it, these tests just skip
+# and this job does nothing. This job is separate from the normal pull-request
+# tests and never blocks them.
+
+name: Daily real-API tests
+
+on:
+  schedule:
+    # Once a day, 07:00 UTC.
+    - cron: "0 7 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  real-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install the packages (editable) + test tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e packages/agentship-core -e packages/agentship-langgraph -e packages/agentship-cli
+          pip install 'pytest>=8' 'pytest-asyncio>=0.23' 'pytest-recording>=0.13' 'ruff>=0.6'
+
+      - name: Run the tests that need a real key
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: python -m pytest -m live -q
