@@ -7,8 +7,8 @@ The point is that you can literally *see* every feature run: `make demo`.
 
 Its job is also to prove the *published* framework actually works end to end: fork
 it, install AgentShip by version, and run real agents. Every slice runs with **no
-API key** — the offline slices (echo, streaming, router, deepagents) run against
-the kernel or a fake model; the real-model slices (single, graph, custom) replay a
+API key** — the offline slices (echo, router, deepagents) run against
+the kernel or a fake model; the real-model slices (streaming, single, graph, custom) replay a
 committed, redacted VCR cassette. That keyless suite is the anti-rot guard in CI:
 it catches packaging breakage (missing entry point, unwired extra, an import that
 only resolves from the source tree) the moment it happens.
@@ -23,7 +23,7 @@ and what you see. `make demo` runs the whole column top to bottom.
 | # | Capability | Slice artifact | Run it | What you see |
 |---|---|---|---|---|
 | 1 | **Echo walking skeleton** (keyless kernel) | `agents/echo.yaml` | `agentship run agents/echo.yaml --input "hi"` | `echo: hi` — no model, no key |
-| 2 | **Streaming** (keyless) | `agents/echo.yaml` + `--stream` | `agentship run agents/echo.yaml --input "hi" --stream` | a `content` event carrying `echo: hi`, then `done` |
+| 2 | **Streaming** (real `gpt-4o-mini`) | `agents/streaming.yaml` + `--stream` | `agentship run agents/streaming.yaml --input "Name the 8 planets." --stream` | the answer arrives as **multiple real tokens** — `chunk#1 'Merc'`, `chunk#2 'ury'`, … (18 chunks) — reassembling to the full answer (replayed cassette). The echo `--stream` path stays only as the zero-dependency skeleton. |
 | 3 | **`template: single`** (zero author code) | `agents/assistant.yaml` | `agentship run agents/assistant.yaml --input "Give one productivity tip."` | a real `gpt-4o-mini` answer (replayed cassette) |
 | 4 | **`template: graph`** (supervisor scaffold) | `agents/graph.yaml` | `agentship run agents/graph.yaml --input "Help me plan a trip."` | coordinator routes → worker answers (replayed cassette). **Scaffold only — durable multi-agent runtime = Phase 02.** |
 | 5 | **`template: deepagents`** (prebuilt) | `agents/deepagents.yaml` | `agentship run agents/deepagents.yaml --input "..."` | `deepagents graph compiled: <type>`. **Compiles only today — autonomous tool-using turn = Phase 03.** |
@@ -49,7 +49,8 @@ capability that isn't shipped.
 ```
 agentship-demo/
   agents/
-    echo.yaml               # slice 1+2: echo walking skeleton (run + stream), keyless
+    echo.yaml               # slice 1: echo walking skeleton (run), keyless
+    streaming.yaml          # slice 2: real gpt-4o-mini streamed token by token
     assistant.yaml          # slice 3: template: single — one real-model assistant
     graph.yaml              # slice 4: template: graph — supervisor scaffold
     deepagents.yaml         # slice 5: template: deepagents — prebuilt (compiles only)
@@ -60,7 +61,8 @@ agentship-demo/
     run_all.py              # `make demo` runner — runs every slice, prints each result
   tests/
     conftest.py             # VCR config — redacts credentials, replays keyless
-    test_echo.py            # slice 1+2: echo run + stream (keyless)
+    test_echo.py            # slice 1: echo run + stream skeleton (keyless)
+    test_streaming.py       # slice 2: real gpt-4o-mini multi-token stream (replayed cassette)
     test_smoke.py           # slice 3: single template real answer (replayed cassette)
     test_graph.py           # slice 4: graph scaffold routed answer (replayed cassette)
     test_deepagents.py      # slice 5: deepagents compiles (offline, fake model)
@@ -162,13 +164,13 @@ env -u OPENAI_API_KEY pytest -q
 
 ### Re-recording a cassette
 
-Only the three real-model slices have a cassette (`test_smoke.py`,
-`test_graph.py`, `test_custom.py`), and only when you change that agent's
-prompt/model/input. With a real key present, record just that slice:
+Only the four real-model slices have a cassette (`test_streaming.py`,
+`test_smoke.py`, `test_graph.py`, `test_custom.py`), and only when you change that
+agent's prompt/model/input. With a real key present, record just that slice:
 
 ```bash
 set -a; source ../agentship/.env; set +a      # a real OPENAI_API_KEY
-pytest tests/test_graph.py --record-mode=once  # or test_smoke.py / test_custom.py
+pytest tests/test_streaming.py --record-mode=once  # or test_smoke.py / test_graph.py / test_custom.py
 ```
 
 Then confirm it replays keyless and check for leaks before committing:
