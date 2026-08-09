@@ -16,7 +16,10 @@ import pytest
 from agentship.errors import CapabilityError, ModelError
 from agentship.runtime import build_agent
 from agentship.spec import AgentSpec, MemberSpec, ModelParams
+from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
+from langchain_core.messages import AIMessage
+from langchain_core.outputs import ChatGeneration, ChatResult
 
 
 @pytest.fixture
@@ -57,6 +60,77 @@ async def test_stream_yields_content_chunks_then_done(fake_model):
 
     assert events[-1].type == "done"
     assert sum(1 for e in events if e.type == "done") == 1
+
+
+class _NonStreamingModel(BaseChatModel):
+    """A chat model that returns a whole ``AIMessage`` and never streams tokens.
+
+    ``FakeListChatModel`` streams chunks by default (which is why it masked the
+    real-provider zero-chunk bug). This model implements only ``_generate`` — with
+    no ``_stream``/``_astream`` hook — so LangGraph's ``stream_mode="messages"``
+    surfaces a single whole ``AIMessage`` (not an ``AIMessageChunk``), modelling a
+    provider/model that ignores ``streaming=True`` and so exercising the engine's
+    no-silent-empty fallback.
+    """
+
+    response: str = "The whole answer, undivided."
+
+    @property
+    def _llm_type(self) -> str:
+        """LangChain's required model-type tag."""
+        return "non-streaming-fake"
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        """Return the whole answer as a single non-streamed ``AIMessage``."""
+        return ChatResult(
+            generations=[ChatGeneration(message=AIMessage(content=self.response))]
+        )
+
+
+@pytest.fixture
+def non_streaming_model(monkeypatch):
+    """Inject a model that yields one whole AIMessage instead of token chunks."""
+    fake = _NonStreamingModel()
+    monkeypatch.setattr(models_module, "resolve_model", lambda *a, **k: fake)
+    return fake
+
+
+async def test_stream_falls_back_to_full_message_when_model_does_not_stream(
+    non_streaming_model,
+):
+    """A non-streaming model still yields its answer as one content event, then done.
+
+    Guards the no-silent-empty contract: when the model returns a whole
+    ``AIMessage`` (no ``AIMessageChunk`` tokens), ``stream`` must not yield an empty
+    stream — it falls back to emitting that full content as a single ``content``
+    event before the terminal ``done``.
+    """
+    agent = build_agent(
+        AgentSpec(name="a", engine="langgraph", model="x", prompt="p", streaming=True)
+    )
+    events = [e async for e in agent.stream("hi")]
+
+    content = [e for e in events if e.type == "content"]
+    assert len(content) == 1  # exactly one fallback event — no double-emit
+    assert content[0].data == "The whole answer, undivided."
+
+    assert events[-1].type == "done"
+    assert sum(1 for e in events if e.type == "done") == 1
+
+
+async def test_stream_does_not_double_emit_when_model_streams(fake_model):
+    """The streaming path is unaffected by the fallback: no extra full-message event.
+
+    When real chunks arrive, the reassembled content must equal the answer exactly
+    (no duplicated whole-message content appended by the fallback path).
+    """
+    agent = build_agent(
+        AgentSpec(name="a", engine="langgraph", model="x", prompt="p", streaming=True)
+    )
+    events = [e async for e in agent.stream("hi")]
+    content = [e for e in events if e.type == "content"]
+    assert len(content) > 1
+    assert "".join(e.data for e in content) == "Red, green, and blue."
 
 
 @pytest.fixture

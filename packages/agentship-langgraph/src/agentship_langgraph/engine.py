@@ -23,7 +23,7 @@ from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from agentship.engines.base import Engine, EngineCapabilities, Event, Result
-from langchain_core.messages import AIMessageChunk, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from typing_extensions import TypedDict
@@ -214,15 +214,36 @@ class LangGraphEngine(Engine):
         streaming is turned into an actionable
         :class:`~agentship.errors.ModelError` via
         :func:`agentship_langgraph.models.map_model_error`, chaining the original cause.
+
+        **No-silent-empty guarantee.** A model that does not stream tokens (e.g. a
+        provider/model that ignores ``streaming=True``) surfaces its reply as a
+        single whole :class:`~langchain_core.messages.AIMessage`, which is *not* an
+        ``AIMessageChunk`` and so passes the token filter untouched. If the whole
+        stream produced no chunk content, we fall back to emitting that final
+        message's content as one ``content`` event before ``done`` — so ``--stream``
+        never silently yields nothing. When real chunks did arrive, no fallback is
+        emitted (no double-emit): the token stream is authoritative.
         """
         stream = compiled.graph.astream(
             {"messages": compiled.initial_messages(text)},
             stream_mode="messages",
         )
+        streamed_content = False
+        last_full_content: Any = None
         try:
             async for message, _metadata in stream:
-                if isinstance(message, AIMessageChunk) and message.content:
-                    yield Event(type="content", data=message.content)
+                if isinstance(message, AIMessageChunk):
+                    if message.content:
+                        streamed_content = True
+                        yield Event(type="content", data=message.content)
+                elif isinstance(message, AIMessage) and message.content:
+                    # A whole (non-chunk) model reply — remember its content as the
+                    # fallback answer in case no chunk content ever arrives. Gated on
+                    # AIMessage so the replayed Human/System input is never mistaken
+                    # for the answer.
+                    last_full_content = message.content
         except Exception as exc:
             raise models.map_model_error(compiled.model_id, exc) from exc
+        if not streamed_content and last_full_content:
+            yield Event(type="content", data=last_full_content)
         yield Event(type="done")
