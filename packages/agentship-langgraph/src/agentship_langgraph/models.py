@@ -48,6 +48,16 @@ def resolve_model(model: str, **params: Any) -> BaseChatModel:
     Raises :class:`~agentship.errors.SpecError` when ``model`` is empty or blank,
     so a misconfigured spec fails with an actionable message before any provider
     call is attempted.
+
+    The model is built with ``streaming=True``. The engine streams a turn with
+    LangGraph's ``stream_mode="messages"``, which surfaces incremental
+    ``AIMessageChunk`` tokens **only when the underlying chat model actually
+    streams**. Without ``streaming=True`` ``ChatLiteLLM`` returns one whole
+    ``AIMessage`` per turn, so ``model.astream(...)`` yields a single non-chunk
+    message and the engine's ``AIMessageChunk`` filter emits zero content events
+    against a real provider. Enabling it here is what makes ``--stream`` deliver
+    real token-by-token output; the non-streaming ``run`` path (``ainvoke``) is
+    unaffected — it still returns the full concatenated answer.
     """
     if not model or not model.strip():
         raise SpecError(
@@ -62,7 +72,7 @@ def resolve_model(model: str, **params: Any) -> BaseChatModel:
         field = _PARAM_TO_FIELD.get(name, name)
         kwargs[field] = value
 
-    return ChatLiteLLM(model=model, **kwargs)
+    return ChatLiteLLM(model=model, streaming=True, **kwargs)
 
 
 #: Provider prefix (the part before the first ``/`` in a LiteLLM model id) → the

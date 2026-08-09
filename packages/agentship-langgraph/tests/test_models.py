@@ -14,6 +14,18 @@ from agentship_langgraph.models import resolve_model
 from langchain_litellm import ChatLiteLLM
 
 
+def test_resolve_model_enables_streaming():
+    """The result is streaming-enabled so ``stream_mode="messages"`` gets real tokens.
+
+    Without ``streaming=True`` ``ChatLiteLLM`` returns one whole ``AIMessage`` per
+    turn, so the engine's ``AIMessageChunk`` filter emits zero content events
+    against a real provider. Building it streaming here is what makes ``--stream``
+    deliver token-by-token output.
+    """
+    model = resolve_model("openai/gpt-4o-mini")
+    assert model.streaming is True
+
+
 def test_resolve_model_builds_chatlitellm_with_model_and_temperature():
     """The result is a ChatLiteLLM carrying the requested model id + temperature."""
     model = resolve_model("openai/gpt-4o-mini", temperature=0.2)
