@@ -7,7 +7,12 @@ __pycache__/
 .pytest_cache/
 
 # Real provider credentials — NEVER commit. Use .env.example as the template.
+# Match every .env variant (incl. editor copies like ".env copy", ".env.local")
+# but keep the committed template.
 .env
+.env.*
+.env*
+!.env.example
 
 # NOTE: tests/cassettes/ is intentionally NOT ignored — the recorded, redacted
 # HTTP round-trips are committed so the smoke test replays keyless in CI.
