@@ -12,13 +12,57 @@ See DESIGN §13.5 for why routing is a separate step the engine never does itsel
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
+
+from pydantic import BaseModel, ConfigDict
 
 from ..registry import Registry
 
 if TYPE_CHECKING:
     from ..context import RunContext
     from ..spec import AgentSpec
+
+#: A LiteLLM model id string, e.g. ``"openai/gpt-4o-mini"``.
+ModelId = str
+
+#: The coarse cost/capability tier a task asks for; a table maps each to a model.
+Tier = Literal["cheap", "balanced", "strong"]
+
+
+class TaskHint(BaseModel):
+    """What a single turn (or node) wants from routing — all fields optional.
+
+    A hint is how a node expresses a preference the router may honour: ``model`` is
+    an explicit per-node override (e.g. a classify node passing
+    ``cfg.classify.model``), taking precedence over everything; ``tier`` asks for a
+    cost/capability class the table resolves; ``modality`` is a coarse label
+    (``"text"``, ``"vision"``…) a richer policy may consult. An empty hint expresses
+    no preference, so routing falls back to the agent's own ``spec.model``.
+    ``extra="forbid"``: a stray key is a loud error, never a silent typo.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    tier: Tier | None = None
+    model: ModelId | None = None
+    modality: str | None = None
+
+
+class RouterTable(BaseModel):
+    """A static, deterministic lookup from tiers to concrete model ids.
+
+    ``tiers`` maps each :data:`Tier` a distribution supports to a model id; ``default``
+    is the last-resort model used when nothing else resolves. Both are optional — an
+    empty table simply lets :class:`LookupModelRouter` fall through to ``spec.model``.
+    Being fully static is what keeps routing reproducible: the same table and hint
+    always pick the same model. ``extra="forbid"`` and the tier keys are enum-checked,
+    so a misspelled tier is rejected at load time.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    tiers: dict[Tier, ModelId] = {}
+    default: ModelId | None = None
 
 
 class ModelRouter(ABC):
