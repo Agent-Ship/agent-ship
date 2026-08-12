@@ -1,11 +1,11 @@
-"""The runtime glue: build an agent from a spec, then run/stream it.
+"""Build an agent from a spec, then run or stream it.
 
-:func:`build_agent` resolves + capability-validates the engine and compiles the
-agent into a :class:`RunnableAgent`. ``run``/``stream`` drive the engine inside the
-``current_run`` contextvar and the middleware pipeline (an LIFO "onion":
-``on_request`` in order, ``on_response`` in reverse). On failure, ``on_error`` fires
-in reverse order for observation and the *original* exception is re-raised — never
-masked. The contextvar is reset on every path, including an abandoned stream.
+:func:`build_agent` checks the engine can do what the spec asks, then compiles the
+agent into a :class:`RunnableAgent`. Each turn runs the middleware pipeline —
+``on_request`` in order, ``on_response`` in reverse — with the current run stored in
+the ``current_run`` contextvar so tools can read the caller's identity. If anything
+raises, each middleware's ``on_error`` runs (reverse order) and the original error is
+re-raised, never hidden. The contextvar is always put back when the turn ends.
 """
 
 from __future__ import annotations
@@ -26,8 +26,6 @@ if TYPE_CHECKING:
     from .middleware import Middleware
 
 logger = logging.getLogger(__name__)
-
-_UNSET = object()
 
 
 async def _run_error_hooks(
@@ -52,53 +50,6 @@ async def _run_error_hooks(
                 exc,
                 exc_info=observer_exc,
             )
-
-
-class _StreamRunContextScope:
-    """Same-frame contextvar management for the streaming generator.
-
-    A plain ``token = set(ctx)`` / ``finally: reset(token)`` leaks for an
-    *abandoned* async generator: the first ``__anext__`` sets the contextvar in
-    the caller's context, but the generator's ``finally`` runs later in the async-
-    generator finalizer's *own* context (under ``GeneratorExit`` from an SSE
-    disconnect / ``break`` / GC), where the token is invalid and the caller's
-    context is unreachable — so ``reset`` raises ``ValueError`` ("Token created in
-    a different Context") and the caller's ``current_run`` stays pointing at the
-    finished run.
-
-    This scope sidesteps that by only touching the contextvar at the ``yield``
-    boundary the caller observes: it snapshots the previous value, ``arm()``s (sets
-    ``ctx``) while the engine produces the next event, and ``restore()``s the
-    previous value right before control returns to the caller. Every operation
-    swallows errors so teardown never raises.
-    """
-
-    def __init__(self, ctx: RunContext) -> None:
-        """Snapshot the current ``current_run`` value and remember the run's ctx."""
-        self._ctx = ctx
-        self._previous = current_run.get(_UNSET)
-
-    def arm(self) -> None:
-        """Set ``current_run`` to this run's ctx (for the engine's next step)."""
-        try:
-            current_run.set(self._ctx)
-        except Exception:  # noqa: BLE001 - never raise from context management
-            pass
-
-    def restore(self) -> None:
-        """Restore ``current_run`` to the value it held before this run began.
-
-        Uses ``set`` (not ``reset``), so it is safe in whatever context this runs
-        in — including the foreign-context generator finalizer. When there was no
-        previous value the variable is cleared to ``None``.
-        """
-        try:
-            if self._previous is _UNSET:
-                current_run.set(None)  # type: ignore[arg-type]
-            else:
-                current_run.set(self._previous)
-        except Exception:  # noqa: BLE001 - teardown must never raise
-            pass
 
 
 class RunnableAgent:
@@ -194,48 +145,34 @@ class RunnableAgent:
         user_id: str = "anonymous",
         session_id: str | None = None,
     ) -> AsyncIterator[Event]:
-        """Stream events for one turn (capability-gated on the engine's ``streaming``).
+        """Stream events for one turn (allowed only if the engine declares streaming).
 
-        Mirrors :meth:`run`: a fresh ``run_id`` per call and ``on_error`` observation
-        on failure before the exception propagates. Robust teardown: an SSE
-        disconnect, an early ``break``, or GC of the abandoned generator closes it
-        with :class:`GeneratorExit` whose ``finally`` runs in the finalizer's own
-        context — where a plain ``reset(token)`` both raises and cannot undo the
-        leak. So the contextvar is managed by :class:`_StreamRunContextScope`, which
-        only touches ``current_run`` at the ``yield`` boundary; the caller never
-        observes a leak whether the stream completes or is abandoned.
+        Like :meth:`run`, but yields events instead of returning a result. Sets the
+        current run for this turn and always puts back the previous one when the
+        stream ends — cleanly, on error, or when the caller stops early. We use
+        ``set`` (not ``reset``) to restore, so cleanup never crashes even when an
+        abandoned stream is torn down in a different context. See ``get_run_context``.
         """
         ctx = self._make_context(
             text, user_id=user_id, session_id=session_id, mode=RunMode.STREAM
         )
-        scope = _StreamRunContextScope(ctx)
-        scope.arm()
+        previous = current_run.get(None)  # whatever run (if any) was active before this
+        current_run.set(ctx)
         try:
-            # The ``route`` step (mirrors ``run``): stamp the chosen model id before
-            # the engine streams, so the adapter reads it and never routes (§13.5).
             stamp_routed_model(self.spec, ctx)
             for mw in self.middlewares:
                 await mw.on_request(ctx)
             async for event in self.engine.stream(self.compiled, ctx.input_text, ctx):
-                # Restore the caller's context *before* handing them the event, so
-                # they never observe ``current_run`` even if they break/drop here.
-                scope.restore()
                 yield event
-                # Re-arm for the engine's next step now that control is back.
-                scope.arm()
         except GeneratorExit:
-            # The consumer dropped the generator (disconnect / break / GC). Not a
-            # run failure, so on_error is intentionally NOT fired; ``finally``
-            # restores the caller's context.
+            # The caller stopped early (disconnect / break / GC). Not a failure, so
+            # on_error is intentionally not fired; the finally still restores context.
             raise
         except BaseException as exc:
-            # Real failure (including cancellation): observe, then re-raise unchanged.
             await _run_error_hooks(self.middlewares, ctx, exc)
             raise
         finally:
-            # Restore the caller's previous ``current_run``; safe in any context
-            # (uses ``set``, not ``reset``) and never raises.
-            scope.restore()
+            current_run.set(previous)  # put the caller's previous run back; never raises
 
 
 def _resolve_code_spec(spec: AgentSpec) -> tuple[AgentSpec, Any]:
