@@ -140,6 +140,14 @@ class TestResolve:
         out = resolver.resolve([_r("x", confidence=None), _r("y", confidence=0.1)])
         assert out["winner"] == "y"
 
+    def test_duplicate_names_keep_first_under_first_by_priority(self) -> None:
+        """Two survivors sharing a name rank equally; list order decides the winner."""
+        resolver = ConflictResolver(ConflictPolicy(priority=["a"]))
+        out = resolver.resolve([_r("a", output={"seq": 1}), _r("a", output={"seq": 2})])
+        assert out["winner"] == "a"
+        assert out["output"] == {"seq": 1}
+        assert out["considered"] == ["a", "a"]
+
     def test_priority_beats_confidence(self) -> None:
         """Priority rank dominates: a higher-priority survivor wins despite low score."""
         policy = ConflictPolicy(priority=["a", "b"], on_tie="highest_confidence")
