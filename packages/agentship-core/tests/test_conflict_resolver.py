@@ -154,3 +154,33 @@ class TestResolve:
         resolver = ConflictResolver(policy)
         out = resolver.resolve([_r("a", confidence=0.1), _r("b", confidence=0.99)])
         assert out["winner"] == "a"
+
+
+class TestResolveIsPure:
+    def test_identical_output_over_100_runs(self) -> None:
+        """Same input → byte-identical output every time (guards identical-resume)."""
+        policy = ConflictPolicy(priority=["a", "b", "c"], on_tie="highest_confidence")
+        resolver = ConflictResolver(policy)
+        results = [
+            _r("c", confidence=0.5),
+            _r("a", confidence=0.1, error="boom"),
+            _r("b", confidence=0.9),
+            _r("unknown", confidence=0.99),
+        ]
+        first = resolver.resolve(results)
+        for _ in range(100):
+            assert resolver.resolve(results) == first
+
+    def test_output_independent_of_inner_dict_key_order(self) -> None:
+        """Reordering the keys inside each SpecialistResult does not change the result."""
+        policy = ConflictPolicy(priority=["a", "b"])
+        resolver = ConflictResolver(policy)
+        forward = [
+            {"name": "b", "output": {"v": "b"}, "confidence": 0.1, "error": None},
+            {"name": "a", "output": {"v": "a"}, "confidence": 0.2, "error": None},
+        ]
+        reordered = [
+            {"error": None, "confidence": 0.1, "output": {"v": "b"}, "name": "b"},
+            {"error": None, "confidence": 0.2, "output": {"v": "a"}, "name": "a"},
+        ]
+        assert resolver.resolve(forward) == resolver.resolve(reordered)
