@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from .model_router import (
     DefaultModelRouter,
+    LookupModelRouter,
     ModelRouter,
     resolve_model_router,
     stamp_routed_model,
@@ -18,6 +19,7 @@ from .model_router import (
 
 __all__ = [
     "DefaultModelRouter",
+    "LookupModelRouter",
     "ModelRouter",
     "resolve_model_router",
     "stamp_routed_model",

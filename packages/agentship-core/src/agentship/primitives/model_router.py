@@ -73,11 +73,13 @@ class ModelRouter(ABC):
     """
 
     @abstractmethod
-    def pick(self, spec: AgentSpec, task_hint: str | None = None) -> str:
+    def pick(self, spec: AgentSpec, task: TaskHint | None = None) -> ModelId:
         """Return the model id to use for this turn (a LiteLLM string).
 
-        ``task_hint`` is an optional coarse label (e.g. ``"classify"``) a richer
-        policy may use to pick a cheaper model; the default router ignores it.
+        ``task`` is an optional :class:`TaskHint` a richer policy may honour — an
+        explicit per-node ``model`` override, a cost/capability ``tier``, or a
+        ``modality`` label. ``None`` (the default) expresses no preference, so a
+        router falls back to the agent's own ``spec.model``.
         """
 
 
@@ -87,9 +89,60 @@ class DefaultModelRouter(ModelRouter):
     There is no model tiering yet; a later phase can add it behind this same class.
     """
 
-    def pick(self, spec: AgentSpec, task_hint: str | None = None) -> str:
-        """Return ``spec.model`` (or ``""`` when the spec sets none)."""
+    def pick(self, spec: AgentSpec, task: TaskHint | None = None) -> ModelId:
+        """Return ``spec.model`` (or ``""`` when the spec sets none); ignore ``task``."""
         return spec.model or ""
+
+
+class LookupModelRouter(ModelRouter):
+    """Deterministic, table-driven router — a static lookup, never an LLM.
+
+    Given a :class:`RouterTable` (tiers → model ids, plus a last-resort ``default``),
+    :meth:`pick` resolves a turn's model by a fixed four-tier order so the same inputs
+    always choose the same model — the property the identical-resume conformance cell
+    relies on. It never fails fast on an unreachable provider: that check belongs to
+    the build-time capability gate (:meth:`EngineCapabilities._assert_provider_supported`),
+    which validates the routed model too, so routing stays a pure decision with no
+    engine coupling. See design §4 C3.
+    """
+
+    def __init__(self, table: RouterTable) -> None:
+        """Bind the static lookup ``table`` this router resolves against."""
+        self._table = table
+
+    def pick(self, spec: AgentSpec, task: TaskHint | None = None) -> ModelId:
+        """Resolve the turn's model id by fixed precedence (first match wins).
+
+        1. ``task.model`` — an explicit per-node override (e.g. a classify node's
+           ``cfg.classify.model``) beats everything.
+        2. ``task.tier`` — looked up in ``table.tiers``; a tier the table does not map
+           simply falls through.
+        3. ``spec.model`` — the agent's own default.
+        4. ``table.default`` — the distribution's last resort.
+
+        Raises :class:`~agentship.errors.CapabilityError` when nothing resolves (empty
+        table, no spec model, empty hint) rather than returning an empty model id that
+        would fail obscurely inside the engine.
+        """
+        hint = task or TaskHint()
+        if hint.model:
+            return hint.model
+        if hint.tier is not None:
+            by_tier = self._table.tiers.get(hint.tier)
+            if by_tier:
+                return by_tier
+        if spec.model:
+            return spec.model
+        if self._table.default:
+            return self._table.default
+
+        from ..errors import CapabilityError
+
+        raise CapabilityError(
+            f"no model resolved for agent {spec.name!r}: the hint carries no model/tier "
+            f"match, the spec sets no model, and the router table has no default — set "
+            f"a model on the agent or a default on the table"
+        )
 
 
 #: Registry of model routers, keyed by name. A plugin adds one via the
