@@ -55,3 +55,65 @@ class SpecialistResult(TypedDict):
     output: dict[str, Any]
     confidence: float | None
     error: str | None
+
+
+class ConflictResolver:
+    """Merge competing specialist outputs into one, purely and deterministically.
+
+    Given a :class:`ConflictPolicy`, :meth:`resolve` picks a single winning
+    :class:`SpecialistResult` by priority rank, breaking ties by the policy's
+    ``on_tie`` rule. It **never** calls an LLM and does no I/O, so the same inputs
+    always yield a byte-identical result — the property the identical-resume
+    conformance cell depends on.
+    """
+
+    def __init__(self, policy: ConflictPolicy) -> None:
+        """Store the priority/tie-break policy this resolver applies."""
+        self.policy = policy
+
+    def _rank(self, name: str) -> int:
+        """Return a specialist's priority index; unknown names rank last (stable)."""
+        try:
+            return self.policy.priority.index(name)
+        except ValueError:
+            return len(self.policy.priority)
+
+    def resolve(self, results: list[SpecialistResult]) -> dict[str, Any]:
+        """Pick the winning specialist output; break ties per ``policy.on_tie``.
+
+        Results whose ``error`` is set (or that produced no ``output``) are dropped
+        from the merge — a failed specialist never wins, and its failure does not
+        crash the run (partial-merge, DESIGN §10). Among the survivors the winner is
+        the one with the lowest priority rank; when several share that rank,
+        ``highest_confidence`` prefers the largest ``confidence`` (``None`` counts as
+        the lowest) while ``first_by_priority`` keeps original list order. Sorting is
+        stable so ties resolve identically every time.
+
+        Returns ``{"winner", "output", "considered", "dropped"}`` on success, or
+        ``{"winner": None, "status": "no_specialist_succeeded"}`` when no specialist
+        produced a usable result.
+        """
+        survivors = [r for r in results if not r["error"] and r["output"]]
+        dropped = [r["name"] for r in results if r["error"] or not r["output"]]
+
+        if not survivors:
+            return {"winner": None, "status": "no_specialist_succeeded"}
+
+        best_rank = min(self._rank(r["name"]) for r in survivors)
+        candidates = [r for r in survivors if self._rank(r["name"]) == best_rank]
+
+        if self.policy.on_tie == "highest_confidence":
+            # max() is stable — the first candidate wins an exact-confidence tie.
+            winner = max(
+                candidates,
+                key=lambda r: r["confidence"] if r["confidence"] is not None else float("-inf"),
+            )
+        else:  # first_by_priority — keep original order among equal-rank candidates.
+            winner = candidates[0]
+
+        return {
+            "winner": winner["name"],
+            "output": winner["output"],
+            "considered": [r["name"] for r in survivors],
+            "dropped": dropped,
+        }
