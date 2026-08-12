@@ -114,22 +114,9 @@ current_run: ContextVar[RunContext] = ContextVar("current_run")
 def get_run_context() -> RunContext | None:
     """Return the active :class:`RunContext`, or ``None`` when there is no run.
 
-    The sanctioned public seam for tools and user code to reach the caller's
-    identity without importing the private ``current_run`` contextvar. Inside a
-    ``run``/``stream`` turn it returns that turn's context; outside any turn it
-    returns ``None`` (never raises), so a helper invoked in isolation degrades
-    gracefully rather than crashing.
-
-    .. note::
-
-        **Returns ``None`` between a stream's yields, by design.** While streaming,
-        the runtime deliberately restores the caller's previous context *before*
-        handing each event out and only re-arms this turn's context while the engine
-        produces the next event (leak-safety — see ``_StreamRunContextScope`` in
-        :mod:`agentship.runtime`). So code that iterates a stream and calls this
-        between events will see ``None``; it is only reliably set *inside* a tool or
-        engine step, not in the consumer's loop body. Consumers that need the
-        identity should capture it once (e.g. before starting the stream) rather
-        than relying on it per event.
+    The public way for tools and user code to reach the caller's identity without
+    importing the ``current_run`` contextvar directly. Inside a ``run``/``stream``
+    turn it returns that turn's context; outside any turn it returns ``None`` (never
+    raises), so a helper called on its own degrades gracefully instead of crashing.
     """
     return current_run.get(None)

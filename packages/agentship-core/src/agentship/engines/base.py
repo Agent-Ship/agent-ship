@@ -1,15 +1,10 @@
-"""The engine seam: :class:`Engine`, :class:`EngineCapabilities`, and the gate.
+"""The base class every engine implements, and the check that guards it.
 
-An :class:`Engine` translates an :class:`~agentship.spec.AgentSpec` into something
-the harness can ``build`` then ``run``/``stream``. Each engine declares, honestly,
-what it supports via :class:`EngineCapabilities`. The kernel's rule (architecture
-§4) is *declare, don't fake*: if a spec asks for something the engine has not
-declared, :func:`assert_spec_supported` raises :class:`~agentship.errors.CapabilityError`
-at build time — never a silent degrade, never a confusing mid-run failure.
-
-Only the seam lives here; concrete engines live alongside (``echo.py`` today,
-vendor engines in later phases). The single shared :data:`ENGINES` registry holds
-them, populated in-code and by the ``agentship.engines`` entry-point group.
+An :class:`Engine` turns an :class:`~agentship.spec.AgentSpec` into something we can
+``build`` then ``run``/``stream``. Each engine states what it supports via
+:class:`EngineCapabilities`; if a spec asks for more, :func:`assert_spec_supported`
+raises at build time instead of failing halfway through a run. Engines are found by
+name in the shared :data:`ENGINES` registry. See DESIGN §3.1/§4.
 """
 
 from __future__ import annotations
@@ -30,13 +25,10 @@ if TYPE_CHECKING:  # avoid import cycles; these are only referenced in signature
 
 
 class Modality(StrEnum):
-    """An input modality an engine may accept (canonical §3.1).
+    """A kind of input an engine may accept (text, image, audio, video, pdf, file).
 
-    The kernel keeps ``multimodal_in`` as a ``set[Modality]`` so an engine declares
-    exactly which non-text inputs it handles — a set, not a bool, because "accepts
-    images" and "accepts audio" are independent claims that must not collapse into
-    one on/off flag. ``TEXT`` is listed for completeness; every engine handles text.
-    ``FILE`` covers a generic uploaded file that is not one of the typed media above.
+    Used as a set in ``multimodal_in`` so "accepts images" and "accepts audio" are
+    independent claims, not one on/off flag. See DESIGN §3.1.
     """
 
     TEXT = "text"
@@ -48,19 +40,12 @@ class Modality(StrEnum):
 
 
 class EngineCapabilities(BaseModel):
-    """An engine's honest declaration of what it supports (canonical, DESIGN §3.1).
+    """What an engine can do. The spec is checked against this before building.
 
-    The kernel validates a spec against this before building. Anything not
-    declared is treated as unsupported and requesting it fails fast (*declare,
-    don't fake*). Every field defaults to off/none so declaring the class is
-    non-breaking: an engine opts in only to what it truly supports.
-
-    The field *shapes* are the canonical DESIGN §3.1 forms — ``providers`` is a
-    ``set[str]``, ``hitl`` is a three-valued ``Literal``, ``multimodal_in`` is a
-    ``set[Modality]``. These are widened up front on purpose: widening a field later
-    (bool → set/Literal) would be a breaking change for anyone reading it, so the
-    kernel commits to the final shape now even though later phases fill in the
-    behaviour behind the richer values.
+    Anything not declared is treated as unsupported, so requesting it fails fast
+    rather than mid-run. Every field defaults to off/none — an engine opts in only to
+    what it truly supports. Field shapes are fixed now (set/Literal, not bool) so
+    later phases can add behaviour without a breaking change. See DESIGN §3.1.
     """
 
     #: LiteLLM provider prefixes this engine can reach (e.g. ``{"openai", "anthropic"}``).
@@ -93,12 +78,8 @@ class EngineCapabilities(BaseModel):
     def assert_supports(self, cap: str, value: object = True) -> None:
         """Raise :class:`CapabilityError` unless this engine declares ``cap == value``.
 
-        The canonical §13.5 low-level check: it takes only the capability name and the
-        expected value (defaulting to ``True`` for the common boolean case), so there is
-        a single canonical signature ``assert_supports(cap, value=True)``. It has no
-        engine-name argument — engine-name context belongs to the spec-level
-        :meth:`assert_supports_spec`, which knows the engine. Used by capability-gated
-        methods (e.g. the default :meth:`Engine.stream`) to fail fast.
+        The low-level check (default ``value=True`` for the common boolean case), used
+        by methods like the default :meth:`Engine.stream` to fail fast.
         """
         actual = getattr(self, cap, None)
         if actual != value:
@@ -111,10 +92,9 @@ class EngineCapabilities(BaseModel):
     def assert_supports_spec(self, spec: AgentSpec) -> None:
         """Fail fast if these capabilities cannot satisfy what ``spec`` declares.
 
-        The canonical §13.5 capability gate: every spec field that *implies* a
-        capability is checked here, at build time, so a misconfiguration surfaces as
-        an actionable :class:`~agentship.errors.CapabilityError` before the agent runs
-        rather than as a confusing mid-run failure (*declare, don't fake*):
+        Each spec field that needs a capability is checked here, at build time, so a
+        mismatch raises a clear :class:`~agentship.errors.CapabilityError` before the
+        agent runs. The rules (see DESIGN §13.5):
 
         - ``streaming`` → ``streaming``
         - ``output_schema`` (a declared schema) → ``structured_output != "none"``
@@ -148,17 +128,12 @@ class EngineCapabilities(BaseModel):
         self._assert_provider_supported(spec)
 
     def _assert_provider_supported(self, spec: AgentSpec) -> None:
-        """Gate the ``model:`` provider prefix against declared ``providers``.
+        """Check the model's provider prefix is one this engine declares.
 
-        The provider is the segment before the first ``/`` in ``spec.model`` (e.g.
-        ``"openai"`` in ``"openai/gpt-4o-mini"``), compared case-insensitively —
-        LiteLLM (and the model seam's ``_provider_env_var``) lowercase the prefix, so
-        the gate must too, or ``"OpenAI/…"`` would be wrongly rejected. If
-        ``providers`` is empty the engine is *unconstrained* and any provider is
-        allowed (this check is skipped). A model with no ``/`` prefix carries no
-        provider to gate, so it is allowed too. Otherwise the provider must be in
-        ``providers`` or the build fails fast — never a silent call to an
-        unreachable provider.
+        The provider is the part before the first ``/`` in ``spec.model`` (e.g.
+        ``"openai"`` in ``"openai/gpt-4o-mini"``), matched lower-case. Skipped when the
+        engine lists no providers (unconstrained) or the model has no prefix; otherwise
+        an unlisted provider fails the build rather than calling something unreachable.
         """
         if not self.providers or not spec.model or "/" not in spec.model:
             return
@@ -189,16 +164,13 @@ class Event(BaseModel):
 
 
 class ResumeToken(BaseModel):
-    """An opaque ticket an engine mints so a crashed/paused run can resume (DESIGN §13.1).
+    """An opaque ticket an engine mints so a crashed/paused run can resume.
 
-    One shape across every engine: :attr:`engine` names the engine that minted it,
-    and :attr:`blob` carries everything that engine needs to continue — its contents
-    are **opaque to core**. A LangGraph token puts ``{thread_id, checkpoint_id, …}``
-    inside ``blob``; a workflow engine puts a workflow handle there. Core never reads
-    ``blob``: it stores it verbatim (e.g. as JSONB in the ``/tasks`` row) and hands
-    it back to the same engine's :meth:`Engine.resume`, which is the only code that
-    interprets it. Keeping the fields flat and ``blob`` opaque is what lets the
-    persistence layer round-trip a token without knowing any engine's internals.
+    One shape for every engine: :attr:`engine` says who minted it and :attr:`blob`
+    holds whatever that engine needs to continue. Core never reads ``blob`` — it
+    stores it verbatim and hands it back to the same engine's :meth:`Engine.resume`.
+    That is what lets storage round-trip a token without knowing engine internals.
+    See DESIGN §13.1.
     """
 
     #: The name of the engine that minted this token — the only engine that may
@@ -211,12 +183,12 @@ class ResumeToken(BaseModel):
 
 
 class Engine(ABC):
-    """The runtime seam every engine implements.
+    """The base class every engine implements.
 
     A concrete engine sets :attr:`name` and :attr:`capabilities`, then implements
-    :meth:`build` and :meth:`run`. :meth:`stream` is capability-gated: the default
-    honestly reports "not supported" via :class:`~agentship.errors.CapabilityError`,
-    so an engine that does not override it cannot silently pretend to stream.
+    :meth:`build` and :meth:`run`. :meth:`stream` and :meth:`resume` default to
+    raising ``CapabilityError`` unless the engine declares (and overrides) them, so an
+    engine can never silently pretend to do something it hasn't implemented.
     """
 
     #: Stable engine name used in ``AgentSpec.engine`` and the registry.
@@ -225,15 +197,12 @@ class Engine(ABC):
     capabilities: ClassVar[EngineCapabilities]
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
-        """Reject, at import, a *concrete* engine that forgets to declare ``capabilities``.
+        """Reject, at import, a concrete engine that forgot to declare ``capabilities``.
 
-        The whole gate depends on every engine declaring what it supports, so a
-        subclass that ships without a ``capabilities`` ClassVar is a latent bug —
-        the gate would ``AttributeError`` at build time instead of failing honestly.
-        Catching it here turns "engine forgot to declare capabilities" into a clear
-        error the moment the module is imported. Abstract subclasses (those still
-        carrying unimplemented ``@abstractmethod`` methods) are skipped, since they
-        are seams, not shippable engines.
+        The capability check needs every engine to declare what it supports, so a
+        concrete engine missing that ClassVar is caught here — at import — with a clear
+        message instead of an ``AttributeError`` later. Still-abstract subclasses are
+        skipped (they're base classes, not shippable engines).
         """
         super().__init_subclass__(**kwargs)
         if getattr(cls, "__abstractmethods__", None):
@@ -248,17 +217,13 @@ class Engine(ABC):
 
     @abstractmethod
     def build(self, spec: AgentSpec, authored: Any = None) -> Any:
-        """Compile an :class:`AgentSpec` into an engine-native runnable artifact.
+        """Compile a spec into a "compiled agent" only this engine's ``run``/``stream`` use.
 
-        Returns an opaque "compiled agent" that only this engine's ``run``/
-        ``stream`` understand.
-
-        ``authored`` is the optional Python-authored agent object a ``code:``
-        reference produced (an object carrying its own ``.spec``). It is
-        engine-specific and vendor-typed, so the *core* only forwards it opaquely;
-        an engine that supports custom authoring (e.g. LangGraph's ``build_graph``
-        path) inspects it, while engines that do not simply ignore it and build
-        from ``spec`` alone. ``None`` means a declarative (YAML/spec-only) build.
+        ``authored`` is an optional Python-authored agent object (carrying its own
+        ``.spec``) produced by a ``code:`` reference. Core forwards it without looking
+        inside; an engine that supports custom authoring (e.g. LangGraph's
+        ``build_graph``) reads it, others ignore it and build from ``spec`` alone.
+        ``None`` means a plain spec-only build.
         """
 
     @abstractmethod
@@ -276,21 +241,12 @@ class Engine(ABC):
         yield  # pragma: no cover - makes this an async generator for type-checkers
 
     async def resume(self, compiled: Any, token: ResumeToken, ctx: RunContext) -> Result:
-        """Continue a paused/crashed run from a :class:`ResumeToken` (capability-gated).
+        """Continue a paused/crashed run from a :class:`ResumeToken`.
 
-        Core *drives* resume for a ``durability="checkpoint"`` engine (§3.1): given a
-        token this engine minted, it replays from the checkpoint the token names. The
-        base implementation is the honest gate every engine inherits:
-
-        - a token minted by a *different* engine is always rejected with
-          :class:`~agentship.errors.CapabilityError` — a token can never be replayed
-          on the wrong engine, even before durability is considered;
-        - an engine that declares ``durability="none"`` cannot resume anything, so it
-          raises :class:`CapabilityError` too (declare, don't fake).
-
-        A durable engine (LangGraph once its checkpointer lands in Phase 02) overrides
-        this to perform the real replay. Until then this base method is the whole
-        behaviour: the seam exists and fails honestly rather than faking a resume.
+        The default rejects a token minted by a different engine, and rejects resume on
+        an engine that isn't durable — so nothing fakes a resume. A durable engine
+        (LangGraph, once its checkpointer lands) overrides this to do the real replay.
+        See DESIGN §3.1.
         """
         if token.engine != self.name:
             raise CapabilityError(
@@ -315,10 +271,9 @@ def register_engine(cls: type[Engine]) -> type[Engine]:
 
 
 def assert_spec_supported(engine: Engine, spec: AgentSpec) -> None:
-    """Thin wrapper around :meth:`EngineCapabilities.assert_supports_spec`.
+    """Check ``spec`` against ``engine``'s capabilities, raising on any mismatch.
 
-    Kept as the free-function entry point some callers (the CLI) import directly;
-    it simply delegates to the engine's capabilities so the gate logic lives in one
-    place (:meth:`EngineCapabilities.assert_supports_spec`, canonical §13.5).
+    A free-function entry point (some callers, like the CLI, import it directly); it
+    just delegates to :meth:`EngineCapabilities.assert_supports_spec`.
     """
     engine.capabilities.assert_supports_spec(spec)
