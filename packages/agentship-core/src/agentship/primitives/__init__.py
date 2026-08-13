@@ -9,6 +9,7 @@ decisions; they are swappable via entry-point registries the same way engines ar
 
 from __future__ import annotations
 
+from .dispatch import AgentRef
 from .idempotency import (
     DictLedger,
     IdempotencyLedger,
@@ -26,6 +27,7 @@ from .model_router import (
 )
 
 __all__ = [
+    "AgentRef",
     "DefaultModelRouter",
     "DictLedger",
     "IdempotencyLedger",
