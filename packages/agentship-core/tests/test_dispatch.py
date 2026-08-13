@@ -13,7 +13,7 @@ import pytest
 from agentship.context import Caller, RunContext, RunMode
 from agentship.engines.base import Result
 from agentship.errors import CapabilityError
-from agentship.primitives.dispatch import AgentRef
+from agentship.primitives.dispatch import AgentRef, dispatch
 from pydantic import BaseModel
 
 
@@ -93,3 +93,54 @@ async def test_run_normalizes_a_scalar_output():
     out = await ref.run("q", _ctx())
     assert out["output"] == {"output": "just text"}
     assert out["confidence"] is None
+
+
+class _BoomAgent:
+    """A specialist that always raises — proving a failure becomes an error result, not a crash."""
+
+    async def run(self, text: str, *, user_id: str = "anonymous") -> Result:
+        raise RuntimeError("specialist exploded")
+
+
+def _ref(name: str, agent: object) -> AgentRef:
+    """Build an AgentRef directly around a fake agent (skips registry lookup)."""
+    return AgentRef(name, agent)
+
+
+async def test_single_strategy_runs_one_specialist():
+    """`single` dispatches to exactly the one ref and returns its result in a list."""
+    ref = _ref("a", _FakeAgent({"v": 1}))
+    results = await dispatch("single", [ref], "go", _ctx())
+    assert [r["name"] for r in results] == ["a"]
+    assert results[0]["output"] == {"v": 1}
+
+
+async def test_parallel_strategy_fans_out_to_all():
+    """`parallel` runs every ref with the same message and preserves order."""
+    refs = [_ref("a", _FakeAgent({"v": 1})), _ref("b", _FakeAgent({"v": 2}))]
+    results = await dispatch("parallel", refs, "go", _ctx())
+    assert [r["name"] for r in results] == ["a", "b"]
+    assert [r["output"]["v"] for r in results] == [1, 2]
+
+
+async def test_sequential_strategy_threads_output_into_the_next():
+    """`sequential` feeds each specialist's output text as the next specialist's input."""
+    second = _FakeAgent({"v": 2})
+    refs = [_ref("a", _FakeAgent("step-1-out")), _ref("b", second)]
+    await dispatch("sequential", refs, "start", _ctx())
+    assert second.seen == ("step-1-out", "alice")  # b received a's output, not "start"
+
+
+async def test_a_failing_specialist_becomes_an_error_result_not_a_crash():
+    """An exception in one specialist yields a SpecialistResult with `error` set; others run."""
+    refs = [_ref("ok", _FakeAgent({"v": 1})), _ref("bad", _BoomAgent())]
+    results = await dispatch("parallel", refs, "go", _ctx())
+    by_name = {r["name"]: r for r in results}
+    assert by_name["ok"]["error"] is None
+    assert by_name["bad"]["error"] and "exploded" in by_name["bad"]["error"]
+
+
+async def test_unknown_strategy_fails_fast():
+    """An unknown dispatch strategy raises CapabilityError rather than silently doing nothing."""
+    with pytest.raises(CapabilityError):
+        await dispatch("teleport", [_ref("a", _FakeAgent("x"))], "go", _ctx())

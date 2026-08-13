@@ -14,10 +14,14 @@ easy to test with plain fakes. Engine-neutral, so it lives in core beside ``Spec
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Protocol
+import asyncio
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 from ..errors import CapabilityError
 from .conflict_resolver import SpecialistResult
+
+#: How a set of specialists is invoked for one turn (§4 C7).
+Strategy = Literal["single", "parallel", "sequential"]
 
 if TYPE_CHECKING:  # only a type hint on run(); avoids a core import cycle at load
     from ..context import RunContext
@@ -84,3 +88,52 @@ class AgentRef:
             confidence=output.get("confidence"),
             error=None,
         )
+
+
+async def _run_safely(ref: AgentRef, message: str, ctx: RunContext) -> SpecialistResult:
+    """Run one specialist, turning any failure into an ``error`` result instead of crashing.
+
+    A specialist that raises (after its own retries) must not take down the whole fan-out — its
+    contribution becomes a :class:`SpecialistResult` with ``error`` set, which the resolver drops
+    from the merge (partial-merge, DESIGN §10).
+    """
+    try:
+        return await ref.run(message, ctx)
+    except Exception as exc:  # noqa: BLE001 - deliberately broad: any specialist failure degrades
+        return SpecialistResult(name=ref.name, output={}, confidence=None, error=str(exc))
+
+
+def _forward_text(result: SpecialistResult) -> str:
+    """The text a ``sequential`` step feeds to the next specialist: the prior output as a string."""
+    output = result["output"]
+    value = output.get("output", output)
+    return value if isinstance(value, str) else str(value)
+
+
+async def dispatch(
+    strategy: Strategy, refs: list[AgentRef], message: str, ctx: RunContext
+) -> list[SpecialistResult]:
+    """Invoke ``refs`` for one turn under ``strategy``, returning a result per specialist.
+
+    - ``single`` — run just ``refs[0]``.
+    - ``parallel`` — run every ref concurrently with the same ``message`` (order preserved).
+    - ``sequential`` — run refs in order, feeding each one's output text to the next.
+
+    Every specialist is run through :func:`_run_safely`, so a failure is an ``error`` result, never
+    a crash. An unknown ``strategy`` fails fast with :class:`CapabilityError`.
+    """
+    if strategy == "single":
+        return [await _run_safely(refs[0], message, ctx)]
+    if strategy == "parallel":
+        return list(await asyncio.gather(*(_run_safely(r, message, ctx) for r in refs)))
+    if strategy == "sequential":
+        results: list[SpecialistResult] = []
+        text = message
+        for ref in refs:
+            result = await _run_safely(ref, text, ctx)
+            results.append(result)
+            text = _forward_text(result)
+        return results
+    raise CapabilityError(
+        f"unknown dispatch strategy {strategy!r} — use 'single', 'parallel', or 'sequential'"
+    )
