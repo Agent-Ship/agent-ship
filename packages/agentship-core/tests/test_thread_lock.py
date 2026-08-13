@@ -17,7 +17,12 @@ import os
 
 import pytest
 from agentship.errors import ThreadBusyError
-from agentship.thread_lock import ThreadLock, advisory_key
+from agentship.thread_lock import (
+    InMemoryThreadLock,
+    ThreadLock,
+    advisory_key,
+    resolve_thread_lock,
+)
 
 _PG_URI = os.environ.get("AGENT_SESSION_STORE_URI")
 requires_pg = pytest.mark.skipif(_PG_URI is None, reason="AGENT_SESSION_STORE_URI not set")
@@ -95,3 +100,49 @@ class TestThreadLockIntegration:
         await asyncio.gather(first, second)
 
         assert sorted(outcomes) == ["busy", "held"]
+
+
+class TestInMemoryThreadLock:
+    """The no-Postgres fallback: same guarantees, process-local (dev / InMemorySaver path)."""
+
+    async def test_second_acquire_same_thread_raises_busy(self) -> None:
+        """A second acquire of a held thread raises ThreadBusyError, same as the PG lock."""
+        async with InMemoryThreadLock("t", "A"):
+            with pytest.raises(ThreadBusyError):
+                async with InMemoryThreadLock("t", "A"):
+                    pass  # pragma: no cover - must not be reached
+
+    async def test_release_re_enables_acquire(self) -> None:
+        """Exiting the context frees the thread for the next acquire."""
+        async with InMemoryThreadLock("t", "B"):
+            pass
+        async with InMemoryThreadLock("t", "B"):
+            pass
+
+    async def test_distinct_threads_do_not_contend(self) -> None:
+        """Different threads are independent locks."""
+        async with InMemoryThreadLock("t", "C"):
+            async with InMemoryThreadLock("t", "D"):
+                pass
+
+    async def test_release_even_on_exception(self) -> None:
+        """The lock is freed when the body raises, not just on clean exit."""
+        with pytest.raises(ValueError):
+            async with InMemoryThreadLock("t", "E"):
+                raise ValueError("boom")
+        async with InMemoryThreadLock("t", "E"):
+            pass  # would raise ThreadBusyError if the errored body had leaked the lock
+
+
+class TestResolveThreadLock:
+    """The factory picks the PG lock when a conninfo is given, else the in-memory fallback."""
+
+    def test_no_conninfo_gives_in_memory(self) -> None:
+        """With no connection string (no AGENT_SESSION_STORE_URI) → in-memory lock."""
+        lock = resolve_thread_lock("t", "x", conninfo=None)
+        assert isinstance(lock, InMemoryThreadLock)
+
+    def test_conninfo_gives_postgres(self) -> None:
+        """With a connection string → the real Postgres ThreadLock."""
+        lock = resolve_thread_lock("t", "x", conninfo="host=/tmp dbname=whatever")
+        assert isinstance(lock, ThreadLock)
