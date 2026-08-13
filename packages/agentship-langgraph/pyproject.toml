@@ -22,6 +22,10 @@ dependencies = [
 # `agentship doctor` flags a version mismatch (see templates/deepagents_tpl.py).
 [project.optional-dependencies]
 deepagents = ["deepagents==0.6.12"]
+# Durable checkpointing (Phase 02 §C4): the AsyncPostgresSaver + its psycopg driver.
+# Opt-in so a bare install runs on the in-memory saver; `pip install agentship-langgraph[postgres]`
+# turns on crash-durable, resumable runs. Pairs with agentship-core[postgres] (the ThreadLock).
+postgres = ["langgraph-checkpoint-postgres>=2.0", "psycopg[binary]>=3.1"]
 
 # Registers the LangGraph engine with the core harness (discovered via importlib.metadata),
 # so `engine: langgraph` in a spec resolves here.
