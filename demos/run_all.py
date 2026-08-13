@@ -136,6 +136,28 @@ async def slice_router() -> None:
     assert result.output.strip() != ""
 
 
+async def slice_triage() -> None:
+    """6. Durable multi-agent supervisor — classify → route to a specialist → resolve, checkpointed."""
+    _banner(
+        6,
+        "durable multi-agent supervisor (Phase 02 killer demo)",
+        "LIVE · classifies, routes to a specialist, resolves — durable (resume token minted)",
+    )
+    cwd = os.getcwd()
+    os.chdir(REPO_ROOT)  # the code: path is repo-root-relative
+    try:
+        agent = build_agent(str(AGENTS / "triage" / "triage.yaml"))
+        question = "My invoice looks wrong and I was double charged — who handles payments?"
+        result = await agent.run(question)
+    finally:
+        os.chdir(cwd)
+    print(f"  run  agents/triage/triage.yaml --input {question!r}")
+    print(f"  -> {result.output.strip()}")
+    print(f"  durable: resume_token minted by {result.resume_token.engine!r} (kill -9 would resume)")
+    assert result.output.strip() != ""
+    assert result.resume_token is not None
+
+
 async def main() -> int:
     """Run every live slice in order; return 0 if all pass, 1 if any raises."""
     if not os.environ.get("OPENAI_API_KEY"):
@@ -150,6 +172,7 @@ async def main() -> int:
         ("graph", slice_graph()),
         ("custom", slice_custom()),
         ("router", slice_router()),
+        ("triage", slice_triage()),
     ]
     for name, step in steps:
         try:

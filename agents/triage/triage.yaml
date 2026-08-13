@@ -1,0 +1,14 @@
+# The Phase 02 killer demo: a durable, multi-agent triage supervisor.
+#
+# `code:` points at a Python factory that builds the supervisor and its three
+# specialists (billing / clinical / general). The supervisor classifies the request
+# with gpt-4o-mini, routes it to the matching specialist, and resolves the answer —
+# all checkpointed (durability: checkpoint) so a kill -9 mid-run resumes identically.
+# The harness wires the models; the author never touches a vendor SDK.
+#
+# Run from the demo repo root so the repo-root-relative `code:` path resolves:
+#
+#   agentship run agents/triage/triage.yaml --input "My invoice looks wrong — who handles payments?"
+name: triage
+engine: langgraph
+code: agents/triage/agent.py:build_triage_supervisor
