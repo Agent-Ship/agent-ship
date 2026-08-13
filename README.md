@@ -42,7 +42,7 @@ top to bottom.
 | 3 | P01 | **`template: graph`** — supervisor scaffold; coordinator routes → worker answers | `agents/graph.yaml` | `pytest tests/test_graph.py -q` |
 | 4 | P01 | **Custom `build_graph`** — the author's own native LangGraph graph answers | `agents/custom/custom.yaml` | `pytest tests/test_custom.py -q` |
 | 5 | P01 | **`ModelRouter`** — router picks the model id, then a real turn runs | _(spec built inline)_ | `pytest tests/test_router.py -q` |
-| 6 | P02 | **Durable multi-agent supervisor** — classify → route to a specialist → resolve; **resume token minted** (kill -9 would resume identically) | `agents/triage/triage.yaml` | `pytest tests/test_triage.py -q` |
+| 6 | P02 | **Durable multi-agent supervisor** — classify → route → resolve; then a **fresh engine resumes from the checkpoint and produces byte-identical output** (the kill-9 guarantee, actually proven) | `agents/triage/triage.yaml` | `pytest tests/test_triage.py -q` |
 
 > **Prerequisite for tests:** source your `.env` first so `OPENAI_API_KEY` is set.
 > Without a key every test skips cleanly — it never fake-passes and never hard-errors.
@@ -111,27 +111,45 @@ agentship run agents/triage/triage.yaml \
   --input "My invoice looks wrong and I was double charged — who handles payments?"
 ```
 
-Expected output:
-- The supervisor classifies the request as `billing`.
-- Routes to the billing specialist.
-- Resolves the answer and prints it.
-- A **resume token** is minted: `resume_token.engine = "langgraph"`.
+`make demo` runs the full slice including the resume step (see below).
 
-What this proves end-to-end (Phase 02):
+**What `make demo` slice 6 does — step by step:**
+
+```
+[1] original answer: Our billing team handles payment issues ...
+    resume_token minted by 'langgraph', thread='demo-triage-resume'
+[2] simulating kill -9 → fresh LangGraphEngine, no shared state …
+[3] resumed answer:  Our billing team handles payment issues ...
+✓ byte-identical — checkpoint replayed identically.
+```
+
+The resume step is not a claim — `slice_triage` in `demos/run_all.py` actually:
+1. Runs the supervisor on a fixed `session_id` to get a real answer + resume token.
+2. Instantiates a brand-new `LangGraphEngine` (equivalent to a process restart).
+3. Calls `engine.resume(new_compiled, token, ctx)` with only the token — no shared state.
+4. Asserts the output is byte-identical to the original.
+
+In dev (no `AGENT_SESSION_STORE_URI` set) the in-memory saver singleton acts as the
+checkpoint store. In production with Postgres the same guarantee holds across a real process kill.
+
+**What this proves end-to-end (Phase 02):**
 - **Multi-agent** (C1): classify → route → dispatch fan-out → resolve.
-- **Durable checkpoints** (C4): the run is checkpointed per node via LangGraph's
-  `AsyncPostgresSaver` (or in-memory for dev); a process kill mid-run resumes
-  identically from the checkpoint.
-- **Bounded retry** (C6): retryable specialist failures are retried up to the configured cap.
+- **Durable checkpoints** (C4): checkpointed per node; kill → fresh engine → resume → identical output, *actually demonstrated*.
+- **Bounded retry** (C6): retryable specialist failures retry up to the configured cap.
 - **Dispatch strategies** (C7): `first-wins`, `all`, `fastest` — `first-wins` is the triage default.
 - **Thread locking** (C8): exactly one worker can hold a thread at a time (`ThreadBusyError` on contention).
 
-Run its live test:
+**Two live tests for slice 6:**
 
 ```bash
 set -a; source ../agentship/.env; set +a
-pytest tests/test_triage.py -q -s    # -s to see the printed output
+pytest tests/test_triage.py -q -s    # runs both tests below
 ```
+
+| Test | What it proves |
+|---|---|
+| `test_triage_routes_and_answers_a_billing_question_live` | Happy path: classify → route → real answer + resume token minted |
+| `test_triage_resume_after_simulated_kill` | Kill-9 guarantee: fresh engine resumes from token → byte-identical output |
 
 ---
 
@@ -156,8 +174,11 @@ prints tokens as they arrive. Example output:
   [6] durable multi-agent supervisor (Phase 02 killer demo)
       LIVE · classifies, routes to a specialist, resolves — durable (resume token minted)
 ========================================================================
-  -> Our billing team handles payment issues. They can review your invoice ...
-  durable: resume_token minted by 'langgraph' (kill -9 would resume)
+  [1] original answer: Our billing team handles payment issues ...
+      resume_token minted by 'langgraph', thread='demo-triage-resume'
+  [2] simulating kill -9 → fresh LangGraphEngine, no shared state …
+  [3] resumed answer:  Our billing team handles payment issues ...
+  ✓ byte-identical — checkpoint replayed identically.
 
 DEMO OK — every capability ran LIVE against OpenAI.
 ```
@@ -198,7 +219,7 @@ agentship-demo/
     test_graph.py               # slice 3: graph scaffold routed answer (live)
     test_custom.py              # slice 4: custom graph answer (live)
     test_router.py              # slice 5: router picks model + real turn runs (live)
-    test_triage.py              # slice 6: durable triage supervisor routes and answers (live)
+    test_triage.py              # slice 6: two tests — happy path + kill-9 resume proof (live)
   pyproject.toml                # pins agentship[starter]==0.0.1 (future PyPI install)
   requirements-dev.txt          # editable-local install of the framework (dev mode)
   Makefile                      # install / test / demo / run shortcuts
