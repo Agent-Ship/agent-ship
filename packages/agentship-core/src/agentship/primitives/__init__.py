@@ -9,7 +9,14 @@ decisions; they are swappable via entry-point registries the same way engines ar
 
 from __future__ import annotations
 
-from .idempotency import canonical_json, idem_key
+from .idempotency import (
+    DictLedger,
+    IdempotencyLedger,
+    LedgerEntry,
+    call_once,
+    canonical_json,
+    idem_key,
+)
 from .model_router import (
     DefaultModelRouter,
     LookupModelRouter,
@@ -20,8 +27,12 @@ from .model_router import (
 
 __all__ = [
     "DefaultModelRouter",
+    "DictLedger",
+    "IdempotencyLedger",
+    "LedgerEntry",
     "LookupModelRouter",
     "ModelRouter",
+    "call_once",
     "canonical_json",
     "idem_key",
     "resolve_model_router",

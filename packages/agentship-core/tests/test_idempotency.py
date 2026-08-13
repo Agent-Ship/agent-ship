@@ -11,7 +11,14 @@ from __future__ import annotations
 
 import hashlib
 
-from agentship.primitives.idempotency import canonical_json, idem_key
+import pytest
+from agentship.primitives.idempotency import (
+    DictLedger,
+    LedgerEntry,
+    call_once,
+    canonical_json,
+    idem_key,
+)
 
 
 class TestCanonicalJson:
@@ -73,3 +80,112 @@ class TestIdemKey:
     def test_no_field_boundary_collision(self) -> None:
         """A separator between fields prevents "ab|c" and "a|bc" style collisions."""
         assert idem_key("t", "n", "ab", {}) != idem_key("t", "n", "a", {})
+
+
+class _Effect:
+    """A fake side-effecting op: counts real fires vs. verify()s so tests can assert which ran."""
+
+    def __init__(self, result: object = "did-it", verify_result: object = "verified") -> None:
+        """Record the values the op returns when fired vs. when verified on resume."""
+        self.calls = 0
+        self.verify_calls = 0
+        self._result = result
+        self._verify_result = verify_result
+
+    def __call__(self) -> object:
+        """Perform the side effect (increments the fire counter)."""
+        self.calls += 1
+        return self._result
+
+    def verify(self) -> object:
+        """Check whether the effect already happened (resume path); never re-fires."""
+        self.verify_calls += 1
+        return self._verify_result
+
+
+class TestCallOnce:
+    """C8.2: the write-ahead intent ledger — exactly-once for non-idempotent writes on resume."""
+
+    async def test_done_entry_replays_result_without_firing(self) -> None:
+        """A recorded `done` key returns its result and never calls the effect (memoized replay)."""
+        ledger = DictLedger({"k": LedgerEntry(status="done", result="recorded")})
+        effect = _Effect()
+        assert await call_once(ledger, "k", effect, idempotent=False) == "recorded"
+        assert effect.calls == 0 and effect.verify_calls == 0
+
+    async def test_pending_entry_verifies_not_refires(self) -> None:
+        """A `pending` key (crash after write-ahead) triggers verify(), not a blind re-fire."""
+        ledger = DictLedger({"k": LedgerEntry(status="pending")})
+        effect = _Effect()
+        result = await call_once(ledger, "k", effect, idempotent=False)
+        assert effect.calls == 0 and effect.verify_calls == 1
+        assert result == "verified"
+        assert ledger.lookup("k").status == "done"  # verify resolves the pending intent
+
+    async def test_fresh_idempotent_fires_once_then_memoizes(self) -> None:
+        """An idempotent op fires once, records `done`, and a second call replays the memo."""
+        ledger = DictLedger()
+        effect = _Effect(result="r")
+        assert await call_once(ledger, "k", effect, idempotent=True) == "r"
+        assert await call_once(ledger, "k", effect, idempotent=True) == "r"
+        assert effect.calls == 1  # second call short-circuits on the ledger
+
+    async def test_idempotent_records_no_pending(self) -> None:
+        """The idempotent path skips the write-ahead: it never leaves a `pending` marker."""
+        ledger = DictLedger()
+        await call_once(ledger, "k", _Effect(), idempotent=True)
+        assert ledger.lookup("k").status == "done"
+
+    async def test_write_ahead_records_pending_before_side_effect(self) -> None:
+        """Non-idempotent: `pending` is durable BEFORE firing, so a crash mid-fire is recoverable.
+
+        The effect raises, standing in for a crash between the side effect and the `done` record.
+        The ledger must still hold `pending` afterward — proving the write-ahead happened first —
+        so a later resume verifies instead of blindly re-firing.
+        """
+        ledger = DictLedger()
+
+        class _Boom(_Effect):
+            def __call__(self) -> object:
+                self.calls += 1
+                raise RuntimeError("crash mid-write")
+
+        with pytest.raises(RuntimeError):
+            await call_once(ledger, "k", _Boom(), idempotent=False)
+        assert ledger.lookup("k").status == "pending"
+
+    async def test_crash_between_write_and_ledger_then_resume_verifies(self) -> None:
+        """End-to-end: a crashed non-idempotent write leaves `pending`; the resume verifies once."""
+        ledger = DictLedger()
+
+        class _Boom(_Effect):
+            def __call__(self) -> object:
+                self.calls += 1
+                raise RuntimeError("crash")
+
+        with pytest.raises(RuntimeError):
+            await call_once(ledger, "k", _Boom(), idempotent=False)
+        # resume: same key, a healthy effect — must verify, not re-run the side effect
+        resumed = _Effect()
+        result = await call_once(ledger, "k", resumed, idempotent=False)
+        assert resumed.calls == 0 and resumed.verify_calls == 1
+        assert result == "verified"
+
+    async def test_supports_async_effects(self) -> None:
+        """`call_once` awaits an async effect (tools are async) and records its result."""
+        ledger = DictLedger()
+
+        class _AsyncEffect:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            async def __call__(self) -> str:
+                self.calls += 1
+                return "async-result"
+
+            async def verify(self) -> str:  # pragma: no cover - not hit in this test
+                return "v"
+
+        effect = _AsyncEffect()
+        assert await call_once(ledger, "k", effect, idempotent=False) == "async-result"
+        assert effect.calls == 1 and ledger.lookup("k").status == "done"
