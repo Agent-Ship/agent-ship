@@ -128,25 +128,25 @@ class _MultiAgentLiar(Engine):
 
 
 class _DurabilityLiar(Engine):
-    """Declares ``durability="checkpoint"`` but exposes no ``checkpointer``/resume seam.
+    """Declares ``durability="checkpoint"`` but never overrides :meth:`Engine.resume`.
 
     The request spec asks for checkpoint durability and the gate passes (the capability
-    is declared), so the matrix drives the positive cell, which inspects the compiled
-    artifact for a resume seam. This engine's ``build`` returns a bare object with no
-    ``checkpointer`` — the over-claim ``_prove_durability`` catches. Had ``build`` exposed
-    a real checkpointer, the cell would pass and the ``pytest.raises`` would fail; the
-    raise proves the cell is non-vacuous.
+    is declared), so the matrix drives the positive cell, which checks the engine really
+    implements the resume seam. This engine inherits the base ``resume`` (which raises) —
+    the over-claim ``_prove_durability`` catches. Had it overridden ``resume``, the cell
+    would pass and the ``pytest.raises`` would fail; the raise proves the cell is
+    non-vacuous.
     """
 
     name = "durability_liar"
     capabilities = EngineCapabilities(durability="checkpoint")
 
     def build(self, spec: Any) -> Any:
-        """Return a bare object with no ``checkpointer`` — no resume seam to inspect."""
+        """Return a bare object — the liar builds fine; the lie is the unimplemented resume."""
         return object()
 
     async def run(self, compiled: Any, text: str, ctx: Any) -> Result:
-        """Echo-like; unused by the durability cell (which inspects the artifact)."""
+        """Echo-like; unused by the durability cell (which inspects the engine's resume)."""
         return Result(output=f"liar: {text}")
 
 
@@ -259,7 +259,7 @@ async def test_behavioural_liar_makes_the_durability_cell_fail(
 
     with offline(_DurabilityLiar.name):
         agent = build_agent(capability.request_spec(_DurabilityLiar.name))
-        with pytest.raises(AssertionError, match="checkpointer"):
+        with pytest.raises(AssertionError, match="resume"):
             await capability.prove(agent)
 
 

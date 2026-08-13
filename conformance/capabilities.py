@@ -112,19 +112,22 @@ async def _prove_multi_agent(agent: RunnableAgent) -> None:
 
 
 async def _prove_durability(agent: RunnableAgent) -> None:
-    """Positive cell for ``durability``: the built agent really exposes a resume seam.
+    """Positive cell for ``durability``: the engine really implements the resume seam.
 
-    Inspects the built agent rather than hard-coding a failure: a genuinely durable
-    engine must surface a checkpointer / resume handle on its compiled artifact so a
-    crashed run can re-attach. This cell asserts that seam exists. No shipped engine
-    checkpoints yet (a later phase), so a declaration today fails here — catching the
-    over-claim while passing automatically once durable resume is implemented.
+    A genuinely durable engine must **override** :meth:`Engine.resume` with a real replay — the
+    base default raises, so an engine that declared durability but inherited it would be faking.
+    This cell asserts the override exists (the anti-over-declaration check); the full kill → resume
+    → byte-identical guarantee is proven per-engine in its durability suite (P02
+    ``test_langgraph_durable.py`` / ``test_phase02_durability.py``). The checkpointer itself is
+    opened per-run (owner-approved lifecycle), so it is deliberately *not* an attribute on the
+    compiled artifact.
     """
-    checkpointer = getattr(agent.compiled, "checkpointer", None)
-    assert checkpointer is not None, (
-        f"engine {agent.spec.engine!r} declares durability but its built agent exposes no "
-        f"`checkpointer`/resume seam — either implement durable resume (mint token → kill "
-        f"→ resume) or set durability back to 'none'"
+    from agentship.engines.base import Engine
+
+    assert type(agent.engine).resume is not Engine.resume, (
+        f"engine {agent.spec.engine!r} declares durability but did not override resume() — it "
+        f"would raise the base default. Implement durable resume (mint token → kill → resume) or "
+        f"set durability back to 'none'."
     )
 
 
