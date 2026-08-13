@@ -25,6 +25,7 @@ from .model_router import (
     resolve_model_router,
     stamp_routed_model,
 )
+from .retry import should_retry, specialists_to_retry
 
 __all__ = [
     "AgentRef",
@@ -38,5 +39,7 @@ __all__ = [
     "canonical_json",
     "idem_key",
     "resolve_model_router",
+    "should_retry",
+    "specialists_to_retry",
     "stamp_routed_model",
 ]
