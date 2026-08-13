@@ -114,11 +114,17 @@ agentship run agents/triage/triage.yaml \
 
 `make demo` runs the full slice including the resume step (see below).
 
-> **The sub-agents are real.** `build_triage_supervisor()` calls `build_agent()` three
-> times — each specialist (`billing_specialist`, `clinical_specialist`, `faq_specialist`)
-> is a full, independent agent with its own graph and its own thread. At runtime the
-> supervisor's `dispatch` node resolves the routed name and invokes that agent through
-> the public `run` seam — a genuine separate sub-agent turn, not an inlined prompt. The
+> **The sub-agents are real, and each is its own YAML file.** Every specialist lives in
+> `agents/triage/specialists/` as a standalone `template: single` agent YAML
+> (`billing.yaml`, `clinical.yaml`, `faq.yaml`) — you can run any of them on their own:
+> ```bash
+> agentship run agents/triage/specialists/billing.yaml --input "I was double charged."
+> ```
+> `build_triage_supervisor()` loads those YAMLs by path (`build_agent(".../billing.yaml")`),
+> so each specialist is a full, independent agent with its own graph and thread. At runtime
+> the supervisor's `dispatch` node resolves the routed name and invokes that agent through
+> the public `run` seam — a genuine separate sub-agent turn, not an inlined prompt. This
+> mirrors the old agent-ship layout (a supervisor + a folder of sub-agent YAMLs). The
 > supervisor logs each decision on the `agentship.supervisor` logger; the demo enables it
 > so you see exactly which sub-agent handled the request.
 
@@ -257,7 +263,11 @@ agentship-demo/
     triage/
       triage.yaml               # slice 6: durable supervisor spec — routes to ONE sub-agent (code: reference)
       panel.yaml                # slice 7: fan-out panel spec — parallel to ALL sub-agents (code: reference)
-      agent.py                  # slices 6+7: build_triage_supervisor / build_triage_panel — 3 real sub-agents
+      agent.py                  # slices 6+7: build_triage_supervisor / build_triage_panel — loads specialist YAMLs
+      specialists/              # each sub-agent is its OWN YAML (a standalone template: single agent)
+        billing.yaml            #   billing_specialist — also runnable on its own
+        clinical.yaml           #   clinical_specialist — also runnable on its own
+        faq.yaml                #   faq_specialist — also runnable on its own
   demos/
     run_all.py                  # `make demo` runner — runs every slice LIVE, prints each result
   tests/

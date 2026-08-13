@@ -1,0 +1,11 @@
+# A triage sub-agent, authored as its own YAML (like every other agent in this repo).
+# The triage supervisor (agents/triage/agent.py) loads this file by path and dispatches
+# to it as a specialist. It is a complete, standalone agent — you can also run it alone:
+#   agentship run agents/triage/specialists/billing.yaml --input "I was double charged."
+name: billing_specialist
+engine: langgraph
+template: single
+model: openai/gpt-4o-mini
+prompt: >-
+  You are a billing specialist. Answer billing, invoice, and payment questions
+  concisely and point the user to the right next step.

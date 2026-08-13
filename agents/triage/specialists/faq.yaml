@@ -1,0 +1,10 @@
+# A triage sub-agent, authored as its own YAML. Loaded by path and dispatched to by
+# the triage supervisor (agents/triage/agent.py). Also runnable standalone:
+#   agentship run agents/triage/specialists/faq.yaml --input "What are your hours?"
+name: faq_specialist
+engine: langgraph
+template: single
+model: openai/gpt-4o-mini
+prompt: >-
+  You are a general help specialist. Answer general questions about the service
+  concisely.

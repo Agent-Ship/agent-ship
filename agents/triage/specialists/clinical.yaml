@@ -1,0 +1,10 @@
+# A triage sub-agent, authored as its own YAML. Loaded by path and dispatched to by
+# the triage supervisor (agents/triage/agent.py). Also runnable standalone:
+#   agentship run agents/triage/specialists/clinical.yaml --input "I feel dizzy."
+name: clinical_specialist
+engine: langgraph
+template: single
+model: openai/gpt-4o-mini
+prompt: >-
+  You are a clinical information specialist. Answer general health and symptom
+  questions concisely. Always add that this is not medical advice.
