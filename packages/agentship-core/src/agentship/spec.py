@@ -107,6 +107,15 @@ class AgentSpec(BaseModel):
     #: gate rejects ``"checkpoint"``/``"workflow"`` on an engine that declares
     #: ``durability="none"`` so a crash-recovery promise is never silently dropped.
     durability: Literal["none", "checkpoint", "workflow"] = "none"
+    #: Runtime checkpoint-flush mode for a durable run — *distinct* from ``durability``
+    #: above (which is whether/how the engine is durable). ``"exit"`` persists only at
+    #: graph end (loses mid-run state), ``"async"`` (default) writes a checkpoint after
+    #: each node without blocking, ``"sync"`` writes it *before* the next node starts
+    #: (strongest crash guarantee — what a ``kill -9`` demo needs). The LangGraph
+    #: engine passes this to ``.ainvoke(..., durability=…)``; it is inert when
+    #: ``durability="none"``. Kept a separate key from ``durability`` so the capability
+    #: and the flush mode never collide. See phase 02 §C4 / DESIGN §6.
+    durability_mode: Literal["sync", "async", "exit"] = "async"
 
     # NOTE: ``memory`` / ``guardrails`` / ``auth`` blocks are deliberately absent
     # here. Per the grow-per-pillar rule they land with their own phases — memory
