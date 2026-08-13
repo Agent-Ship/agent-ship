@@ -31,8 +31,8 @@ make demo
 
 ## What this demo shows
 
-Six live slices, one per shipped capability. Each slice is an agent spec under
-`agents/` with a corresponding live test under `tests/`. `make demo` runs all six
+Seven live slices, one per shipped capability. Each slice is an agent spec under
+`agents/` with a corresponding live test under `tests/`. `make demo` runs all seven
 top to bottom.
 
 | # | Phase | Feature | Agent spec | Run just this slice |
@@ -42,7 +42,8 @@ top to bottom.
 | 3 | P01 | **`template: graph`** — supervisor scaffold; coordinator routes → worker answers | `agents/graph.yaml` | `pytest tests/test_graph.py -q` |
 | 4 | P01 | **Custom `build_graph`** — the author's own native LangGraph graph answers | `agents/custom/custom.yaml` | `pytest tests/test_custom.py -q` |
 | 5 | P01 | **`ModelRouter`** — router picks the model id, then a real turn runs | _(spec built inline)_ | `pytest tests/test_router.py -q` |
-| 6 | P02 | **Durable multi-agent supervisor** — classify → route → resolve; then a **fresh engine resumes from the checkpoint and produces byte-identical output** (the kill-9 guarantee, actually proven) | `agents/triage/triage.yaml` | `pytest tests/test_triage.py -q` |
+| 6 | P02 | **Durable multi-agent supervisor** — 1 supervisor + 3 real sub-agents; classify → route to **one** sub-agent → resolve; then a **fresh engine resumes from the checkpoint and produces byte-identical output** (the kill-9 guarantee, actually proven). The classify → route → dispatch → resolve trace prints inline so the routing is visible. | `agents/triage/triage.yaml` | `pytest tests/test_triage.py -q` |
+| 7 | P02 | **Multi-agent fan-out** — one question dispatched to **all 3 sub-agents concurrently** (`strategy: parallel`), then the `ConflictResolver` merges their competing answers by priority. You watch several real sub-agents run at once and get reconciled. | `agents/triage/panel.yaml` | `pytest tests/test_triage.py -q` |
 
 > **Prerequisite for tests:** source your `.env` first so `OPENAI_API_KEY` is set.
 > Without a key every test skips cleanly — it never fake-passes and never hard-errors.
@@ -113,13 +114,27 @@ agentship run agents/triage/triage.yaml \
 
 `make demo` runs the full slice including the resume step (see below).
 
-**What `make demo` slice 6 does — step by step:**
+> **The sub-agents are real.** `build_triage_supervisor()` calls `build_agent()` three
+> times — each specialist (`billing_specialist`, `clinical_specialist`, `faq_specialist`)
+> is a full, independent agent with its own graph and its own thread. At runtime the
+> supervisor's `dispatch` node resolves the routed name and invokes that agent through
+> the public `run` seam — a genuine separate sub-agent turn, not an inlined prompt. The
+> supervisor logs each decision on the `agentship.supervisor` logger; the demo enables it
+> so you see exactly which sub-agent handled the request.
+
+**What `make demo` slice 6 prints — the routing is now visible:**
 
 ```
-[1] original answer: Our billing team handles payment issues ...
+supervisor built 3 sub-agents: billing_specialist, clinical_specialist, faq_specialist
+      | classify: 'My invoice looks wrong ...' -> intent=billing
+      | route: intent=billing -> specialists=['billing_specialist'] strategy=single
+      | dispatch: single -> sub-agents ['billing_specialist']
+      |   billing_specialist (sub-agent) -> For billing discrepancies like being double charged ...
+      | resolve: winner=billing_specialist considered=['billing_specialist'] dropped=[]
+[1] original answer: For billing discrepancies like being double charged ...
     resume_token minted by 'langgraph', thread='demo-triage-resume'
 [2] simulating kill -9 → fresh LangGraphEngine, no shared state …
-[3] resumed answer:  Our billing team handles payment issues ...
+[3] resumed answer:  For billing discrepancies like being double charged ...
 ✓ byte-identical — checkpoint replayed identically.
 ```
 
@@ -151,6 +166,38 @@ pytest tests/test_triage.py -q -s    # runs both tests below
 | `test_triage_routes_and_answers_a_billing_question_live` | Happy path: classify → route → real answer + resume token minted |
 | `test_triage_resume_after_simulated_kill` | Kill-9 guarantee: fresh engine resumes from token → byte-identical output |
 
+### 7 — Multi-agent fan-out (parallel sub-agents + ConflictResolver)
+
+```bash
+# Run from the demo repo root so the repo-root-relative code: path resolves
+agentship run agents/triage/panel.yaml \
+  --input "My latest bill looks wrong and I've also been feeling dizzy — can you help?"
+```
+
+Where slice 6 routes to **one** sub-agent, the panel (`build_triage_panel()`) fans
+**every** request out to **all three** sub-agents concurrently (`strategy: parallel`),
+then the `ConflictResolver` merges their competing answers by priority
+(`billing > clinical > faq`). This is the clearest "multiple sub-agents" demo — you
+watch three real agents run at once and get reconciled deterministically:
+
+```
+      | classify: "My latest bill looks wrong ..." -> intent=billing
+      | route: intent=billing -> specialists=['billing_specialist', 'clinical_specialist', 'faq_specialist'] strategy=parallel
+      | dispatch: parallel -> sub-agents ['billing_specialist', 'clinical_specialist', 'faq_specialist']
+      |   billing_specialist (sub-agent) -> For your billing concern ...
+      |   clinical_specialist (sub-agent) -> While I can't assist with billing ...
+      |   faq_specialist (sub-agent) -> I can help with your billing question ...
+      | resolve: winner=billing_specialist considered=[all three] dropped=[]
+  -> merged winner's answer: For your billing concern ...
+```
+
+Its live test asserts on the captured decision log — that a `parallel` dispatch ran
+all three named sub-agents and the resolver *considered* all three before picking one:
+
+| Test | What it proves |
+|---|---|
+| `test_triage_panel_fans_out_to_multiple_sub_agents_in_parallel` | Fan-out is real: 3 named sub-agents dispatched in parallel, all 3 considered by the resolver |
+
 ---
 
 ## Run all slices at once
@@ -159,7 +206,7 @@ pytest tests/test_triage.py -q -s    # runs both tests below
 make demo
 ```
 
-This runs all six slices in order, prints a labeled block for each, and exits
+This runs all seven slices in order, prints a labeled block for each, and exits
 non-zero if any slice fails — it is a real integration gate. The streaming slice
 prints tokens as they arrive. Example output:
 
@@ -192,7 +239,7 @@ set -a; source ../agentship/.env; set +a
 pytest -q        # or: make test
 ```
 
-All six tests call OpenAI live. Without a key they skip; they never fake-pass.
+All the tests call OpenAI live. Without a key they skip; they never fake-pass.
 
 ---
 
@@ -208,8 +255,9 @@ agentship-demo/
       custom.yaml               # slice 4: custom build_graph spec (code: reference)
       agent.py                  # slice 4: the native LangGraph agent it points at
     triage/
-      triage.yaml               # slice 6: durable supervisor spec (code: reference)
-      agent.py                  # slice 6: build_triage_supervisor factory — billing/clinical/faq specialists
+      triage.yaml               # slice 6: durable supervisor spec — routes to ONE sub-agent (code: reference)
+      panel.yaml                # slice 7: fan-out panel spec — parallel to ALL sub-agents (code: reference)
+      agent.py                  # slices 6+7: build_triage_supervisor / build_triage_panel — 3 real sub-agents
   demos/
     run_all.py                  # `make demo` runner — runs every slice LIVE, prints each result
   tests/
@@ -219,7 +267,7 @@ agentship-demo/
     test_graph.py               # slice 3: graph scaffold routed answer (live)
     test_custom.py              # slice 4: custom graph answer (live)
     test_router.py              # slice 5: router picks model + real turn runs (live)
-    test_triage.py              # slice 6: two tests — happy path + kill-9 resume proof (live)
+    test_triage.py              # slices 6+7: happy path, kill-9 resume, parallel fan-out (live)
   pyproject.toml                # pins agentship[starter]==0.0.1 (future PyPI install)
   requirements-dev.txt          # editable-local install of the framework (dev mode)
   Makefile                      # install / test / demo / run shortcuts
