@@ -9,6 +9,8 @@ the specialist returns a Pydantic model, a dict, or a scalar.
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from agentship.context import Caller, RunContext, RunMode
 from agentship.engines.base import Result
@@ -144,3 +146,29 @@ async def test_unknown_strategy_fails_fast():
     """An unknown dispatch strategy raises CapabilityError rather than silently doing nothing."""
     with pytest.raises(CapabilityError):
         await dispatch("teleport", [_ref("a", _FakeAgent("x"))], "go", _ctx())
+
+
+class _SlowAgent:
+    """A specialist that sleeps before answering — to exercise the per-node timeout."""
+
+    def __init__(self, delay: float) -> None:
+        self._delay = delay
+
+    async def run(self, text: str, *, user_id: str = "anonymous") -> Result:
+        await asyncio.sleep(self._delay)
+        return Result(output={"v": "slow"})
+
+
+async def test_timeout_turns_a_slow_specialist_into_an_error_result():
+    """A specialist exceeding timeout_s becomes an error result; the fast one still succeeds."""
+    refs = [_ref("fast", _FakeAgent({"v": 1})), _ref("slow", _SlowAgent(1.0))]
+    results = await dispatch("parallel", refs, "go", _ctx(), timeout_s=0.05)
+    by_name = {r["name"]: r for r in results}
+    assert by_name["fast"]["error"] is None and by_name["fast"]["output"] == {"v": 1}
+    assert by_name["slow"]["error"] and "timed out" in by_name["slow"]["error"]
+
+
+async def test_no_timeout_lets_a_slow_specialist_finish():
+    """With no timeout (default), a slow specialist completes normally."""
+    results = await dispatch("single", [_ref("slow", _SlowAgent(0.01))], "go", _ctx())
+    assert results[0]["error"] is None and results[0]["output"] == {"v": "slow"}

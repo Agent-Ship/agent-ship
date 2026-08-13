@@ -90,17 +90,29 @@ class AgentRef:
         )
 
 
-async def _run_safely(ref: AgentRef, message: str, ctx: RunContext) -> SpecialistResult:
-    """Run one specialist, turning any failure into an ``error`` result instead of crashing.
+def _error_result(ref: AgentRef, message: str) -> SpecialistResult:
+    """A dropped-from-merge result for a specialist that failed or timed out."""
+    return SpecialistResult(name=ref.name, output={}, confidence=None, error=message)
 
-    A specialist that raises (after its own retries) must not take down the whole fan-out — its
-    contribution becomes a :class:`SpecialistResult` with ``error`` set, which the resolver drops
-    from the merge (partial-merge, DESIGN §10).
+
+async def _run_safely(
+    ref: AgentRef, message: str, ctx: RunContext, timeout_s: float | None
+) -> SpecialistResult:
+    """Run one specialist, turning any failure or timeout into an ``error`` result, never a crash.
+
+    A specialist that raises (after its own retries) or overruns ``timeout_s`` must not take down
+    the whole fan-out — its contribution becomes a :class:`SpecialistResult` with ``error`` set,
+    which the resolver drops from the merge (partial-merge, DESIGN §10). A timed-out specialist is
+    retryable by the bounded-retry loop (C6).
     """
     try:
+        if timeout_s is not None:
+            return await asyncio.wait_for(ref.run(message, ctx), timeout_s)
         return await ref.run(message, ctx)
+    except TimeoutError:
+        return _error_result(ref, f"timed out after {timeout_s}s")
     except Exception as exc:  # noqa: BLE001 - deliberately broad: any specialist failure degrades
-        return SpecialistResult(name=ref.name, output={}, confidence=None, error=str(exc))
+        return _error_result(ref, str(exc))
 
 
 def _forward_text(result: SpecialistResult) -> str:
@@ -111,7 +123,12 @@ def _forward_text(result: SpecialistResult) -> str:
 
 
 async def dispatch(
-    strategy: Strategy, refs: list[AgentRef], message: str, ctx: RunContext
+    strategy: Strategy,
+    refs: list[AgentRef],
+    message: str,
+    ctx: RunContext,
+    *,
+    timeout_s: float | None = None,
 ) -> list[SpecialistResult]:
     """Invoke ``refs`` for one turn under ``strategy``, returning a result per specialist.
 
@@ -119,18 +136,19 @@ async def dispatch(
     - ``parallel`` — run every ref concurrently with the same ``message`` (order preserved).
     - ``sequential`` — run refs in order, feeding each one's output text to the next.
 
-    Every specialist is run through :func:`_run_safely`, so a failure is an ``error`` result, never
-    a crash. An unknown ``strategy`` fails fast with :class:`CapabilityError`.
+    ``timeout_s`` caps each specialist's wall-clock; an overrun becomes an ``error`` result. Every
+    specialist is run through :func:`_run_safely`, so a failure or timeout is an ``error`` result,
+    never a crash. An unknown ``strategy`` fails fast with :class:`CapabilityError`.
     """
     if strategy == "single":
-        return [await _run_safely(refs[0], message, ctx)]
+        return [await _run_safely(refs[0], message, ctx, timeout_s)]
     if strategy == "parallel":
-        return list(await asyncio.gather(*(_run_safely(r, message, ctx) for r in refs)))
+        return list(await asyncio.gather(*(_run_safely(r, message, ctx, timeout_s) for r in refs)))
     if strategy == "sequential":
         results: list[SpecialistResult] = []
         text = message
         for ref in refs:
-            result = await _run_safely(ref, text, ctx)
+            result = await _run_safely(ref, text, ctx, timeout_s)
             results.append(result)
             text = _forward_text(result)
         return results
