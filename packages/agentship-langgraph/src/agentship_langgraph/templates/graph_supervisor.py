@@ -151,10 +151,17 @@ def make_safety_gate():
 
 
 def _answer_text(resolved: dict[str, Any]) -> str:
-    """Render the resolver's result as the turn's answer string."""
-    if resolved.get("winner"):
-        return str(resolved.get("output"))
-    return resolved.get("status", "no specialist produced a result")
+    """Render the resolver's result as the turn's answer string.
+
+    Unwraps the common ``{"output": <text>}`` shape (a scalar specialist answer) so the answer is
+    the text itself, not a stringified dict; a richer structured output is stringified as-is.
+    """
+    if not resolved.get("winner"):
+        return resolved.get("status", "no specialist produced a result")
+    output = resolved.get("output") or {}
+    if isinstance(output, dict) and set(output) == {"output"}:
+        return str(output["output"])
+    return str(output)
 
 
 def dispatch_router(cfg: GraphConfig):
