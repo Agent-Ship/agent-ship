@@ -158,13 +158,17 @@ class Result(BaseModel):
 
     ``resume_token`` is minted by a durable engine after a terminal or interrupted run so the
     caller (``/tasks`` in P09) can persist it and later drive :meth:`Engine.resume`. It is ``None``
-    for non-durable runs — an engine that does not checkpoint never mints one.
+    for non-durable runs — an engine that does not checkpoint never mints one. ``interrupt`` is set
+    (and ``output`` left ``None``) when the run paused for human input: it carries the payload the
+    node passed to ``interrupt(...)`` so the client can render a confirm dialog, and the run is
+    continued by :meth:`Engine.resume` with the human's decision.
     """
 
     model_config = {"arbitrary_types_allowed": True}
 
     output: Any = None
     resume_token: ResumeToken | None = None
+    interrupt: dict | None = None
 
 
 class Event(BaseModel):
@@ -258,13 +262,16 @@ class Engine(ABC):
         raise NotImplementedError  # pragma: no cover - overridden by streaming engines
         yield  # pragma: no cover - makes this an async generator for type-checkers
 
-    async def resume(self, compiled: Any, token: ResumeToken, ctx: RunContext) -> Result:
+    async def resume(
+        self, compiled: Any, token: ResumeToken, ctx: RunContext, *, resume_value: Any = None
+    ) -> Result:
         """Continue a paused/crashed run from a :class:`ResumeToken`.
 
-        The default rejects a token minted by a different engine, and rejects resume on
-        an engine that isn't durable — so nothing fakes a resume. A durable engine
-        (LangGraph, once its checkpointer lands) overrides this to do the real replay.
-        See DESIGN §3.1.
+        ``resume_value`` is the human's decision for a run that paused on a HITL
+        ``interrupt`` (e.g. ``{"approved": True}``); it is ``None`` for a plain
+        crash-resume. The default rejects a token minted by a different engine, and
+        rejects resume on an engine that isn't durable — so nothing fakes a resume. A
+        durable engine (LangGraph) overrides this to do the real replay. See DESIGN §3.1.
         """
         if token.engine != self.name:
             raise CapabilityError(

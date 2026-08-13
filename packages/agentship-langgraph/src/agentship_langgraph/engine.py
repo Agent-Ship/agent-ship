@@ -29,6 +29,7 @@ from agentship.thread_lock import resolve_thread_lock
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
+from langgraph.types import Command
 from typing_extensions import TypedDict
 
 from . import models
@@ -280,41 +281,77 @@ class LangGraphEngine(Engine):
             },
         )
 
-    async def _run_durable(self, compiled: _CompiledAgent, text: str, ctx: RunContext) -> Result:
-        """Run one turn under a checkpointer, minting a ``ResumeToken`` from the final state.
+    @staticmethod
+    def _interrupt_payload(state: Any) -> dict | None:
+        """The payload of a pending HITL ``interrupt(...)``, or ``None`` if the run completed.
 
-        Opens a per-run checkpointer (Postgres when ``AGENT_SESSION_STORE_URI`` is set,
-        else in-memory), recompiles the graph with it, invokes with the run's
-        ``thread_id`` (``ctx.session_id``) and the configured ``durability_mode`` so a
-        checkpoint lands per node, then mints a token from the final snapshot. The
-        checkpointer's pool is scoped to this call.
+        LangGraph returns pending interrupts under the ``__interrupt__`` key; the first one's
+        ``value`` is exactly what the node passed to ``interrupt(...)``. Wrapped to a dict so the
+        client always gets a structured payload.
+        """
+        interrupts = state.get("__interrupt__") if isinstance(state, dict) else None
+        if not interrupts:
+            return None
+        payload = interrupts[0].value
+        return payload if isinstance(payload, dict) else {"payload": payload}
+
+    async def _invoke_and_finalize(
+        self, graph: Any, invoke_input: Any, thread_id: str, mode: str, model_id: str
+    ) -> Result:
+        """Invoke (or resume) a durable graph, then mint the token and surface any interrupt.
+
+        Shared by :meth:`_run_durable` and :meth:`resume` so both paths finalize identically: on a
+        HITL interrupt the :class:`Result` carries the payload plus a token with ``interrupt=True``
+        and no output; otherwise it carries the answer plus a terminal token.
+        """
+        cfg = self._thread_config(thread_id)
+        try:
+            state = await graph.ainvoke(invoke_input, config=cfg, durability=mode)
+        except Exception as exc:
+            raise models.map_model_error(model_id, exc) from exc
+        payload = self._interrupt_payload(state)
+        snapshot = await graph.aget_state(cfg)
+        token = self._mint_token(thread_id, snapshot, interrupted=payload is not None)
+        if payload is not None:
+            return Result(output=None, resume_token=token, interrupt=payload)
+        return Result(output=state["messages"][-1].content, resume_token=token)
+
+    async def _run_durable(self, compiled: _CompiledAgent, text: str, ctx: RunContext) -> Result:
+        """Run one turn under a per-run checkpointer, finalizing via :meth:`_invoke_and_finalize`.
+
+        Opens a per-run checkpointer (Postgres when ``AGENT_SESSION_STORE_URI`` is set, else
+        in-memory), recompiles the graph with it, and invokes with the run's ``thread_id``
+        (``ctx.session_id``) and the configured ``durability_mode`` so a checkpoint lands per node.
         """
         thread_id = ctx.session_id
-        cfg = self._thread_config(thread_id)
         async with open_checkpointer(self._conninfo()) as saver:
             graph = compiled.builder.compile(checkpointer=saver)
-            try:
-                state = await graph.ainvoke(
-                    {"messages": compiled.initial_messages(text)},
-                    config=cfg,
-                    durability=compiled.durability_mode,
-                )
-            except Exception as exc:
-                raise models.map_model_error(compiled.model_id, exc) from exc
-            answer = state["messages"][-1].content
-            snapshot = await graph.aget_state(cfg)
-            token = self._mint_token(thread_id, snapshot, interrupted=bool(snapshot.next))
-        return Result(output=answer, resume_token=token)
+            return await self._invoke_and_finalize(
+                graph,
+                {"messages": compiled.initial_messages(text)},
+                thread_id,
+                compiled.durability_mode,
+                compiled.model_id,
+            )
 
-    async def resume(self, compiled: _CompiledAgent, token: ResumeToken, ctx: RunContext) -> Result:
+    async def resume(
+        self,
+        compiled: _CompiledAgent,
+        token: ResumeToken,
+        ctx: RunContext,
+        *,
+        resume_value: Any = None,
+    ) -> Result:
         """Continue a durable run from a ``ResumeToken``, holding the single-owner thread lock.
 
         Rejects a token minted by another engine, then — under the single-owner
-        :class:`~agentship.thread_lock.ThreadLock` for ``(tenant, thread)`` so a replay
-        or a second worker cannot double-execute — recompiles the graph with a fresh
-        checkpointer, re-hydrates from the token's ``thread_id`` and invokes with ``None``
-        (LangGraph continues from the last checkpoint; nodes already completed are not
-        re-run). A missing/stale checkpoint surfaces as :class:`~agentship.errors.ResumeError`.
+        :class:`~agentship.thread_lock.ThreadLock` for ``(tenant, thread)`` so a replay or a second
+        worker cannot double-execute — recompiles the graph with a fresh checkpointer and continues.
+        For a plain crash-resume it invokes with ``None`` (LangGraph resumes from the last
+        checkpoint; completed nodes are not re-run); for a HITL interrupt it invokes with
+        ``Command(resume=resume_value)`` so the human's decision flows back into the paused
+        ``interrupt()``. A missing/stale checkpoint surfaces as
+        :class:`~agentship.errors.ResumeError`.
         """
         if token.engine != self.name:
             raise CapabilityError(
@@ -326,6 +363,7 @@ class LangGraphEngine(Engine):
             raise ResumeError("resume token carries no thread_id — it cannot be resumed")
         conninfo = self._conninfo()
         cfg = self._thread_config(thread_id)
+        invoke_input = Command(resume=resume_value) if resume_value is not None else None
         async with resolve_thread_lock(ctx.caller.tenant_id, thread_id, conninfo=conninfo):
             async with open_checkpointer(conninfo) as saver:
                 graph = compiled.builder.compile(checkpointer=saver)
@@ -335,16 +373,9 @@ class LangGraphEngine(Engine):
                         f"no checkpoint found for thread {thread_id!r} — the run cannot be "
                         f"resumed (it may have been compacted or never started)"
                     )
-                try:
-                    state = await graph.ainvoke(
-                        None, config=cfg, durability=compiled.durability_mode
-                    )
-                except Exception as exc:
-                    raise models.map_model_error(compiled.model_id, exc) from exc
-                answer = state["messages"][-1].content
-                snapshot = await graph.aget_state(cfg)
-                fresh = self._mint_token(thread_id, snapshot, interrupted=bool(snapshot.next))
-        return Result(output=answer, resume_token=fresh)
+                return await self._invoke_and_finalize(
+                    graph, invoke_input, thread_id, compiled.durability_mode, compiled.model_id
+                )
 
     async def stream(
         self, compiled: _CompiledAgent, text: str, ctx: RunContext
