@@ -23,6 +23,13 @@ from langgraph.checkpoint.memory import InMemorySaver
 if TYPE_CHECKING:  # only for typing; the Postgres saver is imported lazily so a bare install works
     from langgraph.checkpoint.base import BaseCheckpointSaver
 
+#: One process-wide in-memory saver for the no-database path. It must be **shared** across
+#: ``open_checkpointer`` calls so an in-process ``run`` then ``resume`` see the same checkpoints
+#: (a fresh saver per call would forget them). Entries are keyed by ``thread_id`` internally, so
+#: distinct runs never collide. This is single-process only — real cross-process durability needs
+#: the Postgres saver.
+_MEMORY_SAVER = InMemorySaver()
+
 
 @asynccontextmanager
 async def open_checkpointer(
@@ -37,7 +44,8 @@ async def open_checkpointer(
     only — the in-memory saver needs no schema).
     """
     if not conninfo:
-        yield InMemorySaver()
+        # Shared, not fresh — so an in-process run→resume sees the same checkpoints.
+        yield _MEMORY_SAVER
         return
 
     # Imported lazily: psycopg + langgraph-checkpoint-postgres are the optional [postgres] extra,

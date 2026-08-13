@@ -19,10 +19,13 @@ with no network. Production runs resolve a real ``ChatLiteLLM``.
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from agentship.engines.base import Engine, EngineCapabilities, Event, Result
+from agentship.engines.base import Engine, EngineCapabilities, Event, Result, ResumeToken
+from agentship.errors import CapabilityError, ResumeError
+from agentship.thread_lock import resolve_thread_lock
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -30,12 +33,17 @@ from typing_extensions import TypedDict
 
 from . import models
 from .agent import LangGraphAgent
+from .durability import open_checkpointer
 from .templates import resolve_template
 
 if TYPE_CHECKING:
     from agentship.context import RunContext
     from agentship.spec import AgentSpec
     from langchain_core.language_models.chat_models import BaseChatModel
+
+#: Schema version stamped into every minted ResumeToken blob, so a future change to the
+#: blob shape can be detected on resume rather than mis-read.
+_TOKEN_SCHEMA_VERSION = 1
 
 
 class _AgentState(TypedDict):
@@ -52,16 +60,40 @@ class _CompiledAgent:
     list without re-reading the spec.
     """
 
-    def __init__(self, graph: Any, system_prompt: str | None, model_id: str) -> None:
-        """Bind the compiled graph, the optional system prompt, and the model id.
+    def __init__(
+        self,
+        graph: Any,
+        system_prompt: str | None,
+        model_id: str,
+        *,
+        durability: str = "none",
+        durability_mode: str = "async",
+    ) -> None:
+        """Bind the compiled graph, the optional system prompt, model id, and durability.
 
         ``model_id`` is the LiteLLM model string (e.g. ``"openai/gpt-4o-mini"``);
         it is kept so a provider failure at run time can be turned into an
         actionable :class:`~agentship.errors.ModelError` that names the credential.
+        ``durability`` (from ``spec.durability``) decides whether ``run`` takes the
+        checkpointed path, and ``durability_mode`` (``sync|async|exit``) is passed to
+        ``.ainvoke(durability=…)`` on that path.
         """
         self.graph = graph
         self.system_prompt = system_prompt
         self.model_id = model_id
+        self.durability = durability
+        self.durability_mode = durability_mode
+
+    @property
+    def builder(self) -> Any:
+        """The uncompiled ``StateGraph`` behind the compiled graph.
+
+        Durable runs recompile this with a live checkpointer (``builder.compile(
+        checkpointer=…)``) because LangGraph binds a checkpointer at compile time and
+        the Postgres saver's pool is opened per-run. Every ``CompiledStateGraph``
+        retains its ``builder``.
+        """
+        return self.graph.builder
 
     def initial_messages(self, text: str) -> list:
         """Build the seed message list for one turn: optional system + user input."""
@@ -75,21 +107,23 @@ class _CompiledAgent:
 class LangGraphEngine(Engine):
     """AgentShip's default engine — a single-agent LangGraph graph over LiteLLM.
 
-    Declares only what this minimal graph honestly delivers today: ``streaming``
-    and the LiteLLM ``providers`` it can reach. Tool calling, structured output,
-    multi-agent coordination, and durability are **not** implemented by this
-    single-node graph yet, so they stay off (``tool_calling=False``,
-    ``structured_output="none"``, ``multi_agent=False``, ``durability="none"``) —
-    the capability gate therefore rejects any spec that asks for them until their
-    phases build them and their conformance cells go green. The model is resolved
-    via :func:`agentship_langgraph.models.resolve_model`, which offline tests
-    monkeypatch to inject a fake chat model.
+    Declares what this graph honestly delivers today: ``streaming``, the LiteLLM
+    ``providers`` it can reach, and — as of Phase 02 — ``durability="checkpoint"``
+    (per-node checkpoints via a LangGraph saver, so a crashed run resumes to an
+    identical result through :meth:`resume`). Tool calling, structured output, and
+    multi-agent coordination are still **not** implemented by this single-node graph,
+    so they stay off (``tool_calling=False``, ``structured_output="none"``,
+    ``multi_agent=False``) — the capability gate rejects any spec that asks for them
+    until their phases build them. The model is resolved via
+    :func:`agentship_langgraph.models.resolve_model`, which offline tests monkeypatch
+    to inject a fake chat model.
     """
 
     name: ClassVar[str] = "langgraph"
     capabilities: ClassVar[EngineCapabilities] = EngineCapabilities(
         providers={"openai", "anthropic", "gemini", "ollama"},
         streaming=True,
+        durability="checkpoint",
     )
 
     def build(self, spec: AgentSpec, authored: object = None) -> _CompiledAgent:
@@ -139,7 +173,13 @@ class LangGraphEngine(Engine):
                 graph = self._build_graph(model)
         compiled = graph if isinstance(graph, CompiledStateGraph) else graph.compile()
         system_prompt = None if prompt_owned_by_graph else spec.prompt
-        return _CompiledAgent(compiled, system_prompt, spec.model or "")
+        return _CompiledAgent(
+            compiled,
+            system_prompt,
+            spec.model or "",
+            durability=spec.durability,
+            durability_mode=spec.durability_mode,
+        )
 
     def _resolve_model(self, spec: AgentSpec) -> BaseChatModel:
         """Resolve the LiteLLM-backed chat model for ``spec`` (honouring routing).
@@ -192,15 +232,119 @@ class LangGraphEngine(Engine):
         :class:`~agentship.errors.ModelError` via
         :func:`agentship_langgraph.models.map_model_error` (which names the missing env var);
         the original exception is chained so ``--debug`` still shows the full cause.
+
+        When the agent declares ``durability="checkpoint"`` the run takes the durable
+        path (:meth:`_run_durable`): a per-run checkpointer is opened, the graph is
+        checkpointed per node, and a :class:`~agentship.engines.base.ResumeToken` is
+        minted so a crash can be resumed to an identical result.
         """
+        if compiled.durability == "checkpoint":
+            return await self._run_durable(compiled, text, ctx)
         try:
-            state = await compiled.graph.ainvoke(
-                {"messages": compiled.initial_messages(text)}
-            )
+            state = await compiled.graph.ainvoke({"messages": compiled.initial_messages(text)})
         except Exception as exc:
             raise models.map_model_error(compiled.model_id, exc) from exc
         answer = state["messages"][-1].content
         return Result(output=answer)
+
+    @staticmethod
+    def _conninfo() -> str | None:
+        """The Postgres connection string for durable state, or ``None`` for in-memory.
+
+        Reads ``AGENT_SESSION_STORE_URI``; when unset, durable runs fall back to an
+        in-memory saver (single-process durability — fine for dev/tests, not a crash
+        guarantee across processes).
+        """
+        return os.environ.get("AGENT_SESSION_STORE_URI")
+
+    @staticmethod
+    def _thread_config(thread_id: str) -> dict:
+        """The LangGraph ``configurable`` config that binds a run to its checkpoint thread."""
+        return {"configurable": {"thread_id": thread_id}}
+
+    def _mint_token(self, thread_id: str, snapshot: Any, *, interrupted: bool) -> ResumeToken:
+        """Mint a ``ResumeToken`` from a state snapshot — all LangGraph fields live in ``blob``.
+
+        Core never inspects ``blob``; it round-trips it as JSONB and hands it back on
+        :meth:`resume`. ``checkpoint_id`` comes from the snapshot's config so resume
+        re-hydrates the exact frontier.
+        """
+        checkpoint_id = snapshot.config.get("configurable", {}).get("checkpoint_id")
+        return ResumeToken(
+            engine=self.name,
+            blob={
+                "thread_id": thread_id,
+                "checkpoint_id": checkpoint_id,
+                "interrupt": interrupted,
+                "schema_version": _TOKEN_SCHEMA_VERSION,
+            },
+        )
+
+    async def _run_durable(self, compiled: _CompiledAgent, text: str, ctx: RunContext) -> Result:
+        """Run one turn under a checkpointer, minting a ``ResumeToken`` from the final state.
+
+        Opens a per-run checkpointer (Postgres when ``AGENT_SESSION_STORE_URI`` is set,
+        else in-memory), recompiles the graph with it, invokes with the run's
+        ``thread_id`` (``ctx.session_id``) and the configured ``durability_mode`` so a
+        checkpoint lands per node, then mints a token from the final snapshot. The
+        checkpointer's pool is scoped to this call.
+        """
+        thread_id = ctx.session_id
+        cfg = self._thread_config(thread_id)
+        async with open_checkpointer(self._conninfo()) as saver:
+            graph = compiled.builder.compile(checkpointer=saver)
+            try:
+                state = await graph.ainvoke(
+                    {"messages": compiled.initial_messages(text)},
+                    config=cfg,
+                    durability=compiled.durability_mode,
+                )
+            except Exception as exc:
+                raise models.map_model_error(compiled.model_id, exc) from exc
+            answer = state["messages"][-1].content
+            snapshot = await graph.aget_state(cfg)
+            token = self._mint_token(thread_id, snapshot, interrupted=bool(snapshot.next))
+        return Result(output=answer, resume_token=token)
+
+    async def resume(self, compiled: _CompiledAgent, token: ResumeToken, ctx: RunContext) -> Result:
+        """Continue a durable run from a ``ResumeToken``, holding the single-owner thread lock.
+
+        Rejects a token minted by another engine, then — under the single-owner
+        :class:`~agentship.thread_lock.ThreadLock` for ``(tenant, thread)`` so a replay
+        or a second worker cannot double-execute — recompiles the graph with a fresh
+        checkpointer, re-hydrates from the token's ``thread_id`` and invokes with ``None``
+        (LangGraph continues from the last checkpoint; nodes already completed are not
+        re-run). A missing/stale checkpoint surfaces as :class:`~agentship.errors.ResumeError`.
+        """
+        if token.engine != self.name:
+            raise CapabilityError(
+                f"resume token was minted by engine {token.engine!r} but this is "
+                f"engine {self.name!r} — a token can only be resumed on the engine that minted it"
+            )
+        thread_id = token.blob.get("thread_id")
+        if not thread_id:
+            raise ResumeError("resume token carries no thread_id — it cannot be resumed")
+        conninfo = self._conninfo()
+        cfg = self._thread_config(thread_id)
+        async with resolve_thread_lock(ctx.caller.tenant_id, thread_id, conninfo=conninfo):
+            async with open_checkpointer(conninfo) as saver:
+                graph = compiled.builder.compile(checkpointer=saver)
+                existing = await graph.aget_state(cfg)
+                if existing is None or existing.created_at is None:
+                    raise ResumeError(
+                        f"no checkpoint found for thread {thread_id!r} — the run cannot be "
+                        f"resumed (it may have been compacted or never started)"
+                    )
+                try:
+                    state = await graph.ainvoke(
+                        None, config=cfg, durability=compiled.durability_mode
+                    )
+                except Exception as exc:
+                    raise models.map_model_error(compiled.model_id, exc) from exc
+                answer = state["messages"][-1].content
+                snapshot = await graph.aget_state(cfg)
+                fresh = self._mint_token(thread_id, snapshot, interrupted=bool(snapshot.next))
+        return Result(output=answer, resume_token=fresh)
 
     async def stream(
         self, compiled: _CompiledAgent, text: str, ctx: RunContext

@@ -82,9 +82,7 @@ class _NonStreamingModel(BaseChatModel):
 
     def _generate(self, messages, stop=None, run_manager=None, **kwargs):
         """Return the whole answer as a single non-streamed ``AIMessage``."""
-        return ChatResult(
-            generations=[ChatGeneration(message=AIMessage(content=self.response))]
-        )
+        return ChatResult(generations=[ChatGeneration(message=AIMessage(content=self.response))])
 
 
 @pytest.fixture
@@ -204,20 +202,22 @@ def test_output_schema_rejected_by_capability_gate(fake_model):
     assert "structured output" in str(exc.value).lower()
 
 
-def test_durability_rejected_by_capability_gate(fake_model):
-    """This engine declares durability='none' — a checkpoint request fails fast."""
+def test_durability_checkpoint_is_accepted_by_capability_gate(fake_model):
+    """This engine declares durability='checkpoint' (Phase 02) — such a spec now builds."""
+    agent = build_agent(AgentSpec(name="a", engine="langgraph", model="x", durability="checkpoint"))
+    assert agent is not None
+
+
+def test_workflow_durability_still_rejected(fake_model):
+    """durability='workflow' (Temporal/ADK) is NOT this engine's mode — it still fails fast."""
     with pytest.raises(CapabilityError) as exc:
-        build_agent(
-            AgentSpec(name="a", engine="langgraph", model="x", durability="checkpoint")
-        )
-    assert "durable" in str(exc.value).lower() or "durability" in str(exc.value).lower()
+        build_agent(AgentSpec(name="a", engine="langgraph", model="x", durability="workflow"))
+    assert "durab" in str(exc.value).lower()
 
 
 def test_members_rejected_by_capability_gate(fake_model):
     """This engine is not multi-agent — a members: spec fails fast, not silently dropped."""
-    spec = AgentSpec(
-        name="team", engine="langgraph", model="x", members=[MemberSpec(name="m1")]
-    )
+    spec = AgentSpec(name="team", engine="langgraph", model="x", members=[MemberSpec(name="m1")])
     with pytest.raises(CapabilityError) as exc:
         build_agent(spec)
     assert "multi-agent" in str(exc.value).lower()

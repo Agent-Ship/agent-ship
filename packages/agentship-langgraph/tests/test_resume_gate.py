@@ -1,10 +1,10 @@
-"""T5 proof (langgraph side): the engine is honest — resume is gated off until P02.
+"""The LangGraph engine is durable (Phase 02 §C4) — and its ``resume`` guards are honest.
 
-The LangGraph engine declares ``durability="none"`` today (no checkpointer is wired
-yet — that lands in Phase 02), so its inherited :meth:`Engine.resume` must raise a
-clean :class:`CapabilityError` rather than pretend to resume. This guards against a
-premature over-claim: the day the engine flips to ``durability="checkpoint"`` and
-implements a real resume, this test is updated alongside it.
+The engine now declares ``durability="checkpoint"`` and implements a real ``resume``. These tests
+pin the guards that keep resume safe: a token minted by a *different* engine is refused
+(``CapabilityError``), and a token missing its ``thread_id`` cannot be resumed (``ResumeError``).
+The happy-path resume (re-hydrate + continue to an identical result) is proven in
+``test_langgraph_durable.py``.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 from agentship.context import Caller, RunContext, RunMode
 from agentship.engines.base import ResumeToken
-from agentship.errors import CapabilityError
+from agentship.errors import CapabilityError, ResumeError
 from agentship_langgraph.engine import LangGraphEngine
 
 
@@ -27,18 +27,22 @@ def _ctx() -> RunContext:
     )
 
 
-def test_langgraph_declares_no_durability_yet():
-    """The engine honestly declares durability='none' (the checkpointer is P02)."""
-    assert LangGraphEngine.capabilities.durability == "none"
+def test_langgraph_declares_checkpoint_durability():
+    """The engine declares durability='checkpoint' now that a real checkpointer is wired."""
+    assert LangGraphEngine.capabilities.durability == "checkpoint"
 
 
-async def test_langgraph_resume_raises_until_phase_02():
-    """resume on the (non-durable) LangGraph engine raises CapabilityError, not a fake result.
-
-    Non-vacuous: it fails if the engine ever silently pretends to resume without a
-    checkpointer — the honest failure is the whole point until Phase 02 lands one.
-    """
+async def test_resume_rejects_a_wrong_engine_token():
+    """A token minted by another engine is refused before any state work — CapabilityError."""
     engine = LangGraphEngine()
-    token = ResumeToken(engine="langgraph", blob={"thread_id": "t1"})
+    foreign = ResumeToken(engine="some_other_engine", blob={"thread_id": "t1"})
     with pytest.raises(CapabilityError):
+        await engine.resume(object(), foreign, _ctx())
+
+
+async def test_resume_rejects_a_token_without_thread_id():
+    """A same-engine token that carries no thread_id cannot be resumed — ResumeError."""
+    engine = LangGraphEngine()
+    token = ResumeToken(engine="langgraph", blob={})
+    with pytest.raises(ResumeError):
         await engine.resume(object(), token, _ctx())

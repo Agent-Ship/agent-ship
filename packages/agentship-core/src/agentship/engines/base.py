@@ -99,7 +99,9 @@ class EngineCapabilities(BaseModel):
         - ``streaming`` → ``streaming``
         - ``output_schema`` (a declared schema) → ``structured_output != "none"``
         - ``members`` (a declared team) → ``multi_agent``
-        - ``durability`` (other than ``"none"``) → ``durability != "none"``
+        - ``durability`` (other than ``"none"``) → the engine's ``durability`` must **match**
+          the requested mode (a ``checkpoint`` spec needs a ``checkpoint`` engine, a
+          ``workflow`` spec a ``workflow`` engine — they select different resume methods)
         - ``model`` provider prefix → ``providers`` (skipped when ``providers`` empty)
         """
         if spec.streaming and not self.streaming:
@@ -119,11 +121,16 @@ class EngineCapabilities(BaseModel):
                 f"spec declares {len(spec.members)} member(s) — use a multi-agent engine or "
                 f"remove the `members` field so they are not silently dropped"
             )
-        if spec.durability != "none" and self.durability == "none":
+        if spec.durability != "none" and spec.durability != self.durability:
+            engine_mode = (
+                "no durable execution"
+                if self.durability == "none"
+                else f"durability {self.durability!r}"
+            )
             raise CapabilityError(
-                f"engine {spec.engine!r} does not support durable execution, but the spec "
-                f"requests durability: {spec.durability!r} — use a durable engine or remove "
-                f"the field"
+                f"engine {spec.engine!r} supports {engine_mode}, but the spec requests "
+                f"durability: {spec.durability!r} — use an engine whose durability matches, or "
+                f"remove the field"
             )
         self._assert_provider_supported(spec)
 
@@ -147,11 +154,17 @@ class EngineCapabilities(BaseModel):
 
 
 class Result(BaseModel):
-    """The outcome of a run: the agent's output."""
+    """The outcome of a run: the agent's output, plus a resume ticket for durable runs.
+
+    ``resume_token`` is minted by a durable engine after a terminal or interrupted run so the
+    caller (``/tasks`` in P09) can persist it and later drive :meth:`Engine.resume`. It is ``None``
+    for non-durable runs — an engine that does not checkpoint never mints one.
+    """
 
     model_config = {"arbitrary_types_allowed": True}
 
     output: Any = None
+    resume_token: ResumeToken | None = None
 
 
 class Event(BaseModel):
@@ -180,6 +193,11 @@ class ResumeToken(BaseModel):
     #: Everything the minting engine needs to resume, opaque to core. Stored verbatim
     #: and never inspected outside the engine that produced it.
     blob: dict = Field(default_factory=dict)
+
+
+# ``Result.resume_token`` forward-references ``ResumeToken`` (defined just above); with
+# ``from __future__ import annotations`` the field is a string until resolved here.
+Result.model_rebuild()
 
 
 class Engine(ABC):
@@ -256,8 +274,7 @@ class Engine(ABC):
             )
         self.capabilities.assert_supports("durability", "checkpoint")
         raise NotImplementedError(  # pragma: no cover - overridden by durable engines
-            f"engine {self.name!r} declares durable execution but has not implemented "
-            f"resume yet"
+            f"engine {self.name!r} declares durable execution but has not implemented resume yet"
         )
 
 
