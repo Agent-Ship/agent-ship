@@ -14,6 +14,13 @@ dependencies = [
     "pyyaml>=6",
 ]
 
+# Postgres substrate (the single-owner ThreadLock and, later, the durable task
+# store). Optional so a bare install stays vendor-light and runs on the in-memory
+# ThreadLock fallback; `pip install agentship-core[postgres]` opts in. psycopg3 is
+# chosen to match LangGraph's AsyncPostgresSaver — one driver for the whole stack.
+[project.optional-dependencies]
+postgres = ["psycopg[binary]>=3.1"]
+
 # The zero-dependency echo engine registers here; adapter packages (e.g.
 # agentship-langgraph) add their own engines to the same group. Core discovers
 # them via importlib.metadata — no core edit needed to add an engine.

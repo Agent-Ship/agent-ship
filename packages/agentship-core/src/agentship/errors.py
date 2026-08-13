@@ -41,6 +41,15 @@ class CapabilityError(AgentShipError):
     """
 
 
+class ThreadBusyError(AgentShipError):
+    """Another owner already holds the single-owner lock for this ``thread_id``.
+
+    Raised by :class:`~agentship.thread_lock.ThreadLock` when a second worker tries to acquire a
+    thread already locked by another session — the guarantee that a durable run has exactly one
+    owner, so a replay or a racing worker never double-executes. The service maps this to HTTP 409.
+    """
+
+
 class ModelError(AgentShipError):
     """A model/provider call failed (missing credentials, a provider error, …).
 
