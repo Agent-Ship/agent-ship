@@ -20,6 +20,7 @@ author's ``code:`` factory builds; there is no global registry.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Annotated, Any
 
 from agentship.context import get_run_context
@@ -39,6 +40,18 @@ if TYPE_CHECKING:
     from agentship.spec import AgentSpec
     from langchain_core.language_models.chat_models import BaseChatModel
     from langchain_core.tools import BaseTool
+
+#: Logs the supervisor's routing decisions (classify → route → dispatch → resolve) at INFO. This is
+#: the seam that makes the multi-agent orchestration observable: enable it (``logging.getLogger(
+#: "agentship.supervisor").setLevel(logging.INFO)`` + a handler) to watch each turn get classified,
+#: routed to named sub-agents, and resolved. Silent by default (no handler) so libraries stay quiet.
+logger = logging.getLogger("agentship.supervisor")
+
+
+def _preview(text: Any, limit: int = 80) -> str:
+    """A one-line, length-capped preview of a value for a log line (never multi-line)."""
+    line = " ".join(str(text).split())
+    return line if len(line) <= limit else f"{line[:limit]}…"
 
 
 class SupervisorState(TypedDict, total=False):
@@ -80,7 +93,9 @@ def make_classify(model: BaseChatModel, cfg: GraphConfig):
             [SystemMessage(content=prompt), HumanMessage(content=_user_text(state))]
         )
         label = (reply.content or "").strip().lower()
-        return {"intent": label if label in cfg.classify.intents else None}
+        intent = label if label in cfg.classify.intents else None
+        logger.info("classify: %r -> intent=%s", _preview(_user_text(state)), intent)
+        return {"intent": intent}
 
     return classify
 
@@ -90,6 +105,12 @@ def make_lookup_route(cfg: GraphConfig):
 
     def lookup_route(state: SupervisorState) -> dict:
         entry = cfg.routing.get(state.get("intent")) or cfg.routing["_default"]
+        logger.info(
+            "route: intent=%s -> specialists=%s strategy=%s",
+            state.get("intent"),
+            entry.specialists,
+            entry.strategy,
+        )
         return {"route": {"specialists": entry.specialists, "strategy": entry.strategy}}
 
     return lookup_route
@@ -112,7 +133,14 @@ def make_dispatch(cfg: GraphConfig, specialists: dict[str, Any]):
             else list(route["specialists"])
         )
         refs = [AgentRef.resolve(name, specialists) for name in to_run]
+        logger.info("dispatch: %s -> sub-agents %s", route["strategy"], to_run)
         fresh = await dispatch(route["strategy"], refs, _user_text(state), ctx)
+        for result in fresh:
+            if result["error"]:
+                logger.info("  %s (sub-agent) failed: %s", result["name"], result["error"])
+            else:
+                answer = result["output"].get("output", result["output"])
+                logger.info("  %s (sub-agent) -> %s", result["name"], _preview(answer))
         for name in to_run:
             attempts[name] = attempts.get(name, 0) + 1
         merged = {**prior, **{r["name"]: r for r in fresh}}  # keep the latest result per specialist
@@ -126,7 +154,14 @@ def make_resolve(cfg: GraphConfig):
     resolver = ConflictResolver(cfg.conflict_resolver)
 
     def resolve(state: SupervisorState) -> dict:
-        return {"resolved": resolver.resolve(state.get("specialist_results") or [])}
+        merged = resolver.resolve(state.get("specialist_results") or [])
+        logger.info(
+            "resolve: winner=%s considered=%s dropped=%s",
+            merged.get("winner"),
+            merged.get("considered", []),
+            merged.get("dropped", []),
+        )
+        return {"resolved": merged}
 
     return resolve
 
