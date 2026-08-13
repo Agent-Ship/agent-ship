@@ -26,8 +26,10 @@ from pathlib import Path
 
 import litellm
 from agentship import build_agent
+from agentship.context import Caller, RunContext, RunMode
 from agentship.primitives.model_router import DefaultModelRouter
 from agentship.spec import AgentSpec
+from agentship_langgraph.engine import LangGraphEngine
 
 # Force the plain httpx transport (LiteLLM's aiohttp path can misbehave for
 # streaming across environments); keep the model cost map local.
@@ -137,25 +139,46 @@ async def slice_router() -> None:
 
 
 async def slice_triage() -> None:
-    """6. Durable multi-agent supervisor — classify → route to a specialist → resolve, checkpointed."""
+    """6. Durable multi-agent supervisor — classify → route → resolve → ACTUAL resume from checkpoint."""
     _banner(
         6,
-        "durable multi-agent supervisor (Phase 02 killer demo)",
-        "LIVE · classifies, routes to a specialist, resolves — durable (resume token minted)",
+        "durable multi-agent supervisor (Phase 02 — kill-9 guarantee proven)",
+        "LIVE · classifies, routes to specialist, resolves · then a FRESH engine resumes from checkpoint",
     )
+    SESSION = "demo-triage-resume"
+    question = "My invoice looks wrong and I was double charged — who handles payments?"
     cwd = os.getcwd()
-    os.chdir(REPO_ROOT)  # the code: path is repo-root-relative
+    os.chdir(REPO_ROOT)
     try:
+        # Step 1: original run.
         agent = build_agent(str(AGENTS / "triage" / "triage.yaml"))
-        question = "My invoice looks wrong and I was double charged — who handles payments?"
-        result = await agent.run(question)
+        result = await agent.run(question, session_id=SESSION)
+        print(f"  run  agents/triage/triage.yaml --input {question!r}")
+        print(f"  [1] original answer: {result.output.strip()}")
+        print(f"      resume_token minted by {result.resume_token.engine!r}, thread={result.resume_token.blob['thread_id']!r}")
+
+        # Step 2: simulated kill — brand-new engine, same spec, resume from token only.
+        print("  [2] simulating kill -9 → fresh LangGraphEngine, no shared state …")
+        new_engine = LangGraphEngine()
+        new_compiled = new_engine.build(agent.spec)
+        ctx = RunContext(
+            caller=Caller(user_id="anonymous"),
+            session_id=SESSION,
+            run_id="r-demo-resume",
+            agent_name=agent.spec.name,
+            mode=RunMode.INVOKE,
+        )
+        resumed = await new_engine.resume(new_compiled, result.resume_token, ctx)
+        print(f"  [3] resumed answer:  {resumed.output.strip()}")
     finally:
         os.chdir(cwd)
-    print(f"  run  agents/triage/triage.yaml --input {question!r}")
-    print(f"  -> {result.output.strip()}")
-    print(f"  durable: resume_token minted by {result.resume_token.engine!r} (kill -9 would resume)")
+
     assert result.output.strip() != ""
     assert result.resume_token is not None
+    assert resumed.output == result.output, (
+        f"resumed output differs!\n  original: {result.output!r}\n  resumed: {resumed.output!r}"
+    )
+    print("  ✓ byte-identical — checkpoint replayed identically.")
 
 
 async def main() -> int:
