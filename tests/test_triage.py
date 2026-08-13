@@ -21,6 +21,7 @@ Run (with a key set)::
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
@@ -31,6 +32,7 @@ from conftest import requires_live_key
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 AGENT = str(REPO_ROOT / "agents" / "triage" / "triage.yaml")
+PANEL = str(REPO_ROOT / "agents" / "triage" / "panel.yaml")
 _QUESTION = "My invoice looks wrong and I was double charged — who handles payments?"
 
 
@@ -98,3 +100,39 @@ async def test_triage_resume_after_simulated_kill():
         f"  original: {original_output!r}\n"
         f"  resumed:  {resumed.output!r}"
     )
+
+
+@requires_live_key
+async def test_triage_panel_fans_out_to_multiple_sub_agents_in_parallel(caplog):
+    """The panel dispatches to all three sub-agents concurrently, then merges their answers.
+
+    Proves the fan-out is real (not a single agent): the supervisor's decision log records a
+    ``parallel`` dispatch to all three named sub-agents, each produces an answer, and the
+    ``ConflictResolver`` reports all three as *considered* before picking one winner. Asserting on
+    the captured decision log is how we see the multiple sub-agents actually ran.
+    """
+    cwd = os.getcwd()
+    os.chdir(REPO_ROOT)
+    try:
+        agent = build_agent(PANEL)
+        with caplog.at_level(logging.INFO, logger="agentship.supervisor"):
+            result = await agent.run(
+                "My latest bill looks wrong and I've also been feeling dizzy — can you help?",
+                session_id="test-panel",
+            )
+    finally:
+        os.chdir(cwd)
+
+    assert isinstance(result.output, str) and result.output.strip()
+    log = "\n".join(rec.getMessage() for rec in caplog.records)
+
+    # A parallel dispatch to all three named sub-agents was logged.
+    assert "dispatch: parallel" in log, f"expected a parallel dispatch, got:\n{log}"
+    for sub_agent in ("billing_specialist", "clinical_specialist", "faq_specialist"):
+        assert sub_agent in log, f"sub-agent {sub_agent!r} never ran; log:\n{log}"
+
+    # All three were considered by the resolver before one winner was chosen.
+    assert "resolve: winner=" in log
+    considered = next(rec.getMessage() for rec in caplog.records if "considered=" in rec.getMessage())
+    for sub_agent in ("billing_specialist", "clinical_specialist", "faq_specialist"):
+        assert sub_agent in considered, f"{sub_agent!r} not considered by resolver: {considered}"

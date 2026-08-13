@@ -20,6 +20,7 @@ Run it with:  make demo   (or: python demos/run_all.py)
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import sys
 from pathlib import Path
@@ -38,6 +39,23 @@ os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 AGENTS = REPO_ROOT / "agents"
+
+
+def _show_supervisor_decisions() -> None:
+    """Route the supervisor's decision log to stdout so its sub-agent routing is visible.
+
+    The ``SupervisorAgent`` logs every classify → route → dispatch → resolve decision on the
+    ``agentship.supervisor`` logger (silent by default). The multi-agent slices enable it so a
+    reader can watch the request get classified, dispatched to named sub-agents, and resolved.
+    """
+    supervisor_log = logging.getLogger("agentship.supervisor")
+    if supervisor_log.handlers:  # idempotent — only attach once even if called twice
+        return
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(logging.Formatter("      | %(message)s"))
+    supervisor_log.addHandler(handler)
+    supervisor_log.setLevel(logging.INFO)
+    supervisor_log.propagate = False
 
 
 def _banner(n: int, title: str, label: str) -> None:
@@ -139,21 +157,24 @@ async def slice_router() -> None:
 
 
 async def slice_triage() -> None:
-    """6. Durable multi-agent supervisor — classify → route → resolve → ACTUAL resume from checkpoint."""
+    """6. Durable multi-agent supervisor — classify → route to a sub-agent → resolve → ACTUAL resume."""
     _banner(
         6,
-        "durable multi-agent supervisor (Phase 02 — kill-9 guarantee proven)",
-        "LIVE · classifies, routes to specialist, resolves · then a FRESH engine resumes from checkpoint",
+        "durable multi-agent supervisor (Phase 02 — sub-agents visible, kill-9 proven)",
+        "LIVE · 1 supervisor + 3 sub-agents · classifies, routes to ONE sub-agent · then resumes from checkpoint",
     )
+    _show_supervisor_decisions()
     SESSION = "demo-triage-resume"
     question = "My invoice looks wrong and I was double charged — who handles payments?"
     cwd = os.getcwd()
     os.chdir(REPO_ROOT)
     try:
-        # Step 1: original run.
+        # Step 1: original run. The supervisor's decision log (enabled above) prints the
+        # classify → route → dispatch(sub-agent) → resolve trace inline, so the routing is visible.
         agent = build_agent(str(AGENTS / "triage" / "triage.yaml"))
-        result = await agent.run(question, session_id=SESSION)
+        print("  supervisor built 3 sub-agents: billing_specialist, clinical_specialist, faq_specialist")
         print(f"  run  agents/triage/triage.yaml --input {question!r}")
+        result = await agent.run(question, session_id=SESSION)
         print(f"  [1] original answer: {result.output.strip()}")
         print(f"      resume_token minted by {result.resume_token.engine!r}, thread={result.resume_token.blob['thread_id']!r}")
 
@@ -181,6 +202,28 @@ async def slice_triage() -> None:
     print("  ✓ byte-identical — checkpoint replayed identically.")
 
 
+async def slice_panel() -> None:
+    """7. Multi-agent fan-out — dispatch to ALL three sub-agents in parallel, then merge (C2/C7)."""
+    _banner(
+        7,
+        "multi-agent fan-out (parallel sub-agents + ConflictResolver)",
+        "LIVE · one question -> 3 sub-agents run CONCURRENTLY -> deterministic priority merge",
+    )
+    _show_supervisor_decisions()
+    question = "My latest bill looks wrong and I've also been feeling dizzy — can you help?"
+    cwd = os.getcwd()
+    os.chdir(REPO_ROOT)
+    try:
+        agent = build_agent(str(AGENTS / "triage" / "panel.yaml"))
+        print(f"  run  agents/triage/panel.yaml --input {question!r}")
+        print("  (watch the trace: dispatch parallel -> 3 sub-agents, then resolve picks the winner)")
+        result = await agent.run(question, session_id="demo-panel")
+    finally:
+        os.chdir(cwd)
+    print(f"  -> merged winner's answer: {result.output.strip()}")
+    assert result.output.strip() != ""
+
+
 async def main() -> int:
     """Run every live slice in order; return 0 if all pass, 1 if any raises."""
     if not os.environ.get("OPENAI_API_KEY"):
@@ -196,6 +239,7 @@ async def main() -> int:
         ("custom", slice_custom()),
         ("router", slice_router()),
         ("triage", slice_triage()),
+        ("panel", slice_panel()),
     ]
     for name, step in steps:
         try:

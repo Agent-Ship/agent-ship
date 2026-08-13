@@ -46,14 +46,47 @@ _CONFIG = {
 }
 
 
-def build_triage_supervisor() -> SupervisorAgent:
-    """Build the durable triage supervisor with its three specialists wired in."""
-    specialists = {
-        name: build_agent(
-            AgentSpec(name=name, engine="langgraph", model=_MODEL, prompt=prompt)
-        )
+# The panel config fans EVERY request out to all three specialists **concurrently**
+# (strategy: parallel), then the ConflictResolver merges their competing answers by
+# priority (billing > clinical > faq). This is the multi-agent fan-out demo: several
+# real sub-agents run at once and their outputs are reconciled deterministically.
+_PANEL_CONFIG = {
+    "classify": {"model": _MODEL, "intents": ["billing", "clinical", "general"]},
+    "routing": {
+        "_default": {
+            "specialists": ["billing_specialist", "clinical_specialist", "faq_specialist"],
+            "strategy": "parallel",
+        }
+    },
+    "conflict_resolver": {
+        "priority": ["billing_specialist", "clinical_specialist", "faq_specialist"]
+    },
+    "retry": {"max_attempts": 2, "on": ["timeout", "specialist_error"]},
+}
+
+
+def _build_specialists() -> dict[str, object]:
+    """Build the three real specialist sub-agents (each a full, independent agent)."""
+    return {
+        name: build_agent(AgentSpec(name=name, engine="langgraph", model=_MODEL, prompt=prompt))
         for name, prompt in _SPECIALISTS.items()
     }
+
+
+def build_triage_supervisor() -> SupervisorAgent:
+    """Build the durable triage supervisor: classify → route to ONE specialist → resolve."""
     config = GraphConfig.model_validate(_CONFIG)
     spec = AgentSpec(name="triage", engine="langgraph", model=_MODEL, durability="checkpoint")
-    return SupervisorAgent(spec, config=config, specialists=specialists)
+    return SupervisorAgent(spec, config=config, specialists=_build_specialists())
+
+
+def build_triage_panel() -> SupervisorAgent:
+    """Build the fan-out panel: dispatch to ALL three specialists in parallel, then resolve.
+
+    Same three sub-agents as :func:`build_triage_supervisor`, but every request is fanned out to all
+    of them concurrently (``strategy: parallel``) and the ``ConflictResolver`` picks the winner by
+    priority — the clearest demonstration that multiple real sub-agents run and are merged.
+    """
+    config = GraphConfig.model_validate(_PANEL_CONFIG)
+    spec = AgentSpec(name="triage-panel", engine="langgraph", model=_MODEL, durability="checkpoint")
+    return SupervisorAgent(spec, config=config, specialists=_build_specialists())

@@ -1,0 +1,17 @@
+# The multi-agent fan-out demo: a panel of specialist sub-agents run CONCURRENTLY.
+#
+# `code:` points at a factory that builds the same three specialist sub-agents
+# (billing / clinical / general) but a config that fans EVERY request out to all of
+# them in parallel (strategy: parallel). Each sub-agent answers on its own thread;
+# the ConflictResolver then merges their competing answers by priority
+# (billing > clinical > faq) and reports which were considered and which were dropped.
+#
+# This is the clearest "multiple sub-agents" demo: you watch several real agents run
+# at once and see their outputs reconciled deterministically.
+#
+# Run from the demo repo root so the repo-root-relative `code:` path resolves:
+#
+#   agentship run agents/triage/panel.yaml --input "My bill is wrong and I feel dizzy — help?"
+name: triage-panel
+engine: langgraph
+code: agents/triage/agent.py:build_triage_panel
