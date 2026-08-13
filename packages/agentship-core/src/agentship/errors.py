@@ -50,6 +50,16 @@ class ThreadBusyError(AgentShipError):
     """
 
 
+class ResumeError(AgentShipError):
+    """A durable run cannot be resumed from its :class:`~agentship.engines.base.ResumeToken`.
+
+    Raised by an engine's ``resume`` when the referenced checkpoint is missing, stale, or otherwise
+    unusable (e.g. the graph shape changed under it) — distinct from :class:`ThreadBusyError`, which
+    means the thread is *owned elsewhere*, not that the resume itself is invalid. Actionable so the
+    caller can decide to restart the run rather than retry a doomed resume.
+    """
+
+
 class ModelError(AgentShipError):
     """A model/provider call failed (missing credentials, a provider error, …).
 
