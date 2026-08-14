@@ -70,6 +70,7 @@ class _CompiledAgent:
         durability: str = "none",
         durability_mode: str = "async",
         members: list[str] | None = None,
+        bound_tools: list[str] | None = None,
     ) -> None:
         """Bind the compiled graph, the optional system prompt, model id, and durability.
 
@@ -88,6 +89,9 @@ class _CompiledAgent:
         self.durability = durability
         self.durability_mode = durability_mode
         self.members = members or []
+        #: Names of the tools bound into this agent (empty when none declared) — makes the
+        #: ``tool_calling`` capability inspectable on the built artifact.
+        self.bound_tools = bound_tools or []
 
     @property
     def builder(self) -> Any:
@@ -196,6 +200,7 @@ class LangGraphEngine(Engine):
             durability=spec.durability,
             durability_mode=spec.durability_mode,
             members=members,
+            bound_tools=[t.name for t in tools],
         )
 
     def _resolve_model(self, spec: AgentSpec) -> BaseChatModel:

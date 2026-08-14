@@ -111,6 +111,22 @@ async def _prove_multi_agent(agent: RunnableAgent) -> None:
     )
 
 
+async def _prove_tool_calling(agent: RunnableAgent) -> None:
+    """Positive cell for ``tool_calling``: a declared tool is really bound to the built agent.
+
+    The request spec declares ``tools: [calculator]``, so a genuine tool-calling engine must resolve
+    and bind it — the built artifact exposes the bound tool names. An engine that declared
+    ``tool_calling`` but bound nothing (or cannot execute tools) fails here, catching the overclaim.
+    Full *tool calling by a live model* is proven per-engine in its suite (a live demo slice); this
+    cell pins the build-time contract offline.
+    """
+    bound = getattr(agent.compiled, "bound_tools", None)
+    assert bound, (
+        f"engine {agent.spec.engine!r} declares tool_calling but bound no tools for a spec that "
+        f"declares one — implement tool resolution/execution or set tool_calling back to False"
+    )
+
+
 async def _prove_durability(agent: RunnableAgent) -> None:
     """Positive cell for ``durability``: the engine really implements the resume seam.
 
@@ -170,6 +186,14 @@ CAPABILITIES: tuple[Capability, ...] = (
         ),
         prove=_prove_durability,
     ),
+    Capability(
+        name="tool_calling",
+        declared=lambda caps: caps.tool_calling,
+        request_spec=lambda engine: AgentSpec(
+            name="cell", engine=engine, model="x", tools=["calculator"]
+        ),
+        prove=_prove_tool_calling,
+    ),
 )
 
 
@@ -182,7 +206,6 @@ CAPABILITIES: tuple[Capability, ...] = (
 #: unproven. ``providers`` is gated separately (at build, against the ``model:``
 #: prefix — see :meth:`EngineCapabilities._assert_provider_supported`), not by a cell.
 DEFERRED_CAPABILITIES: dict[str, str] = {
-    "tool_calling": "P03",
     "hitl": "P02",
     "cycles": "P02",
     "multimodal_in": "P03",

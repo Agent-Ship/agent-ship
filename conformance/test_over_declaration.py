@@ -150,6 +150,28 @@ class _DurabilityLiar(Engine):
         return Result(output=f"liar: {text}")
 
 
+class _ToolCallingLiar(Engine):
+    """Declares ``tool_calling=True`` but its built agent binds no tools.
+
+    The request spec declares ``tools: [calculator]`` and the gate passes (the capability is
+    declared), so the matrix drives the positive cell, which inspects the built artifact. This
+    engine's ``build`` returns a bare object with no ``bound_tools`` — the over-claim
+    ``_prove_tool_calling`` catches. Had ``build`` bound the tool, the cell would pass and the
+    ``pytest.raises`` would fail; the raise proves the cell is non-vacuous.
+    """
+
+    name = "tool_calling_liar"
+    capabilities = EngineCapabilities(tool_calling=True)
+
+    def build(self, spec: Any) -> Any:
+        """Return a bare object with no ``bound_tools`` — nothing executable to inspect."""
+        return object()
+
+    async def run(self, compiled: Any, text: str, ctx: Any) -> Result:
+        """Echo-like; unused by the tool-calling cell (which inspects the artifact)."""
+        return Result(output=f"liar: {text}")
+
+
 def _capability(name: str):
     """Return the descriptor named ``name`` from the shared catalogue."""
     for capability in CAPABILITIES:
@@ -263,6 +285,29 @@ async def test_behavioural_liar_makes_the_durability_cell_fail(
             await capability.prove(agent)
 
 
+async def test_behavioural_liar_makes_the_tool_calling_cell_fail(
+    registry_snapshot: None,
+) -> None:
+    """A liar that declares tool_calling but binds no tools fails the cell.
+
+    Registers the liar (auto-removed by ``registry_snapshot``), then runs the exact positive cell
+    the matrix would run for ``tool_calling``. The engine declares the capability (gate passes,
+    positive branch taken) but its ``build`` binds no tools, so the real ``_prove_tool_calling``
+    cell must raise. Non-vacuity: if ``build`` had bound the tool, the cell would pass and this
+    ``pytest.raises`` would fail — a red here proves the cell catches a real over-claim.
+    """
+    ENGINES.register(_ToolCallingLiar.name, _ToolCallingLiar)
+    capability = _capability("tool_calling")
+
+    assert capability.declared(_ToolCallingLiar.capabilities)
+    assert capability.prove is not None
+
+    with offline(_ToolCallingLiar.name):
+        agent = build_agent(capability.request_spec(_ToolCallingLiar.name))
+        with pytest.raises(AssertionError, match="bound no tools"):
+            await capability.prove(agent)
+
+
 def test_liar_engines_do_not_leak_after_the_meta_tests() -> None:
     """After the guarded meta-tests, every throwaway liar is gone — the registry is clean.
 
@@ -276,6 +321,7 @@ def test_liar_engines_do_not_leak_after_the_meta_tests() -> None:
         "structured_output_liar",
         "multi_agent_liar",
         "durability_liar",
+        "tool_calling_liar",
     ):
         assert liar_name not in names, f"{liar_name!r} leaked into the shared registry"
 
