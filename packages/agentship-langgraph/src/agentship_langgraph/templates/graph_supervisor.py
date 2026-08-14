@@ -24,7 +24,7 @@ import logging
 from typing import TYPE_CHECKING, Annotated, Any
 
 from agentship.context import get_run_context
-from agentship.primitives.conflict_resolver import ConflictResolver
+from agentship.primitives.conflict_resolver import ConflictPolicy, ConflictResolver
 from agentship.primitives.dispatch import AgentRef, dispatch
 from agentship.primitives.retry import should_retry, specialists_to_retry
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -34,7 +34,7 @@ from langgraph.types import interrupt
 from typing_extensions import TypedDict
 
 from ..agent import LangGraphAgent
-from .graph_config import GraphConfig
+from .graph_config import ClassifyConfig, GraphConfig, RouteEntry
 
 if TYPE_CHECKING:
     from agentship.spec import AgentSpec
@@ -85,10 +85,23 @@ def make_classify(model: BaseChatModel, cfg: GraphConfig):
 
     async def classify(state: SupervisorState) -> dict:
         intents = ", ".join(cfg.classify.intents)
-        prompt = (
-            f"Classify the user's request into exactly one of these labels: {intents}. "
-            f"Reply with only the label, nothing else."
-        )
+        # When hints are configured, list "label — what it handles" so the classifier can tell
+        # the intents apart; otherwise fall back to the bare label list.
+        if cfg.classify.hints:
+            described = "\n".join(
+                f"- {label}: {cfg.classify.hints[label]}"
+                for label in cfg.classify.intents
+                if label in cfg.classify.hints
+            )
+            prompt = (
+                f"Classify the user's request into exactly one of these labels:\n{described}\n"
+                f"Reply with only the label, nothing else."
+            )
+        else:
+            prompt = (
+                f"Classify the user's request into exactly one of these labels: {intents}. "
+                f"Reply with only the label, nothing else."
+            )
         reply = await model.ainvoke(
             [SystemMessage(content=prompt), HumanMessage(content=_user_text(state))]
         )
@@ -254,6 +267,68 @@ def build_supervisor_graph(
     g.add_edge("confirm_write", "safety_gate")
     g.add_edge("safety_gate", END)
     return g
+
+
+def _member_agent(member: Any, default_model: str | None) -> Any:
+    """Resolve one :class:`~agentship.spec.MemberSpec` into a built sub-agent.
+
+    A member declared by ``ref`` loads its own agent YAML (already resolved to an absolute path by
+    :func:`~agentship.spec.load_spec`); an inline member becomes a plain ``template: single`` agent
+    over its ``prompt`` (or a sensible default) and its ``model`` (falling back to the team model).
+    Either way the result is a full, independently-runnable agent the supervisor dispatches to.
+    """
+    from agentship.runtime import build_agent
+    from agentship.spec import AgentSpec
+
+    if member.ref:
+        return build_agent(member.ref)
+    prompt = member.prompt or f"You are {member.name}, a helpful specialist. Answer concisely."
+    return build_agent(
+        AgentSpec(
+            name=member.name,
+            engine="langgraph",
+            template="single",
+            model=member.model or default_model,
+            prompt=prompt,
+        )
+    )
+
+
+def derive_graph_config(spec: AgentSpec) -> GraphConfig:
+    """Derive a default :class:`GraphConfig` from a spec's ``members`` (the declarative path).
+
+    Each member becomes one intent that routes to itself (``single`` strategy); the classifier is
+    given each member's ``description`` as a hint so it can pick the right one; the resolver's
+    priority follows declaration order; and ``_default`` falls back to the first member. This is the
+    zero-config routing a purely declarative ``members:`` team gets; the ``code:`` factory path is
+    still available when an author wants explicit routing, parallel fan-out, retry, or HITL.
+    """
+    members = spec.members or []
+    names = [m.name for m in members]
+    routing = {m.name: RouteEntry(specialists=[m.name], strategy="single") for m in members}
+    routing["_default"] = RouteEntry(specialists=[names[0]], strategy="single")
+    hints = {m.name: m.description for m in members if m.description}
+    return GraphConfig(
+        classify=ClassifyConfig(model=spec.model or "", intents=names, hints=hints),
+        routing=routing,
+        conflict_resolver=ConflictPolicy(priority=names),
+    )
+
+
+def build_declarative_supervisor(
+    spec: AgentSpec, model: BaseChatModel
+) -> tuple[StateGraph, list[str]]:
+    """Build a supervisor graph straight from a spec's ``members`` — no ``code:`` factory needed.
+
+    Resolves each member into a sub-agent, derives the routing config from the member list, and
+    assembles the shared supervisor graph. Returns the uncompiled graph (for the engine to compile,
+    attaching any checkpointer) and the coordinated member names (surfaced on the built artifact so
+    the ``multi_agent`` capability is inspectable).
+    """
+    specialists = {m.name: _member_agent(m, spec.model) for m in (spec.members or [])}
+    config = derive_graph_config(spec)
+    graph = build_supervisor_graph(model, config, specialists)
+    return graph, list(specialists)
 
 
 class SupervisorAgent(LangGraphAgent):

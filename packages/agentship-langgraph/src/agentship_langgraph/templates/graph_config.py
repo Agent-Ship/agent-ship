@@ -23,6 +23,9 @@ class ClassifyConfig(BaseModel):
     model: str
     #: The closed set of intents the classifier may return; anything else routes to ``_default``.
     intents: list[str]
+    #: Optional ``intent -> description`` hints shown to the classifier so it can tell the
+    #: intents apart (e.g. from a member's ``description``). Empty means classify on names alone.
+    hints: dict[str, str] = Field(default_factory=dict)
 
 
 class RouteEntry(BaseModel):

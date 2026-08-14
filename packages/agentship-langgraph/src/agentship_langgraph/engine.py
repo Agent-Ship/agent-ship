@@ -69,6 +69,7 @@ class _CompiledAgent:
         *,
         durability: str = "none",
         durability_mode: str = "async",
+        members: list[str] | None = None,
     ) -> None:
         """Bind the compiled graph, the optional system prompt, model id, and durability.
 
@@ -77,13 +78,16 @@ class _CompiledAgent:
         actionable :class:`~agentship.errors.ModelError` that names the credential.
         ``durability`` (from ``spec.durability``) decides whether ``run`` takes the
         checkpointed path, and ``durability_mode`` (``sync|async|exit``) is passed to
-        ``.ainvoke(durability=…)`` on that path.
+        ``.ainvoke(durability=…)`` on that path. ``members`` names the coordinated
+        sub-agents when this is a declarative multi-agent team (empty otherwise) — it
+        makes the ``multi_agent`` capability inspectable on the built artifact.
         """
         self.graph = graph
         self.system_prompt = system_prompt
         self.model_id = model_id
         self.durability = durability
         self.durability_mode = durability_mode
+        self.members = members or []
 
     @property
     def builder(self) -> Any:
@@ -125,6 +129,7 @@ class LangGraphEngine(Engine):
         providers={"openai", "anthropic", "gemini", "ollama"},
         streaming=True,
         durability="checkpoint",
+        multi_agent=True,
     )
 
     def build(self, spec: AgentSpec, authored: object = None) -> _CompiledAgent:
@@ -163,8 +168,17 @@ class LangGraphEngine(Engine):
         # the graph itself — seeding it again here would send the system message
         # twice. So only the template path hands prompt ownership to the graph.
         prompt_owned_by_graph = False
+        members: list[str] = []
         if isinstance(authored, LangGraphAgent):
             graph = authored.build_graph(model, tools)
+        elif spec.members:
+            # Declarative multi-agent: the spec's `members:` (each a ref to a sub-agent YAML or an
+            # inline prompt) drive a real supervisor — no code: factory. The supervisor seeds and
+            # writes its own messages, so it owns the prompt.
+            from .templates.graph_supervisor import build_declarative_supervisor
+
+            graph, members = build_declarative_supervisor(spec, model)
+            prompt_owned_by_graph = True
         else:
             template_body = resolve_template(spec)
             if template_body is not None:
@@ -180,6 +194,7 @@ class LangGraphEngine(Engine):
             spec.model or "",
             durability=spec.durability,
             durability_mode=spec.durability_mode,
+            members=members,
         )
 
     def _resolve_model(self, spec: AgentSpec) -> BaseChatModel:

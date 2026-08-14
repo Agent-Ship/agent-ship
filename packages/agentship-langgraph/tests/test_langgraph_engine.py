@@ -215,12 +215,11 @@ def test_workflow_durability_still_rejected(fake_model):
     assert "durab" in str(exc.value).lower()
 
 
-def test_members_rejected_by_capability_gate(fake_model):
-    """This engine is not multi-agent — a members: spec fails fast, not silently dropped."""
+def test_members_build_a_coordinated_team(fake_model):
+    """This engine is multi-agent: a members: spec builds a real team and exposes its members."""
     spec = AgentSpec(name="team", engine="langgraph", model="x", members=[MemberSpec(name="m1")])
-    with pytest.raises(CapabilityError) as exc:
-        build_agent(spec)
-    assert "multi-agent" in str(exc.value).lower()
+    agent = build_agent(spec)
+    assert agent.compiled.members == ["m1"]
 
 
 async def test_dead_api_base_surfaces_clean_model_error(monkeypatch):
