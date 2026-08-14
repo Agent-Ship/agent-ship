@@ -130,6 +130,7 @@ class LangGraphEngine(Engine):
         streaming=True,
         durability="checkpoint",
         multi_agent=True,
+        tool_calling=True,
     )
 
     def build(self, spec: AgentSpec, authored: object = None) -> _CompiledAgent:
@@ -216,14 +217,19 @@ class LangGraphEngine(Engine):
         return models.resolve_model(model_id, **params)
 
     def _resolve_tools(self, spec: AgentSpec) -> list:
-        """Resolve the tools to hand ``build_graph`` — empty until Phase 03.
+        """Resolve ``spec.tools`` references into bound LangChain tools (Phase 03 · C1).
 
-        ``spec.tools`` is parsed and validated by the spec today, but actual MCP /
-        python tool *execution* is a Phase 03 deliverable. Until then the engine
-        honestly hands ``build_graph`` an empty tool list (declare, don't fake)
-        rather than pretending to wire tools it cannot yet execute.
+        Each ``tools:`` entry is resolved to a vendor-neutral :class:`agentship.tools.Tool`
+        (:func:`~agentship.tools.resolve_tool` — a built-in skill name or a ``module:attr``
+        reference) and converted to a LangChain ``StructuredTool`` the ``single`` template binds
+        into its ReAct loop. ``None``/empty ``tools`` yields ``[]`` (unchanged). A bad reference
+        fails fast via :class:`~agentship.errors.SpecError`.
         """
-        return []
+        from agentship.tools import resolve_tool
+
+        from .tools import to_langchain_tool
+
+        return [to_langchain_tool(resolve_tool(ref)) for ref in (spec.tools or [])]
 
     def _build_graph(self, model: BaseChatModel) -> Any:
         """Wire and compile the minimal ``START → agent → END`` graph for ``model``."""
