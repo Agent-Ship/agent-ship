@@ -13,7 +13,7 @@ VENV := .venv
 PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
 
-.PHONY: install test demo run clean
+.PHONY: install test demo demo-multiagent ask run clean
 
 ## install: create .venv and install the framework editable-local + test tooling
 install:
@@ -31,11 +31,26 @@ test:
 demo:
 	$(PY) demos/run_all.py
 
+## demo-multiagent: PROVE the sub-agents are really called. One command: it fans a
+##   question out to all 3 specialist sub-agents in parallel and prints each one's live
+##   answer + the resolver's pick, then a green PASS asserting all 3 actually ran.
+##   Needs a real OPENAI_API_KEY (in .env or the shell).
+demo-multiagent:
+	$(VENV)/bin/pytest tests/test_triage.py::test_triage_panel_fans_out_to_multiple_sub_agents_in_parallel \
+		-q -s -p no:cacheprovider --log-cli-level=INFO --log-cli-format="  | %(message)s"
+
+## ask: give the multi-agent panel YOUR OWN task; watch each sub-agent get called live
+##   and see the final merged response. Needs a real OPENAI_API_KEY.
+##   usage: make ask INPUT="My bill is wrong and I feel dizzy — help?"
+ASK_INPUT ?= My bill looks wrong and I feel dizzy — can you help?
+ask:
+	$(PY) demos/ask_multiagent.py "$(if $(INPUT),$(INPUT),$(ASK_INPUT))"
+
 ## run: run the demo agent for one real turn (needs a real OPENAI_API_KEY in .env)
 ##   usage: make run INPUT="Give one productivity tip."
-INPUT ?= Give one productivity tip.
+INPUT ?=
 run:
-	$(VENV)/bin/agentship run agents/assistant.yaml --input "$(INPUT)"
+	$(VENV)/bin/agentship run agents/assistant.yaml --input "$(if $(INPUT),$(INPUT),Give one productivity tip.)"
 
 ## clean: remove the venv and caches
 clean:

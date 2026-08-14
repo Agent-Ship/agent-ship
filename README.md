@@ -50,6 +50,37 @@ top to bottom.
 
 ---
 
+## Give the multi-agent panel your own task (one command)
+
+Want to hand it a task and *watch the sub-agents get called*? One command:
+
+```bash
+make ask INPUT="I was overcharged on my invoice and I keep getting headaches"
+```
+
+It fans your question out to all three sub-agents concurrently, prints each named
+sub-agent's live answer as it comes back, then the resolver's final merged response:
+
+```
+TASK: I was overcharged on my invoice and I keep getting headaches
+
+  | classify: '...' -> intent=billing
+  | dispatch: parallel -> sub-agents ['billing_specialist', 'clinical_specialist', 'faq_specialist']
+  |   billing_specialist  (sub-agent) -> I'm sorry to hear about the overcharge ...
+  |   clinical_specialist (sub-agent) -> It sounds like you're facing two separate issues ...
+  |   faq_specialist      (sub-agent) -> I'm sorry to hear about the overcharge and your headaches ...
+  | resolve: winner=billing_specialist considered=[all three] dropped=[]
+
+FINAL RESPONSE (resolver's pick):
+  I'm sorry to hear about the overcharge on your invoice. Please review your billing ...
+```
+
+Prefer a red/green assertion that the sub-agents ran? One command:
+
+```bash
+make demo-multiagent      # asserts all 3 sub-agents were dispatched + considered; PASS/FAIL
+```
+
 ## Running each slice
 
 ### 1 — `template: single`
