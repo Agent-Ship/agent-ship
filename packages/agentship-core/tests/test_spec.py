@@ -6,7 +6,45 @@ import textwrap
 
 import pytest
 from agentship.errors import SpecError
-from agentship.spec import AgentSpec, ModelParams, load_spec, resolve_code
+from agentship.spec import AgentSpec, MemberSpec, ModelParams, load_spec, resolve_code
+
+
+def test_member_ref_and_description_load_from_yaml(tmp_path):
+    """A member may be declared by a `ref:` to a sub-agent YAML plus a routing `description:`."""
+    f = tmp_path / "team.yaml"
+    f.write_text(
+        textwrap.dedent(
+            """
+            name: team
+            engine: langgraph
+            model: openai/gpt-4o-mini
+            members:
+              - name: billing
+                ref: specialists/billing.yaml
+                description: billing, invoices, and payments
+            """
+        )
+    )
+    spec = load_spec(f)
+    member = spec.members[0]
+    assert member.name == "billing"
+    assert member.description == "billing, invoices, and payments"
+    # The ref is resolved to an absolute path relative to the team YAML's directory.
+    assert member.ref == str((tmp_path / "specialists" / "billing.yaml").resolve())
+
+
+def test_member_ref_and_inline_prompt_are_mutually_exclusive():
+    """A member is authored EITHER by `ref:` (its YAML brings the prompt) OR inline `prompt:`."""
+    with pytest.raises(SpecError) as exc:
+        MemberSpec(name="x", ref="a.yaml", prompt="inline")
+    assert "ref" in str(exc.value) and "prompt" in str(exc.value)
+
+
+def test_member_defaults_have_no_ref_or_description():
+    """A bare member (name only) keeps ref/description as None — nothing invented."""
+    member = MemberSpec(name="m1")
+    assert member.ref is None
+    assert member.description is None
 
 
 def test_load_spec_parses_yaml(tmp_path):

@@ -24,18 +24,40 @@ from .errors import SpecError
 class MemberSpec(BaseModel):
     """One member ("sub-agent") of a multi-agent team, declared in YAML.
 
-    A member is a named worker a coordinator can route to. Each may carry its own
-    ``prompt`` and its own ``model`` (enabling a cheap model for one member and a
-    strong one for another). Multi-agent coordination itself arrives in a later
-    phase; the field exists now so the capability gate can honestly reject a team
-    spec on an engine that cannot coordinate members.
+    A member is a named worker a coordinator routes to. It is authored one of two ways:
+
+    - by **reference** — ``ref`` points at the member's own agent YAML (the old-repo layout:
+      a supervisor plus a folder of sub-agent YAMLs). The referenced file is a complete,
+      independently-runnable agent; :func:`load_spec` resolves ``ref`` to an absolute path
+      relative to the team YAML's directory.
+    - **inline** — ``prompt`` (and optionally ``model``) define a simple single-model member
+      right in the team YAML, no separate file.
+
+    ``ref`` and ``prompt`` are mutually exclusive: a referenced sub-agent already brings its own
+    prompt. ``description`` is an optional routing hint the coordinator's classifier uses to pick
+    the right member (e.g. "billing, invoices, and payments").
     """
 
     model_config = ConfigDict(extra="forbid")
 
     name: str
+    #: Path to this member's own agent YAML (resolved to an absolute path at load time).
+    #: Mutually exclusive with ``prompt``.
+    ref: str | None = None
+    #: A short hint describing what this member handles, used by the coordinator's classifier.
+    description: str | None = None
     prompt: str | None = None
     model: str | None = None
+
+    @model_validator(mode="after")
+    def _check_member_coherence(self) -> MemberSpec:
+        """Reject a member that sets both ``ref`` and inline ``prompt`` (contradictory)."""
+        if self.ref is not None and self.prompt is not None:
+            raise SpecError(
+                f"member {self.name!r} sets both ref: {self.ref!r} and an inline prompt — a "
+                f"referenced sub-agent already brings its own prompt. Use one or the other."
+            )
+        return self
 
 
 class ModelParams(BaseModel):
@@ -164,6 +186,10 @@ def load_spec(path: str | Path) -> AgentSpec:
     Reads the file with :func:`yaml.safe_load` (never ``load``), validates it, and
     raises :class:`SpecError` with an actionable message on a missing file,
     malformed YAML, a non-mapping document, or an invalid/unknown field.
+
+    A member's ``ref`` (a path to its own sub-agent YAML) is resolved to an absolute path
+    **relative to this spec file's directory**, so a supervisor + ``specialists/*.yaml`` layout
+    works regardless of the caller's working directory.
     """
     p = Path(path)
     try:
@@ -175,9 +201,13 @@ def load_spec(path: str | Path) -> AgentSpec:
     if not isinstance(raw, dict):
         raise SpecError(f"{p}: expected a YAML mapping, got {type(raw).__name__}")
     try:
-        return AgentSpec(**raw)
+        spec = AgentSpec(**raw)
     except ValidationError as exc:
         raise SpecError(f"invalid agent spec {p}: {exc}") from exc
+    for member in spec.members or []:
+        if member.ref is not None:
+            member.ref = str((p.parent / member.ref).resolve())
+    return spec
 
 
 def resolve_code(ref: str) -> Callable[..., AgentSpec]:
