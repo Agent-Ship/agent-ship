@@ -1,0 +1,16 @@
+# Phase 03 demo: an agent that CALLS A TOOL. Zero author code.
+#
+# `tools: [calculator]` binds the built-in calculator skill (safe AST-only math, no eval).
+# The model decides to call it, gets the result, and answers — you can watch the tool call
+# with `agentship run ... --verbose`.
+#
+#   agentship run agents/calculator.yaml --input "What is 2 + 2 * 10?" --verbose
+name: calculator-agent
+engine: langgraph
+template: single
+model: openai/gpt-4o-mini
+tools:
+  - calculator
+prompt: >-
+  You are a precise assistant. When a question involves arithmetic, use the calculator
+  tool rather than doing the math yourself, then state the result in one short sentence.

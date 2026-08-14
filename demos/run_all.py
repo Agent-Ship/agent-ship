@@ -202,6 +202,27 @@ async def slice_triage() -> None:
     print("  ✓ byte-identical — checkpoint replayed identically.")
 
 
+async def slice_tools() -> None:
+    """8. Tool calling — the agent invokes the built-in calculator skill for real (Phase 03)."""
+    _banner(
+        8,
+        "tool calling (built-in calculator skill)",
+        "LIVE · the model calls the calculator tool, gets the result, and answers",
+    )
+    question = "What is 12 * 12 + 3? Use the calculator."
+    cwd = os.getcwd()
+    os.chdir(REPO_ROOT)
+    try:
+        agent = build_agent(str(AGENTS / "calculator.yaml"))
+        print(f"  bound tools: {agent.compiled.bound_tools}")
+        print(f"  run  agents/calculator.yaml --input {question!r}")
+        result = await agent.run(question)
+    finally:
+        os.chdir(cwd)
+    print(f"  -> {result.output.strip()}")
+    assert "147" in result.output
+
+
 async def slice_panel() -> None:
     """7. Multi-agent fan-out — dispatch to ALL three sub-agents in parallel, then merge (C2/C7)."""
     _banner(
@@ -240,6 +261,7 @@ async def main() -> int:
         ("router", slice_router()),
         ("triage", slice_triage()),
         ("panel", slice_panel()),
+        ("tools", slice_tools()),
     ]
     for name, step in steps:
         try:
