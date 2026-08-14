@@ -52,34 +52,36 @@ top to bottom.
 
 ## Give the multi-agent panel your own task (one command)
 
-Want to hand it a task and *watch the sub-agents get called*? One command:
+Hand it a task and *watch the sub-agents get called* — straight from the `agentship`
+CLI with `--verbose`:
 
 ```bash
-make ask INPUT="I was overcharged on my invoice and I keep getting headaches"
+agentship run agents/triage/panel.yaml \
+  --input "I was overcharged on my invoice and I keep getting headaches" --verbose
 ```
 
-It fans your question out to all three sub-agents concurrently, prints each named
-sub-agent's live answer as it comes back, then the resolver's final merged response:
+`--verbose` prints the supervisor's decision trace to **stderr** (so stdout stays just
+the final answer, safe to pipe). It fans your question out to all three sub-agents
+concurrently and shows each named sub-agent's live answer, then the resolver's pick:
 
 ```
-TASK: I was overcharged on my invoice and I keep getting headaches
-
-  | classify: '...' -> intent=billing
-  | dispatch: parallel -> sub-agents ['billing_specialist', 'clinical_specialist', 'faq_specialist']
-  |   billing_specialist  (sub-agent) -> I'm sorry to hear about the overcharge ...
-  |   clinical_specialist (sub-agent) -> It sounds like you're facing two separate issues ...
-  |   faq_specialist      (sub-agent) -> I'm sorry to hear about the overcharge and your headaches ...
-  | resolve: winner=billing_specialist considered=[all three] dropped=[]
-
-FINAL RESPONSE (resolver's pick):
-  I'm sorry to hear about the overcharge on your invoice. Please review your billing ...
+  · classify: '...' -> intent=billing
+  · dispatch: parallel -> sub-agents ['billing_specialist', 'clinical_specialist', 'faq_specialist']
+  ·   billing_specialist  (sub-agent) -> I'm sorry to hear about the overcharge ...
+  ·   clinical_specialist (sub-agent) -> It sounds like you're facing two separate issues ...
+  ·   faq_specialist      (sub-agent) -> I'm sorry to hear about the overcharge and your headaches ...
+  · resolve: winner=billing_specialist considered=[all three] dropped=[]
+I'm sorry to hear about the overcharge on your invoice. Please review your billing ...   <- stdout
 ```
 
-Prefer a red/green assertion that the sub-agents ran? One command:
+Route to just **one** sub-agent instead of fanning out? Point at `triage.yaml`:
 
 ```bash
-make demo-multiagent      # asserts all 3 sub-agents were dispatched + considered; PASS/FAIL
+agentship run agents/triage/triage.yaml --input "My invoice is wrong" --verbose
 ```
+
+`make ask INPUT="..."` wraps the same panel run, and `make demo-multiagent` gives a
+red/green assertion that all three sub-agents were dispatched + considered.
 
 ## Running each slice
 
