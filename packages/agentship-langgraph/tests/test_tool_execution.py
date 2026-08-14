@@ -2,7 +2,7 @@
 
 Offline unit coverage for the wiring: a spec's ``tools:`` refs resolve to LangChain tools the
 ``single`` template binds into its ReAct loop, each converted from a core ``Tool``.
-End-to-end *tool calling by a real model* is proven by a live demo slice (needs a key); here we cover
+End-to-end *tool calling by a real model* is proven by a live demo slice (needs a key); here:
 the resolution + conversion + the honest ``tool_calling`` capability flip.
 """
 
