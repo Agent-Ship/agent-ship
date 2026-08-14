@@ -223,12 +223,45 @@ def needs_confirm(cfg: GraphConfig):
     return route
 
 
+def build_supervisor_graph(
+    model: BaseChatModel, config: GraphConfig, specialists: dict[str, Any]
+) -> StateGraph:
+    """Assemble the supervisor ``StateGraph`` (classify → route → dispatch → resolve → gate).
+
+    The single graph builder shared by both authoring paths: the ``code:`` factory
+    (:class:`SupervisorAgent`) and the declarative ``members:`` path (the ``graph`` template). Given
+    the engine-wired ``model``, the parsed :class:`GraphConfig`, and a ``{name: agent}`` dict of
+    specialist sub-agents, it wires the nodes (built by the ``make_*`` factories above) into the
+    design §4 C1 topology and returns the uncompiled graph for the engine to compile.
+    """
+    g = StateGraph(SupervisorState)
+    g.add_node("classify", make_classify(model, config))
+    g.add_node("lookup_route", make_lookup_route(config))
+    g.add_node("dispatch", make_dispatch(config, specialists))
+    g.add_node("resolve", make_resolve(config))
+    g.add_node("confirm_write", make_confirm_write(config))
+    g.add_node("safety_gate", make_safety_gate())
+
+    g.add_edge(START, "classify")
+    g.add_edge("classify", "lookup_route")
+    g.add_edge("lookup_route", "dispatch")
+    g.add_conditional_edges(
+        "dispatch", dispatch_router(config), {"retry": "dispatch", "resolve": "resolve"}
+    )
+    g.add_conditional_edges(
+        "resolve", needs_confirm(config), {"confirm": "confirm_write", "gate": "safety_gate"}
+    )
+    g.add_edge("confirm_write", "safety_gate")
+    g.add_edge("safety_gate", END)
+    return g
+
+
 class SupervisorAgent(LangGraphAgent):
     """A durable, config-driven multi-agent supervisor authored via a ``code:`` factory.
 
     Constructed with its :class:`GraphConfig` and a ``{name: agent}`` dict of specialists; the
-    demo's factory builds those and hands them in. ``build_graph`` assembles the classify → route →
-    dispatch → resolve → confirm → gate graph over the engine-wired model.
+    demo's factory builds those and hands them in. ``build_graph`` delegates to
+    :func:`build_supervisor_graph` — the same builder the declarative ``members:`` path uses.
     """
 
     def __init__(
@@ -241,24 +274,4 @@ class SupervisorAgent(LangGraphAgent):
 
     def build_graph(self, model: BaseChatModel, tools: list[BaseTool]) -> StateGraph:
         """Assemble the supervisor ``StateGraph`` per design §4 C1."""
-        cfg = self._config
-        g = StateGraph(SupervisorState)
-        g.add_node("classify", make_classify(model, cfg))
-        g.add_node("lookup_route", make_lookup_route(cfg))
-        g.add_node("dispatch", make_dispatch(cfg, self._specialists))
-        g.add_node("resolve", make_resolve(cfg))
-        g.add_node("confirm_write", make_confirm_write(cfg))
-        g.add_node("safety_gate", make_safety_gate())
-
-        g.add_edge(START, "classify")
-        g.add_edge("classify", "lookup_route")
-        g.add_edge("lookup_route", "dispatch")
-        g.add_conditional_edges(
-            "dispatch", dispatch_router(cfg), {"retry": "dispatch", "resolve": "resolve"}
-        )
-        g.add_conditional_edges(
-            "resolve", needs_confirm(cfg), {"confirm": "confirm_write", "gate": "safety_gate"}
-        )
-        g.add_edge("confirm_write", "safety_gate")
-        g.add_edge("safety_gate", END)
-        return g
+        return build_supervisor_graph(model, self._config, self._specialists)
