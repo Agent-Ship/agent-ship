@@ -80,6 +80,44 @@ Route to just **one** sub-agent instead of fanning out? Point at `triage.yaml`:
 agentship run agents/triage/triage.yaml --input "My invoice is wrong" --verbose
 ```
 
+### Zero-Python supervisor (sub-agents wired in YAML)
+
+`triage.yaml` and `panel.yaml` wire their sub-agents with a small Python `code:` factory
+(for full control — custom routing, parallel fan-out). If you'd rather write **no Python
+at all**, `triage_declarative.yaml` lists its sub-agents right in YAML via `members:`, each
+a `ref:` to a specialist YAML — the old supervisor-plus-sub-agent-folder layout, fully
+declarative:
+
+```yaml
+name: triage-declarative
+engine: langgraph
+model: openai/gpt-4o-mini
+durability: checkpoint
+members:
+  - name: billing_specialist
+    ref: specialists/billing.yaml
+    description: billing, invoices, double charges, payments, and refunds
+  - name: clinical_specialist
+    ref: specialists/clinical.yaml
+    description: health, symptoms, and medical questions
+  - name: faq_specialist
+    ref: specialists/faq.yaml
+    description: general questions about the service
+```
+
+The framework resolves the refs, derives the routing from each member's `description:`,
+and coordinates the same classify → route → dispatch → resolve turn — no factory:
+
+```bash
+agentship run agents/triage/triage_declarative.yaml \
+  --input "My invoice looks wrong — who handles payments?" --verbose
+```
+
+| Authoring style | File | When to use |
+|---|---|---|
+| **Zero Python** — `members:` ref sub-agent YAMLs | `triage_declarative.yaml` | Simplest; classify-and-route over a set of specialists |
+| **`code:` factory** — full control | `triage.yaml` / `panel.yaml` | Custom routing, parallel fan-out, retry, HITL |
+
 `make ask INPUT="..."` wraps the same panel run, and `make demo-multiagent` gives a
 red/green assertion that all three sub-agents were dispatched + considered.
 
@@ -294,9 +332,10 @@ agentship-demo/
       custom.yaml               # slice 4: custom build_graph spec (code: reference)
       agent.py                  # slice 4: the native LangGraph agent it points at
     triage/
-      triage.yaml               # slice 6: durable supervisor spec — routes to ONE sub-agent (code: reference)
-      panel.yaml                # slice 7: fan-out panel spec — parallel to ALL sub-agents (code: reference)
-      agent.py                  # slices 6+7: build_triage_supervisor / build_triage_panel — loads specialist YAMLs
+      triage.yaml               # durable supervisor spec — routes to ONE sub-agent (code: factory)
+      panel.yaml                # fan-out panel spec — parallel to ALL sub-agents (code: factory)
+      triage_declarative.yaml   # ZERO-Python supervisor — members: ref the sub-agent YAMLs directly
+      agent.py                  # build_triage_supervisor / build_triage_panel — loads specialist YAMLs
       specialists/              # each sub-agent is its OWN YAML (a standalone template: single agent)
         billing.yaml            #   billing_specialist — also runnable on its own
         clinical.yaml           #   clinical_specialist — also runnable on its own
