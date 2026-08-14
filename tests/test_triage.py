@@ -33,6 +33,7 @@ from conftest import requires_live_key
 REPO_ROOT = Path(__file__).resolve().parents[1]
 AGENT = str(REPO_ROOT / "agents" / "triage" / "triage.yaml")
 PANEL = str(REPO_ROOT / "agents" / "triage" / "panel.yaml")
+DECLARATIVE = str(REPO_ROOT / "agents" / "triage" / "triage_declarative.yaml")
 _QUESTION = "My invoice looks wrong and I was double charged — who handles payments?"
 
 
@@ -136,3 +137,24 @@ async def test_triage_panel_fans_out_to_multiple_sub_agents_in_parallel(caplog):
     considered = next(rec.getMessage() for rec in caplog.records if "considered=" in rec.getMessage())
     for sub_agent in ("billing_specialist", "clinical_specialist", "faq_specialist"):
         assert sub_agent in considered, f"{sub_agent!r} not considered by resolver: {considered}"
+
+
+@requires_live_key
+async def test_declarative_supervisor_routes_with_zero_python(caplog):
+    """A YAML-only supervisor (members: -> sub-agent YAMLs) routes to a specialist and answers.
+
+    No `code:` factory: the framework resolves the member refs, derives the routing, and dispatches
+    to the classified sub-agent. The captured decision log confirms a named sub-agent handled it.
+    """
+    agent = build_agent(DECLARATIVE)
+    assert set(agent.compiled.members) == {
+        "billing_specialist",
+        "clinical_specialist",
+        "faq_specialist",
+    }
+    with caplog.at_level(logging.INFO, logger="agentship.supervisor"):
+        result = await agent.run(_QUESTION, session_id="test-declarative")
+
+    assert isinstance(result.output, str) and result.output.strip()
+    log = "\n".join(rec.getMessage() for rec in caplog.records)
+    assert "dispatch:" in log and "billing_specialist" in log

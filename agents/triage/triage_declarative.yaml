@@ -1,0 +1,30 @@
+# Declarative multi-agent supervisor — ZERO Python, sub-agents wired straight in YAML.
+#
+# This is the old-repo layout, now fully declarative: a supervisor YAML that lists its
+# `members:`, each a `ref:` to its own sub-agent YAML (under specialists/). No `code:`
+# factory, no build_graph — the framework resolves the members, derives the routing from
+# their `description:`s, and coordinates a real classify -> route -> dispatch -> resolve
+# turn. It is durable (checkpoint), so a kill -9 mid-run resumes identically.
+#
+# Compare:
+#   triage.yaml  -> same behaviour, but wired by a Python `code:` factory (more control).
+#   panel.yaml   -> parallel fan-out to all specialists via the `code:` factory.
+# This file needs NO Python at all.
+#
+# Run from the demo repo root:
+#   agentship run agents/triage/triage_declarative.yaml \
+#     --input "My invoice looks wrong — who handles payments?" --verbose
+name: triage-declarative
+engine: langgraph
+model: openai/gpt-4o-mini
+durability: checkpoint
+members:
+  - name: billing_specialist
+    ref: specialists/billing.yaml
+    description: billing, invoices, double charges, payments, and refunds
+  - name: clinical_specialist
+    ref: specialists/clinical.yaml
+    description: health, symptoms, and medical questions
+  - name: faq_specialist
+    ref: specialists/faq.yaml
+    description: general questions about the service
