@@ -20,6 +20,7 @@ code rather than a traceback.
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import re
 import sys
@@ -109,13 +110,31 @@ def main() -> None:
     help="Load environment variables from this .env file (defaults to ./.env if present).",
 )
 @click.option("--debug", is_flag=True, help="Re-raise on failure so the full traceback is shown.")
-def run(file: str, input_text: str, stream: bool, env_file: str | None, debug: bool) -> None:
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    help="Show the agent's internal decisions (e.g. a supervisor routing to its sub-agents).",
+)
+def run(
+    file: str,
+    input_text: str,
+    stream: bool,
+    env_file: str | None,
+    debug: bool,
+    verbose: bool,
+) -> None:
     """Run one turn of the agent declared in FILE and print its output.
 
     Before running, environment variables are loaded from a ``.env`` — the current
     directory's ``.env`` by default, or the file named by ``--env-file`` — so a
     provider key such as ``OPENAI_API_KEY`` need not be exported by hand. An
     already-exported variable is never overwritten by the ``.env``.
+
+    With ``--verbose`` the agent's internal decision log is printed to stderr — for a
+    multi-agent supervisor this is the classify → route → dispatch(sub-agent) → resolve
+    trace, so you can watch each sub-agent get called. Only stdout carries the final
+    answer, so ``--verbose`` never pollutes a piped result.
 
     On failure the CLI prints a single clean ``Error: …`` line to stderr and exits
     ``1`` — never a raw traceback. Known harness failures
@@ -127,6 +146,8 @@ def run(file: str, input_text: str, stream: bool, env_file: str | None, debug: b
     """
     try:
         load_env_for_run(env_file)
+        if verbose:
+            _enable_verbose_logging()
         agent = build_agent(file)
         if stream:
             asyncio.run(_stream_turn(agent, input_text))
@@ -148,6 +169,25 @@ def run(file: str, input_text: str, stream: bool, env_file: str | None, debug: b
             f"Error: {exc} (run with --debug for the full traceback)", err=True
         )
         sys.exit(1)
+
+
+def _enable_verbose_logging() -> None:
+    """Send the framework's ``agentship`` decision logs to stderr at INFO level.
+
+    Attaches a stderr handler to the top-level ``agentship`` logger so every child
+    logger — notably ``agentship.supervisor``, which narrates classify → route →
+    dispatch(sub-agent) → resolve — surfaces. Kept on stderr so ``--verbose`` leaves
+    stdout as just the final answer (safe to pipe). Idempotent: only one handler is
+    ever attached, so repeated runs in one process don't double-print.
+    """
+    log = logging.getLogger("agentship")
+    if any(getattr(h, "_agentship_verbose", False) for h in log.handlers):
+        return
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(logging.Formatter("  · %(message)s"))
+    handler._agentship_verbose = True  # tag so we never attach twice
+    log.addHandler(handler)
+    log.setLevel(logging.INFO)
 
 
 async def _stream_turn(agent, input_text: str) -> None:
