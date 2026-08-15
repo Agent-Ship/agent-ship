@@ -1,7 +1,8 @@
 """Live slice: the coordinator routes quick vs deep, and the deep path pauses then resumes.
 
-This is the end-to-end counterpart to the offline ``test_deep_research`` / ``test_coordinated_routing``
-tests: it runs the *real* model so the coordinator actually classifies, and drives the durable
+This is the end-to-end counterpart to the offline ``test_deep_research`` /
+``test_coordinated_routing`` tests: it runs the *real* model so the coordinator actually
+classifies, and drives the durable
 deep-research agent through a real pause→resume to a synthesized report. Live — it calls OpenAI (and
 Brave if ``BRAVE_API_KEY`` is set, else the deep agent's search returns labelled stubs and the loop
 still completes). Skips cleanly without a key.
@@ -17,8 +18,9 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from agentship import build_agent
 from agentship.context import Caller, RunContext, RunMode
+
+from agentship import build_agent
 from conftest import requires_live_key
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
