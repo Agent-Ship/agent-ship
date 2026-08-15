@@ -16,12 +16,13 @@ dependencies = [
     "langchain-litellm>=0.1",  # the default model source: one `model:` string routes to any provider
 ]
 
-# The `deepagents` template is opt-in: `pip install agentship-langgraph[deepagents]`.
-# Pinned to 0.6.12 (pre-1.0) because create_deep_agent's signature can drift; the
-# template imports it lazily, so the base engine installs and runs without it, and
-# `agentship doctor` flags a version mismatch (see templates/deepagents_tpl.py).
+# The `autonomous` template is opt-in: `pip install agentship-langgraph[autonomous]`.
+# It wraps the `deepagents` library, pinned to 0.6.12 (pre-1.0) because
+# create_deep_agent's signature can drift; the template imports it lazily, so the base
+# engine installs and runs without it, and `agentship doctor` flags a version mismatch
+# (see templates/autonomous_tpl.py).
 [project.optional-dependencies]
-deepagents = ["deepagents==0.6.12"]
+autonomous = ["deepagents==0.6.12"]
 # MCP tools (Phase 03 §C3): consume the OSS client stack — do NOT hand-roll it.
 # `langchain-mcp-adapters` (MultiServerMCPClient) connects to local stdio + remote streamable-HTTP
 # MCP servers and returns LangChain tools the engine binds. `mcp` is pinned <2 because v2 reshaped

@@ -2,8 +2,9 @@
 
 Proves the crash-durable half of Phase 02: a ``durability="checkpoint"`` agent checkpoints per node
 and mints a :class:`ResumeToken`; ``engine.resume(token)`` re-hydrates from that checkpoint and
-continues to an **identical** result; a non-durable agent mints no token; the ``durability_mode``
-reaches ``.ainvoke``; and a minted token round-trips through opaque (blob-only) reconstruction.
+continues to an **identical** result; a non-durable agent mints no token; the engine flushes
+checkpoints in ``sync`` mode via ``.ainvoke``; and a minted token round-trips through opaque
+(blob-only) reconstruction.
 
 The in-memory tests force the no-database path (shared in-process saver) by clearing
 ``AGENT_SESSION_STORE_URI``; a Postgres test — gated on that same var — proves resume across two
@@ -45,7 +46,7 @@ def _ctx(session_id: str = "thread-x", tenant: str = "default") -> RunContext:
     )
 
 
-def _durable_spec(mode: str = "sync") -> AgentSpec:
+def _durable_spec() -> AgentSpec:
     """A durable single-node agent spec."""
     return AgentSpec(
         name="a",
@@ -53,7 +54,6 @@ def _durable_spec(mode: str = "sync") -> AgentSpec:
         model="x",
         prompt="p",
         durability="checkpoint",
-        durability_mode=mode,
     )
 
 
@@ -91,8 +91,12 @@ async def test_resume_continues_to_identical_output_in_memory(fake_model, monkey
     assert again.output == first.output
 
 
-async def test_durability_mode_reaches_ainvoke(fake_model, monkeypatch):
-    """The spec's durability_mode is passed to ``.ainvoke(durability=…)`` (C4.3's runtime half)."""
+async def test_engine_flushes_checkpoints_in_sync_mode(fake_model, monkeypatch):
+    """The engine flushes checkpoints in ``sync`` mode via ``.ainvoke(durability=…)``.
+
+    Flush timing is an engine detail, not a spec field, so the engine always chooses the strongest
+    crash guarantee (``sync``: a completed node's state is durable before the next node runs).
+    """
     monkeypatch.delenv("AGENT_SESSION_STORE_URI", raising=False)
     from langgraph.graph.state import StateGraph
 
@@ -112,9 +116,9 @@ async def test_durability_mode_reaches_ainvoke(fake_model, monkeypatch):
 
     monkeypatch.setattr(StateGraph, "compile", spy_compile)
     engine = LangGraphEngine()
-    compiled = engine.build(_durable_spec(mode="exit"))
+    compiled = engine.build(_durable_spec())
     await engine.run(compiled, "hi", _ctx(session_id="t-mode"))
-    assert captured["durability"] == "exit"
+    assert captured["durability"] == "sync"
 
 
 async def test_resume_token_round_trips_through_opaque_blob(fake_model, monkeypatch):

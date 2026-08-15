@@ -1,6 +1,6 @@
-"""T3 proof: the ``deepagents`` template builds against a fake model + the doctor guard.
+"""T3 proof: the ``autonomous`` template builds against a fake model + the doctor guard.
 
-``template: deepagents`` configures the deepagents library's ``create_deep_agent``
+``template: autonomous`` configures the deepagents library's ``create_deep_agent``
 over the wired model/tools with zero author python. This wave proves the template
 *builds and compiles* offline (a full autonomous turn needs a tool-calling model and
 lands with tool execution in Phase 03 — see the module docstring). It also pins the
@@ -27,19 +27,19 @@ def fake_model(monkeypatch):
     return fake
 
 
-def test_deepagents_template_builds_and_compiles(fake_model):
-    """A template: deepagents spec builds into a compiled deep-agent graph, offline.
+def test_autonomous_template_builds_and_compiles(fake_model):
+    """A template: autonomous spec builds into a compiled autonomous-agent graph, offline.
 
     ``create_deep_agent`` returns an already-compiled LangGraph graph; the engine
     detects that and reuses it. Non-vacuous: if the template did not route through
     deepagents, the compiled artifact would be the engine's own single-node graph,
-    not a deep agent — the next test pins that the deepagents path actually ran.
+    not an autonomous agent — the next test pins that the deepagents path actually ran.
     """
     agent = build_agent(
         AgentSpec(
             name="researcher",
             engine="langgraph",
-            template="deepagents",
+            template="autonomous",
             model="x",
             prompt="You are an autonomous researcher.",
         )
@@ -47,15 +47,15 @@ def test_deepagents_template_builds_and_compiles(fake_model):
     assert agent.compiled is not None
 
 
-def test_deepagents_template_calls_create_deep_agent(fake_model, monkeypatch):
-    """The deepagents template routes the build through ``create_deep_agent``.
+def test_autonomous_template_calls_create_deep_agent(fake_model, monkeypatch):
+    """The autonomous template routes the build through ``create_deep_agent``.
 
     Spies on ``deepagents.create_deep_agent`` and asserts it is called with the
     wired model and the spec's prompt as ``system_prompt``. The engine's default
-    build never calls it, so observing the call proves the deepagents template
+    build never calls it, so observing the call proves the autonomous template
     dispatched (non-vacuous).
     """
-    import agentship_langgraph.templates.deepagents_tpl as tpl
+    import agentship_langgraph.templates.autonomous_tpl as tpl
 
     calls: dict = {}
     real = deepagents.create_deep_agent
@@ -74,7 +74,7 @@ def test_deepagents_template_calls_create_deep_agent(fake_model, monkeypatch):
         AgentSpec(
             name="researcher",
             engine="langgraph",
-            template="deepagents",
+            template="autonomous",
             model="x",
             prompt="be autonomous",
         )
@@ -90,7 +90,7 @@ def test_doctor_version_guard_matches_pinned_install():
     a correct install the guard is green and names that exact version. This is the
     signal ``agentship doctor`` surfaces; a drifted install flips it to not-OK.
     """
-    from agentship_langgraph.templates.deepagents_tpl import (
+    from agentship_langgraph.templates.autonomous_tpl import (
         PINNED_DEEPAGENTS_VERSION,
         deepagents_version_ok,
     )

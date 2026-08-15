@@ -6,7 +6,7 @@ Python. Each template exposes a ``build_<name>(spec)`` factory returning a
 :class:`~agentship_langgraph.agent.LangGraphAgent` would implement — so the engine
 drives templated and custom agents through the identical seam.
 
-``single``, ``graph``, and ``deepagents`` all ship now. The engine dispatches on
+``single``, ``graph``, and ``autonomous`` all ship now. The engine dispatches on
 ``spec.template`` via :func:`resolve_template`.
 """
 
@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol
 
-from .deepagents_tpl import build_deepagents_template
+from .autonomous_tpl import build_autonomous_template
 from .graph import build_graph_template
 from .single import build_single
 
@@ -36,7 +36,7 @@ class BuildGraph(Protocol):
 _TEMPLATES = {
     "single": build_single,
     "graph": build_graph_template,
-    "deepagents": build_deepagents_template,
+    "autonomous": build_autonomous_template,
 }
 
 
@@ -44,10 +44,9 @@ def resolve_template(spec: AgentSpec) -> BuildGraph | None:
     """Return the ``build_graph`` body for ``spec.template``, or ``None`` if unset.
 
     ``None`` means the spec asks for no template (the engine uses its own default
-    build body). A template name that has no shipped body yet (``graph``,
-    ``deepagents``) raises :class:`NotImplementedError` naming the missing template,
-    so the gap is a loud, actionable error rather than a silent fall-through to the
-    wrong build path.
+    build body). A template name with no shipped body raises
+    :class:`NotImplementedError` naming the missing template, so the gap is a loud,
+    actionable error rather than a silent fall-through to the wrong build path.
     """
     if spec.template is None:
         return None
@@ -62,7 +61,7 @@ def resolve_template(spec: AgentSpec) -> BuildGraph | None:
 
 __all__ = [
     "BuildGraph",
-    "build_deepagents_template",
+    "build_autonomous_template",
     "build_graph_template",
     "build_single",
     "resolve_template",

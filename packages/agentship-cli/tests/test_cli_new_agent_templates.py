@@ -1,4 +1,4 @@
-"""Tests for ``agentship new-agent --template single|graph|deepagents`` (T6).
+"""Tests for ``agentship new-agent --template single|graph|autonomous`` (T6).
 
 The ``--template`` option scaffolds the *right file set* for each template and —
 critically — the scaffolded ``single`` and ``graph`` specs are not just text: they
@@ -91,23 +91,23 @@ def test_graph_template_writes_yaml_and_agent_py(tmp_path, fake_model):
     assert agent.spec.name == "triager"
 
 
-def test_deepagents_template_writes_yaml(tmp_path):
-    """``--template deepagents`` writes ``NAME.yaml`` with ``template: deepagents``.
+def test_autonomous_template_writes_yaml(tmp_path):
+    """``--template autonomous`` writes ``NAME.yaml`` with ``template: autonomous``.
 
-    Not built here: deepagents needs an optional extra + a tool-calling model
-    (deferred to P03), so the DoD for this template is a coherent, loadable spec.
+    Not built here: the autonomous template needs an optional extra + a tool-calling
+    model (deferred to P03), so the DoD for this template is a coherent, loadable spec.
     """
     dest = tmp_path / "agents"
     runner = CliRunner()
     result = runner.invoke(
-        main, ["new-agent", "autob", "--template", "deepagents", "--agents-dir", str(dest)]
+        main, ["new-agent", "autob", "--template", "autonomous", "--agents-dir", str(dest)]
     )
     assert result.exit_code == 0, result.output
     yaml_path = dest / "autob.yaml"
     assert yaml_path.is_file()
     assert not (dest / "autob").exists()
     spec = load_spec(yaml_path)
-    assert spec.template == "deepagents"
+    assert spec.template == "autonomous"
     assert spec.engine == "langgraph"
 
 

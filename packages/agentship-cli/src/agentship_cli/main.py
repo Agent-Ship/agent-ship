@@ -29,6 +29,7 @@ from pathlib import Path
 import click
 from agentship.engines.base import ENGINES, assert_spec_supported
 from agentship.errors import AgentShipError
+from agentship.logs import configure_logging
 from agentship.runtime import build_agent
 from agentship.spec import load_spec
 
@@ -114,7 +115,7 @@ def main() -> None:
     "--verbose",
     "-v",
     is_flag=True,
-    help="Show the agent's internal decisions (e.g. a supervisor routing to its sub-agents).",
+    help="Show the agent's internal decision logs at INFO (routing, tool calls, checkpoints).",
 )
 def run(
     file: str,
@@ -131,10 +132,12 @@ def run(
     provider key such as ``OPENAI_API_KEY`` need not be exported by hand. An
     already-exported variable is never overwritten by the ``.env``.
 
-    With ``--verbose`` the agent's internal decision log is printed to stderr — for a
-    multi-agent supervisor this is the classify → route → dispatch(sub-agent) → resolve
-    trace, so you can watch each sub-agent get called. Only stdout carries the final
-    answer, so ``--verbose`` never pollutes a piped result.
+    With ``--verbose`` the agent's internal decision log is printed to stderr at INFO
+    level — colorized and leveled — covering engine build, MCP discovery, tool calls,
+    checkpoint/resume, and (for a supervisor) the classify → route → dispatch → resolve
+    trace. ``--debug`` raises the log level to DEBUG (and re-raises on failure for the
+    full traceback). Only stdout carries the final answer, so neither flag pollutes a
+    piped result.
 
     On failure the CLI prints a single clean ``Error: …`` line to stderr and exits
     ``1`` — never a raw traceback. Known harness failures
@@ -146,8 +149,10 @@ def run(
     """
     try:
         load_env_for_run(env_file)
-        if verbose:
-            _enable_verbose_logging()
+        if debug:
+            configure_logging(logging.DEBUG)
+        elif verbose:
+            configure_logging(logging.INFO)
         agent = build_agent(file)
         if stream:
             asyncio.run(_stream_turn(agent, input_text))
@@ -169,25 +174,6 @@ def run(
             f"Error: {exc} (run with --debug for the full traceback)", err=True
         )
         sys.exit(1)
-
-
-def _enable_verbose_logging() -> None:
-    """Send the framework's ``agentship`` decision logs to stderr at INFO level.
-
-    Attaches a stderr handler to the top-level ``agentship`` logger so every child
-    logger — notably ``agentship.supervisor``, which narrates classify → route →
-    dispatch(sub-agent) → resolve — surfaces. Kept on stderr so ``--verbose`` leaves
-    stdout as just the final answer (safe to pipe). Idempotent: only one handler is
-    ever attached, so repeated runs in one process don't double-print.
-    """
-    log = logging.getLogger("agentship")
-    if any(getattr(h, "_agentship_verbose", False) for h in log.handlers):
-        return
-    handler = logging.StreamHandler(sys.stderr)
-    handler.setFormatter(logging.Formatter("  · %(message)s"))
-    handler._agentship_verbose = True  # tag so we never attach twice
-    log.addHandler(handler)
-    log.setLevel(logging.INFO)
 
 
 async def _stream_turn(agent, input_text: str) -> None:
@@ -228,9 +214,9 @@ def _check_agent(path: Path) -> str | None:
         )
     engine = ENGINES.get(spec.engine)()
     assert_spec_supported(engine, spec)  # CapabilityError on mismatch — caught by caller
-    deepagents_reason = _check_deepagents_version(spec)
-    if deepagents_reason is not None:
-        return deepagents_reason
+    autonomous_reason = _check_autonomous_version(spec)
+    if autonomous_reason is not None:
+        return autonomous_reason
     mcp_reason = _check_mcp_version(spec)
     if mcp_reason is not None:
         return mcp_reason
@@ -262,22 +248,22 @@ def _check_mcp_version(spec) -> str | None:
     )
 
 
-def _check_deepagents_version(spec) -> str | None:
-    """Guard a ``template: deepagents`` spec against a missing/drifted deepagents install.
+def _check_autonomous_version(spec) -> str | None:
+    """Guard a ``template: autonomous`` spec against a missing/drifted deepagents install.
 
-    deepagents is pre-1.0 (its ``create_deep_agent`` signature can drift), so a
-    ``deepagents`` spec is only healthy when the pinned version is installed. This
-    reads the langgraph adapter's version guard *if that adapter is importable*
-    (``doctor`` runs in projects that may not have it), returning an actionable
-    reason when deepagents is absent or the wrong version, or ``None`` when the spec
-    is not a deepagents one or the install is fine. Never raises: an import failure
-    just means the guard is skipped (the capability gate already vouched for the
-    engine).
+    The ``autonomous`` template wraps the deepagents library, which is pre-1.0 (its
+    ``create_deep_agent`` signature can drift), so an ``autonomous`` spec is only
+    healthy when the pinned version is installed. This reads the langgraph adapter's
+    version guard *if that adapter is importable* (``doctor`` runs in projects that
+    may not have it), returning an actionable reason when deepagents is absent or the
+    wrong version, or ``None`` when the spec is not an autonomous one or the install
+    is fine. Never raises: an import failure just means the guard is skipped (the
+    capability gate already vouched for the engine).
     """
-    if getattr(spec, "template", None) != "deepagents":
+    if getattr(spec, "template", None) != "autonomous":
         return None
     try:
-        from agentship_langgraph.templates.deepagents_tpl import (
+        from agentship_langgraph.templates.autonomous_tpl import (
             PINNED_DEEPAGENTS_VERSION,
             deepagents_version_ok,
         )
@@ -288,11 +274,11 @@ def _check_deepagents_version(spec) -> str | None:
         return None
     if installed is None:
         return (
-            "template 'deepagents' needs the deepagents package — "
-            "pip install 'agentship-langgraph[deepagents]'"
+            "template 'autonomous' needs the deepagents package — "
+            "pip install 'agentship-langgraph[autonomous]'"
         )
     return (
-        f"template 'deepagents' is pinned to deepagents=={PINNED_DEEPAGENTS_VERSION} "
+        f"template 'autonomous' is pinned to deepagents=={PINNED_DEEPAGENTS_VERSION} "
         f"but {installed} is installed — pip install "
         f"'deepagents=={PINNED_DEEPAGENTS_VERSION}' (pre-1.0 API can drift)"
     )
@@ -462,10 +448,10 @@ def init(directory: str) -> None:
     click.echo('      agentship run agents/assistant.yaml --input "hello"')
 
 
-#: The templates ``new-agent`` can scaffold. ``single`` and ``deepagents`` are
+#: The templates ``new-agent`` can scaffold. ``single`` and ``autonomous`` are
 #: pure-YAML (the langgraph engine ships their build body); ``graph`` is a
 #: custom-authoring scaffold that also writes a companion ``agent.py``.
-_TEMPLATE_CHOICES = ("single", "graph", "deepagents")
+_TEMPLATE_CHOICES = ("single", "graph", "autonomous")
 
 
 @main.command(name="new-agent")
@@ -493,7 +479,7 @@ _TEMPLATE_CHOICES = ("single", "graph", "deepagents")
 def new_agent(name: str, template: str, agents_dir: str, force: bool) -> None:
     """Scaffold one starter agent from a template at ``<agents-dir>/NAME.yaml``.
 
-    ``--template single`` (default) and ``--template deepagents`` write a single
+    ``--template single`` (default) and ``--template autonomous`` write a single
     pure-YAML spec — no companion Python — that the ``langgraph`` engine turns into
     a runnable agent from the YAML alone. ``--template graph`` writes both
     ``NAME.yaml`` and a companion ``NAME/agent.py``: a fillable
@@ -521,7 +507,7 @@ def new_agent(name: str, template: str, agents_dir: str, force: bool) -> None:
 def _scaffold_agent(name: str, template: str, agents_dir: Path, *, force: bool) -> list[Path]:
     """Write the files for ``template`` and return the paths written (YAML first).
 
-    Dispatches on ``template``: ``single``/``deepagents`` write one pure-YAML spec;
+    Dispatches on ``template``: ``single``/``autonomous`` write one pure-YAML spec;
     ``graph`` writes ``NAME.yaml`` plus a companion ``NAME/agent.py`` supervisor
     scaffold, with the YAML's ``code:`` referencing the ``agent.py`` by its absolute
     path so :func:`agentship.spec.resolve_code` finds it from any working directory.
@@ -534,8 +520,8 @@ def _scaffold_agent(name: str, template: str, agents_dir: Path, *, force: bool) 
     if template == "single":
         _write_new_file(yaml_path, scaffold.single_template_yaml(name), force=force)
         return [yaml_path]
-    if template == "deepagents":
-        _write_new_file(yaml_path, scaffold.deepagents_template_yaml(name), force=force)
+    if template == "autonomous":
+        _write_new_file(yaml_path, scaffold.autonomous_template_yaml(name), force=force)
         return [yaml_path]
     if template == "graph":
         agent_py = (agents_dir / name / "agent.py").resolve()

@@ -127,12 +127,13 @@ class AgentSpec(BaseModel):
     code: str | None = None  # optional Python-authored build fn: "module:function"
     #: Which pre-written build body the engine should generate for this agent.
     #: ``"single"`` (one model + tools, zero author code), ``"graph"`` (a fillable
-    #: supervisor scaffold), or ``"deepagents"`` (a configured autonomous agent).
+    #: supervisor scaffold), or ``"autonomous"`` (a single self-directing agent that
+    #: plans and calls its own tools in a loop — wraps the ``deepagents`` library).
     #: ``None`` (default) means the engine's own default build path, or — when
     #: ``code:`` is set — a custom Python-authored body. ``template`` and ``code``
     #: are mutually exclusive: a template *is* a pre-written body, so pairing it
     #: with a custom one is contradictory (see :meth:`_check_coherence`).
-    template: Literal["single", "graph", "deepagents"] | None = None
+    template: Literal["single", "graph", "autonomous"] | None = None
     #: Tool references this agent may call, each a ``"mcp:<server>"`` or
     #: ``"module:function"`` string. These are **parsed and validated only** here;
     #: actual tool *execution* (MCP resolution + guarded invocation) lands in Phase
@@ -175,15 +176,11 @@ class AgentSpec(BaseModel):
     #: gate rejects ``"checkpoint"``/``"workflow"`` on an engine that declares
     #: ``durability="none"`` so a crash-recovery promise is never silently dropped.
     durability: Literal["none", "checkpoint", "workflow"] = "none"
-    #: Runtime checkpoint-flush mode for a durable run — *distinct* from ``durability``
-    #: above (which is whether/how the engine is durable). ``"exit"`` persists only at
-    #: graph end (loses mid-run state), ``"async"`` (default) writes a checkpoint after
-    #: each node without blocking, ``"sync"`` writes it *before* the next node starts
-    #: (strongest crash guarantee — what a ``kill -9`` demo needs). The LangGraph
-    #: engine passes this to ``.ainvoke(..., durability=…)``; it is inert when
-    #: ``durability="none"``. Kept a separate key from ``durability`` so the capability
-    #: and the flush mode never collide. See phase 02 §C4 / DESIGN §6.
-    durability_mode: Literal["sync", "async", "exit"] = "async"
+    # NOTE: the *runtime checkpoint-flush mode* (LangGraph's ``ainvoke(durability=…)``:
+    # sync/async/exit) is deliberately NOT a spec field. It is an engine implementation
+    # detail — a user declaring ``durability: checkpoint`` is asking for crash safety, not
+    # for a flush-timing knob — so the LangGraph engine picks the strongest flush mode
+    # internally (``sync``) and never leaks the vendor's vocabulary into portable YAML.
 
     # NOTE: ``memory`` / ``guardrails`` / ``auth`` blocks are deliberately absent
     # here. Per the grow-per-pillar rule they land with their own phases — memory
@@ -207,8 +204,8 @@ class AgentSpec(BaseModel):
         - ``template`` and ``code`` are mutually exclusive — a ``template`` *is* a
           pre-written build body, so pairing it with a custom Python one is
           contradictory; one must win, never both silently.
-        - ``template: "deepagents"`` requires ``engine: "langgraph"`` — the
-          deepagents autonomous archetype is a LangGraph-only template, so asking
+        - ``template: "autonomous"`` requires ``engine: "langgraph"`` — the
+          autonomous single-agent archetype is a LangGraph-only template, so asking
           for it on another engine can never be satisfied.
         """
         if self.template is not None and self.code is not None:
@@ -217,9 +214,9 @@ class AgentSpec(BaseModel):
                 f"code: {self.code!r} — a template is a pre-written build body, so it "
                 f"cannot be combined with a custom code: body. Choose one."
             )
-        if self.template == "deepagents" and self.engine != "langgraph":
+        if self.template == "autonomous" and self.engine != "langgraph":
             raise SpecError(
-                f"template 'deepagents' is only available on engine 'langgraph', but "
+                f"template 'autonomous' is only available on engine 'langgraph', but "
                 f"spec {self.name!r} sets engine: {self.engine!r} — use "
                 f"engine: langgraph or a different template."
             )

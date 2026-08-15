@@ -6,7 +6,7 @@ authoring paths work end to end from the exact files a user would run:
 
 - ``examples/quickstart.yaml`` — the ``single`` template (zero author Python);
 - ``examples/graph.yaml`` — the ``graph`` supervisor scaffold template;
-- ``examples/deepagents.yaml`` — the ``deepagents`` prebuilt template;
+- ``examples/autonomous.yaml`` — the ``autonomous`` single-agent template;
 - ``examples/custom/custom.yaml`` — a custom :class:`LangGraphAgent` subclass
   (``examples/custom/agent.py``) reached via ``code:`` (native LangGraph authoring).
 """
@@ -25,7 +25,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 QUICKSTART = str(REPO_ROOT / "examples" / "quickstart.yaml")
 CUSTOM = str(REPO_ROOT / "examples" / "custom" / "custom.yaml")
 GRAPH = str(REPO_ROOT / "examples" / "graph.yaml")
-DEEPAGENTS = str(REPO_ROOT / "examples" / "deepagents.yaml")
+AUTONOMOUS = str(REPO_ROOT / "examples" / "autonomous.yaml")
 
 
 @pytest.fixture
@@ -57,16 +57,16 @@ async def test_graph_template_example_runs(fake_model):
     assert result.output == "The primary colors are red, blue, and yellow."
 
 
-def test_deepagents_template_example_builds(fake_model):
-    """examples/deepagents.yaml (template: deepagents) builds a compiled deep-agent, offline.
+def test_autonomous_template_example_builds(fake_model):
+    """examples/autonomous.yaml (template: autonomous) builds a compiled autonomous agent, offline.
 
     Loads the exact shipped file and builds it with a fake model. A full autonomous
     turn needs a tool-calling model (Phase 03), so this proves the example builds and
     compiles from the file a user would run — mirroring the template's own build proof.
     """
     pytest.importorskip("deepagents")
-    agent = build_agent(DEEPAGENTS)
-    assert agent.spec.template == "deepagents"
+    agent = build_agent(AUTONOMOUS)
+    assert agent.spec.template == "autonomous"
     assert agent.compiled is not None
 
 

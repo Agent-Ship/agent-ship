@@ -5,7 +5,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from agentship_cli.main import _enable_verbose_logging, main
+from agentship.logs import configure_logging
+from agentship_cli.main import main
 from click.testing import CliRunner
 
 _HELLO = Path(__file__).resolve().parents[3] / "examples" / "hello.yaml"
@@ -31,22 +32,23 @@ def test_cli_verbose_flag_still_prints_the_answer_on_stdout():
     assert "echo: hi" in result.output
 
 
-def test_verbose_logging_surfaces_agentship_decision_logs(capsys):
-    """`_enable_verbose_logging` routes ``agentship.*`` INFO logs (e.g. a supervisor's) to stderr.
+def test_verbose_logging_surfaces_agentship_decision_logs():
+    """`configure_logging` routes ``agentship.*`` INFO logs (e.g. a supervisor's) to the stream.
 
-    Proves the ``--verbose`` mechanism: after enabling it, a record logged on the
-    ``agentship.supervisor`` child logger surfaces on stderr at INFO. Any prior tagged
-    handler is dropped first so the fresh handler binds to this test's captured stderr.
+    Proves the ``--verbose`` mechanism: after enabling it at INFO, a record logged on the
+    ``agentship.supervisor`` child logger surfaces at INFO. A fresh stream buffer is bound so the
+    idempotent handler writes where this test can read it.
     """
-    log = logging.getLogger("agentship")
-    for handler in [h for h in log.handlers if getattr(h, "_agentship_verbose", False)]:
-        log.removeHandler(handler)
+    import io
 
-    _enable_verbose_logging()
+    log = logging.getLogger("agentship")
+    log.handlers.clear()
+    buf = io.StringIO()
+    configure_logging(logging.INFO, stream=buf)
     logging.getLogger("agentship.supervisor").info("dispatch: parallel -> sub-agents ['billing']")
 
-    err = capsys.readouterr().err
-    assert "dispatch: parallel -> sub-agents ['billing']" in err
+    out = buf.getvalue()
+    assert "dispatch: parallel -> sub-agents ['billing']" in out
     assert log.level == logging.INFO
 
 

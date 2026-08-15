@@ -65,8 +65,8 @@ def test_doctor_capability_mismatch_is_a_clear_reason(tmp_path):
     assert "Traceback" not in result.output
 
 
-def test_doctor_deepagents_version_drift_is_flagged(tmp_path):
-    """A template: deepagents agent is flagged when the pinned deepagents version drifts.
+def test_doctor_autonomous_version_drift_is_flagged(tmp_path):
+    """A template: autonomous agent is flagged when the pinned deepagents version drifts.
 
     The version guard reads the langgraph adapter's pinned version; simulating a
     drift (patching the pin) must make doctor exit 1 with an actionable pip hint —
@@ -76,11 +76,11 @@ def test_doctor_deepagents_version_drift_is_flagged(tmp_path):
     import pytest
 
     pytest.importorskip("deepagents")
-    import agentship_langgraph.templates.deepagents_tpl as tpl
+    import agentship_langgraph.templates.autonomous_tpl as tpl
 
     _write(
         tmp_path / "da.yaml",
-        "name: researcher\nengine: langgraph\ntemplate: deepagents\n"
+        "name: researcher\nengine: langgraph\ntemplate: autonomous\n"
         "model: openai/gpt-4o-mini\nprompt: be autonomous\n",
     )
     runner = CliRunner()

@@ -119,21 +119,21 @@ def single_template_yaml(name: str) -> str:
     )
 
 
-def deepagents_template_yaml(name: str) -> str:
-    """Return a ``template: deepagents`` spec named ``name`` (a configured autonomous agent).
+def autonomous_template_yaml(name: str) -> str:
+    """Return a ``template: autonomous`` spec named ``name`` (a single self-directing agent).
 
-    The ``deepagents`` template configures an autonomous agent; it needs the
-    optional ``agentship-langgraph[deepagents]`` extra and a tool-calling model, so
-    the scaffold is a coherent, loadable spec that ``agentship doctor`` version-guards
-    before it runs.
+    The ``autonomous`` template configures one agent that plans and calls its own
+    tools in a loop; it needs the optional ``agentship-langgraph[autonomous]`` extra
+    and a tool-calling model, so the scaffold is a coherent, loadable spec that
+    ``agentship doctor`` version-guards before it runs.
     """
     return (
-        f"# Agent {name!r} — the `deepagents` template (a configured autonomous agent).\n"
-        f"# Needs the optional extra:  pip install 'agentship-langgraph[deepagents]'\n"
+        f"# Agent {name!r} — the `autonomous` template (a single self-directing agent).\n"
+        f"# Needs the optional extra:  pip install 'agentship-langgraph[autonomous]'\n"
         f"#   agentship run agents/{name}.yaml --input \"hello\"\n"
         f"name: {name}\n"
         f"engine: langgraph\n"
-        f"template: deepagents\n"
+        f"template: autonomous\n"
         f"model: openai/gpt-4o-mini\n"
         f"prompt: You are an autonomous assistant that plans and uses tools.\n"
     )

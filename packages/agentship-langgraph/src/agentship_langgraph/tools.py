@@ -7,14 +7,45 @@ so vendor imports stay confined to ``agentship-langgraph`` and the core never se
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 from agentship.context import get_run_context
 from agentship.primitives.idempotency import DictLedger, call_once, idem_key
+from langchain_core.callbacks import AsyncCallbackHandler
 from langchain_core.tools import StructuredTool
 
 if TYPE_CHECKING:
     from agentship.tools import Tool
+
+#: Logs every tool call (native or MCP) at INFO on ``agentship.tools`` — silent by default; enabled
+#: by ``agentship run --verbose`` (and the demo). This is how you *see* that the model actually
+#: invoked a tool rather than answering from its own knowledge.
+_tool_logger = logging.getLogger("agentship.tools")
+
+
+def _short(value: Any, limit: int = 100) -> str:
+    """A one-line, length-capped preview of a value for a log line."""
+    line = " ".join(str(value).split())
+    return line if len(line) <= limit else f"{line[:limit]}…"
+
+
+class ToolCallLogger(AsyncCallbackHandler):
+    """A LangChain callback that logs each tool invocation + result on ``agentship.tools``.
+
+    Attached to every run's config by the engine, so ``--verbose`` reveals which tool the model
+    called with what arguments and what it returned — covering native tools, MCP tools, and the
+    tools an autonomous agent's loop uses uniformly (they all flow through LangChain's callbacks).
+    """
+
+    async def on_tool_start(self, serialized: dict, input_str: str, **kwargs: Any) -> None:
+        """Log the tool's name + input as the model invokes it."""
+        name = (serialized or {}).get("name") or kwargs.get("name") or "tool"
+        _tool_logger.info("call %s(%s)", name, _short(input_str))
+
+    async def on_tool_end(self, output: Any, **kwargs: Any) -> None:
+        """Log the tool's result."""
+        _tool_logger.info("  = %s", _short(getattr(output, "content", output)))
 
 #: The write-ahead intent ledger for side-effecting tool calls (Phase 03 · C4). A process-shared
 #: in-memory ledger — like the InMemorySaver singleton, it lets an in-process run→resume see the
@@ -41,6 +72,8 @@ class _ToolInvocation:
         A tool that can check whether its effect landed can supply a richer verify later; the safe
         default is to not repeat a write whose outcome is unknown.
         """
+        _tool_logger.warning("idempotency: skipping replay of %r — prior run may have completed",
+                             self._tool.name)
         return f"(idempotency) a prior '{self._tool.name}' call may have completed; not re-run"
 
 
@@ -67,11 +100,14 @@ def to_langchain_tool(tool: Tool, *, confirm_writes: bool = False) -> Structured
         if confirm_writes:
             from langgraph.types import interrupt
 
+            _tool_logger.info("HITL: pausing before write %r — awaiting human approval", tool.name)
             decision = interrupt({"action": "confirm_write", "tool": tool.name, "args": kwargs})
             if not (isinstance(decision, dict) and decision.get("approved")):
+                _tool_logger.warning("HITL: write %r rejected — not executed", tool.name)
                 return f"the write to {tool.name!r} was rejected by the human and was not executed"
         thread_id = get_run_context().session_id
         key = idem_key(thread_id, "tool", tool.name, kwargs)
+        _tool_logger.debug("running %r with idempotency guard (key=%s)", tool.name, key)
         return await call_once(_TOOL_LEDGER, key, _ToolInvocation(tool, dict(kwargs)),
                                idempotent=False)
 

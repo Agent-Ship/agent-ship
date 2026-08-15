@@ -234,39 +234,15 @@ def test_bad_durability_value_is_rejected(tmp_path):
         load_spec(f)
 
 
-def test_durability_mode_defaults_to_async():
-    """The runtime checkpoint-flush mode defaults to 'async' (good coverage, low latency)."""
-    assert AgentSpec(name="a", engine="langgraph").durability_mode == "async"
+def test_durability_mode_is_not_a_spec_field(tmp_path):
+    """The LangGraph flush-timing knob is an engine detail, not portable YAML — it is rejected.
 
-
-def test_durability_mode_loads_from_yaml(tmp_path):
-    """A demo/prod agent can set the stronger 'sync' flush mode via YAML."""
+    A user declares ``durability: checkpoint`` (crash safety); *how* checkpoints flush
+    (LangGraph's sync/async/exit) is chosen internally by the engine, so ``durability_mode`` is
+    not a spec field and appears as an unknown key (``extra='forbid'`` → SpecError).
+    """
     f = tmp_path / "a.yaml"
-    f.write_text(
-        textwrap.dedent(
-            """
-            name: durable
-            engine: langgraph
-            durability: checkpoint
-            durability_mode: sync
-            """
-        )
-    )
-    spec = load_spec(f)
-    assert spec.durability == "checkpoint"
-    assert spec.durability_mode == "sync"
-
-
-def test_durability_mode_is_a_distinct_field_from_durability():
-    """durability (none|checkpoint|workflow) and durability_mode (sync|async|exit) don't collide."""
-    spec = AgentSpec(name="a", engine="langgraph", durability="checkpoint", durability_mode="exit")
-    assert spec.durability == "checkpoint" and spec.durability_mode == "exit"
-
-
-def test_bad_durability_mode_value_is_rejected(tmp_path):
-    """An out-of-range durability_mode is a loud SpecError, not a silent accept."""
-    f = tmp_path / "a.yaml"
-    f.write_text("name: a\nengine: langgraph\ndurability_mode: turbo\n")
+    f.write_text("name: a\nengine: langgraph\ndurability: checkpoint\ndurability_mode: sync\n")
     with pytest.raises(SpecError):
         load_spec(f)
 
@@ -310,18 +286,18 @@ def test_bad_template_value_is_rejected(tmp_path):
         load_spec(f)
 
 
-def test_deepagents_template_requires_langgraph_engine():
-    """template 'deepagents' only exists on the langgraph engine — else SpecError."""
+def test_autonomous_template_requires_langgraph_engine():
+    """template 'autonomous' only exists on the langgraph engine — else SpecError."""
     with pytest.raises(SpecError) as exc:
-        AgentSpec(name="a", engine="echo", template="deepagents")
+        AgentSpec(name="a", engine="echo", template="autonomous")
     msg = str(exc.value).lower()
-    assert "deepagents" in msg and "langgraph" in msg
+    assert "autonomous" in msg and "langgraph" in msg
 
 
-def test_deepagents_template_on_langgraph_is_allowed():
-    """template 'deepagents' is coherent on the langgraph engine (no error)."""
-    spec = AgentSpec(name="a", engine="langgraph", template="deepagents", model="x")
-    assert spec.template == "deepagents"
+def test_autonomous_template_on_langgraph_is_allowed():
+    """template 'autonomous' is coherent on the langgraph engine (no error)."""
+    spec = AgentSpec(name="a", engine="langgraph", template="autonomous", model="x")
+    assert spec.template == "autonomous"
 
 
 def test_template_and_code_are_mutually_exclusive():
@@ -341,7 +317,7 @@ def test_template_alone_and_code_alone_are_fine():
 def test_coherence_error_is_spec_error_from_yaml(tmp_path):
     """An incoherent spec loaded from YAML surfaces the coherence failure as SpecError."""
     f = tmp_path / "a.yaml"
-    f.write_text("name: a\nengine: echo\ntemplate: deepagents\n")
+    f.write_text("name: a\nengine: echo\ntemplate: autonomous\n")
     with pytest.raises(SpecError):
         load_spec(f)
 

@@ -19,6 +19,7 @@ with no network. Production runs resolve a real ``ChatLiteLLM``.
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -36,6 +37,13 @@ from . import models
 from .agent import LangGraphAgent
 from .durability import open_checkpointer
 from .templates import resolve_template
+from .tools import ToolCallLogger
+
+_engine_logger = logging.getLogger("agentship.engine")
+
+#: A process-wide singleton attached to every run's config. Silent when the ``agentship.tools``
+#: logger is at WARNING (the default); enabled by ``--verbose`` so tool calls appear on stderr.
+_TOOL_CALL_LOGGER = ToolCallLogger()
 
 if TYPE_CHECKING:
     from agentship.context import RunContext
@@ -45,6 +53,13 @@ if TYPE_CHECKING:
 #: Schema version stamped into every minted ResumeToken blob, so a future change to the
 #: blob shape can be detected on resume rather than mis-read.
 _TOKEN_SCHEMA_VERSION = 1
+
+#: The checkpoint flush mode passed to LangGraph's ``ainvoke(durability=…)`` for a durable run.
+#: Fixed to ``"sync"`` — the strongest crash guarantee: the checkpoint for a completed node lands
+#: *before* the next node starts, so a ``kill -9`` mid-run always resumes from a persisted frontier.
+#: This is an engine detail, not a user knob: a spec asks for ``durability: checkpoint`` (crash
+#: safety), and the engine chooses how to flush. See DESIGN §6.
+_CHECKPOINT_FLUSH_MODE = "sync"
 
 
 class _AgentState(TypedDict):
@@ -68,7 +83,6 @@ class _CompiledAgent:
         model_id: str,
         *,
         durability: str = "none",
-        durability_mode: str = "async",
         members: list[str] | None = None,
         bound_tools: list[str] | None = None,
     ) -> None:
@@ -78,16 +92,16 @@ class _CompiledAgent:
         it is kept so a provider failure at run time can be turned into an
         actionable :class:`~agentship.errors.ModelError` that names the credential.
         ``durability`` (from ``spec.durability``) decides whether ``run`` takes the
-        checkpointed path, and ``durability_mode`` (``sync|async|exit``) is passed to
-        ``.ainvoke(durability=…)`` on that path. ``members`` names the coordinated
-        sub-agents when this is a declarative multi-agent team (empty otherwise) — it
-        makes the ``multi_agent`` capability inspectable on the built artifact.
+        checkpointed path; on that path the engine flushes checkpoints in
+        :data:`_CHECKPOINT_FLUSH_MODE` (an engine detail, not a spec field).
+        ``members`` names the coordinated sub-agents when this is a declarative
+        multi-agent team (empty otherwise) — it makes the ``multi_agent`` capability
+        inspectable on the built artifact.
         """
         self.graph = graph
         self.system_prompt = system_prompt
         self.model_id = model_id
         self.durability = durability
-        self.durability_mode = durability_mode
         self.members = members or []
         #: Names of the tools bound into this agent (empty when none declared) — makes the
         #: ``tool_calling`` capability inspectable on the built artifact.
@@ -168,13 +182,14 @@ class LangGraphEngine(Engine):
         tools = self._resolve_tools(spec)
         # The default single-node graph and custom-authored graphs consume the
         # ``messages`` the run loop seeds, so the engine must seed the system prompt
-        # for them. Templates (``single``/``graph``/``deepagents``) build on
+        # for them. Templates (``single``/``graph``/``autonomous``) build on
         # ``create_react_agent(prompt=...)``, which injects the system prompt inside
         # the graph itself — seeding it again here would send the system message
         # twice. So only the template path hands prompt ownership to the graph.
         prompt_owned_by_graph = False
         members: list[str] = []
         if isinstance(authored, LangGraphAgent):
+            _engine_logger.debug("build path=authored model=%s tools=%d", spec.model, len(tools))
             graph = authored.build_graph(model, tools)
         elif spec.members:
             # Declarative multi-agent: the spec's `members:` (each a ref to a sub-agent YAML or an
@@ -182,14 +197,19 @@ class LangGraphEngine(Engine):
             # writes its own messages, so it owns the prompt.
             from .templates.graph_supervisor import build_declarative_supervisor
 
+            _engine_logger.debug("build path=multi-agent members=%d model=%s",
+                                 len(spec.members), spec.model)
             graph, members = build_declarative_supervisor(spec, model)
             prompt_owned_by_graph = True
         else:
             template_body = resolve_template(spec)
             if template_body is not None:
+                _engine_logger.debug("build path=template template=%s model=%s tools=%d",
+                                     spec.template, spec.model, len(tools))
                 graph = template_body(model, tools)
                 prompt_owned_by_graph = True
             else:
+                _engine_logger.debug("build path=default-graph model=%s", spec.model)
                 graph = self._build_graph(model)
         compiled = graph if isinstance(graph, CompiledStateGraph) else graph.compile()
         from agentship.skills import render_agent_prompt
@@ -202,7 +222,6 @@ class LangGraphEngine(Engine):
             system_prompt,
             spec.model or "",
             durability=spec.durability,
-            durability_mode=spec.durability_mode,
             members=members,
             bound_tools=[t.name for t in tools],
         )
@@ -253,7 +272,14 @@ class LangGraphEngine(Engine):
             tools.extend(discover_mcp_tools_sync(spec.mcp))
         if spec.allowed_tools is not None:
             allow = set(spec.allowed_tools)
+            before = {t.name for t in tools}
             tools = [t for t in tools if t.name in allow]
+            dropped = before - {t.name for t in tools}
+            if dropped:
+                _engine_logger.warning(
+                    "allowed_tools dropped %d tool(s) the model will not see: %s",
+                    len(dropped), ", ".join(sorted(dropped)),
+                )
         return tools
 
     def _build_graph(self, model: BaseChatModel) -> Any:
@@ -288,7 +314,10 @@ class LangGraphEngine(Engine):
         if compiled.durability == "checkpoint":
             return await self._run_durable(compiled, text, ctx)
         try:
-            state = await compiled.graph.ainvoke({"messages": compiled.initial_messages(text)})
+            state = await compiled.graph.ainvoke(
+                {"messages": compiled.initial_messages(text)},
+                config={"callbacks": [_TOOL_CALL_LOGGER]},
+            )
         except Exception as exc:
             raise models.map_model_error(compiled.model_id, exc) from exc
         answer = state["messages"][-1].content
@@ -306,8 +335,12 @@ class LangGraphEngine(Engine):
 
     @staticmethod
     def _thread_config(thread_id: str) -> dict:
-        """The LangGraph ``configurable`` config that binds a run to its checkpoint thread."""
-        return {"configurable": {"thread_id": thread_id}}
+        """The LangGraph ``configurable`` config that binds a run to its checkpoint thread.
+
+        Always carries :data:`_TOOL_CALL_LOGGER` so tool calls log to ``agentship.tools`` on
+        every durable run — silent at WARNING (the default), visible with ``--verbose``.
+        """
+        return {"configurable": {"thread_id": thread_id}, "callbacks": [_TOOL_CALL_LOGGER]}
 
     def _mint_token(self, thread_id: str, snapshot: Any, *, interrupted: bool) -> ResumeToken:
         """Mint a ``ResumeToken`` from a state snapshot — all LangGraph fields live in ``blob``.
@@ -342,17 +375,19 @@ class LangGraphEngine(Engine):
         return payload if isinstance(payload, dict) else {"payload": payload}
 
     async def _invoke_and_finalize(
-        self, graph: Any, invoke_input: Any, thread_id: str, mode: str, model_id: str
+        self, graph: Any, invoke_input: Any, thread_id: str, model_id: str
     ) -> Result:
         """Invoke (or resume) a durable graph, then mint the token and surface any interrupt.
 
         Shared by :meth:`_run_durable` and :meth:`resume` so both paths finalize identically: on a
         HITL interrupt the :class:`Result` carries the payload plus a token with ``interrupt=True``
-        and no output; otherwise it carries the answer plus a terminal token.
+        and no output; otherwise it carries the answer plus a terminal token. Checkpoints are
+        flushed in :data:`_CHECKPOINT_FLUSH_MODE` (``sync``) so a completed node's state is durable
+        before the next node runs.
         """
         cfg = self._thread_config(thread_id)
         try:
-            state = await graph.ainvoke(invoke_input, config=cfg, durability=mode)
+            state = await graph.ainvoke(invoke_input, config=cfg, durability=_CHECKPOINT_FLUSH_MODE)
         except Exception as exc:
             raise models.map_model_error(model_id, exc) from exc
         payload = self._interrupt_payload(state)
@@ -367,16 +402,19 @@ class LangGraphEngine(Engine):
 
         Opens a per-run checkpointer (Postgres when ``AGENT_SESSION_STORE_URI`` is set, else
         in-memory), recompiles the graph with it, and invokes with the run's ``thread_id``
-        (``ctx.session_id``) and the configured ``durability_mode`` so a checkpoint lands per node.
+        (``ctx.session_id``); checkpoints flush per node in :data:`_CHECKPOINT_FLUSH_MODE`.
         """
         thread_id = ctx.session_id
-        async with open_checkpointer(self._conninfo()) as saver:
+        conninfo = self._conninfo()
+        store = "postgres" if conninfo else "in-memory"
+        _engine_logger.info("checkpoint store=%s thread=%s flush=%s",
+                            store, thread_id, _CHECKPOINT_FLUSH_MODE)
+        async with open_checkpointer(conninfo) as saver:
             graph = compiled.builder.compile(checkpointer=saver)
             return await self._invoke_and_finalize(
                 graph,
                 {"messages": compiled.initial_messages(text)},
                 thread_id,
-                compiled.durability_mode,
                 compiled.model_id,
             )
 
@@ -407,6 +445,13 @@ class LangGraphEngine(Engine):
         thread_id = token.blob.get("thread_id")
         if not thread_id:
             raise ResumeError("resume token carries no thread_id — it cannot be resumed")
+        was_interrupted = token.blob.get("interrupt", False)
+        _engine_logger.info(
+            "resume thread=%s interrupted=%s resume_value=%s",
+            thread_id,
+            was_interrupted,
+            repr(resume_value) if resume_value is not None else "None (crash-resume)",
+        )
         conninfo = self._conninfo()
         cfg = self._thread_config(thread_id)
         invoke_input = Command(resume=resume_value) if resume_value is not None else None
@@ -426,7 +471,7 @@ class LangGraphEngine(Engine):
                 token_ctx = current_run.set(ctx)
                 try:
                     return await self._invoke_and_finalize(
-                        graph, invoke_input, thread_id, compiled.durability_mode, compiled.model_id
+                        graph, invoke_input, thread_id, compiled.model_id
                     )
                 finally:
                     current_run.reset(token_ctx)
@@ -456,6 +501,7 @@ class LangGraphEngine(Engine):
         stream = compiled.graph.astream(
             {"messages": compiled.initial_messages(text)},
             stream_mode="messages",
+            config={"callbacks": [_TOOL_CALL_LOGGER]},
         )
         streamed_content = False
         last_full_content: Any = None

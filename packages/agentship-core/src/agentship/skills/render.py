@@ -9,7 +9,11 @@ large pool (surfacing only descriptions until a skill triggers) is a later enhan
 
 from __future__ import annotations
 
+import logging
+
 from .registry import resolve_skill
+
+_skills_logger = logging.getLogger("agentship.skills")
 
 _HEADER = (
     "You have the following skills — how-to guidance for using your tools. "
@@ -28,9 +32,13 @@ def render_agent_prompt(prompt: str | None, skills: list[str] | None) -> str | N
         return prompt
 
     blocks = []
+    resolved_names = []
     for ref in skills:
         skill = resolve_skill(ref)
+        resolved_names.append(skill.name)
         body = f"## Skill: {skill.name}\n{skill.description}\n\n{skill.instructions}".rstrip()
         blocks.append(body)
+    _skills_logger.info("injecting %d skill(s) into prompt: %s",
+                        len(resolved_names), ", ".join(resolved_names))
     guidance = _HEADER + "\n" + "\n\n".join(blocks)
     return f"{prompt}\n\n{guidance}" if prompt else guidance

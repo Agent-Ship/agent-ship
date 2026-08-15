@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import logging
 from typing import TYPE_CHECKING, Any
 
 from agentship.errors import CapabilityError
@@ -19,6 +20,8 @@ from agentship.errors import CapabilityError
 if TYPE_CHECKING:
     from agentship.spec import McpServerSpec
     from langchain_core.tools import BaseTool
+
+_mcp_logger = logging.getLogger("agentship.mcp")
 
 
 #: The supported ``mcp`` SDK range: ``>=1.28,<2``. v2 reshaped the client API the adapters target,
@@ -84,8 +87,13 @@ async def discover_mcp_tools(mcp: dict[str, McpServerSpec]) -> list[BaseTool]:
             "`pip install agentship-langgraph[mcp]`"
         ) from exc
 
+    server_names = ", ".join(mcp)
+    _mcp_logger.info("connecting to %d server(s): %s", len(mcp), server_names)
     client = MultiServerMCPClient(to_connections(mcp))
-    return await client.get_tools()
+    tools = await client.get_tools()
+    _mcp_logger.info("discovered %d tool(s) across %d server(s): %s",
+                     len(tools), len(mcp), ", ".join(t.name for t in tools))
+    return tools
 
 
 def discover_mcp_tools_sync(mcp: dict[str, McpServerSpec]) -> list[BaseTool]:
@@ -99,5 +107,6 @@ def discover_mcp_tools_sync(mcp: dict[str, McpServerSpec]) -> list[BaseTool]:
         asyncio.get_running_loop()
     except RuntimeError:
         return asyncio.run(discover_mcp_tools(mcp))
+    _mcp_logger.debug("event loop already running — using thread-pool bridge for discovery")
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
         return pool.submit(lambda: asyncio.run(discover_mcp_tools(mcp))).result()
