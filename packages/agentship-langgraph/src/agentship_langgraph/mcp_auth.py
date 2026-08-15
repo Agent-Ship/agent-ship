@@ -56,7 +56,7 @@ class EncryptedTokenStorage(TokenStorage):
     """
 
     def __init__(self, *, key: bytes, store: TokenStore, server: str) -> None:
-        """Bind the Fernet ``key``, the backing ``store``, and the ``server`` the tokens belong to."""
+        """Bind the Fernet ``key``, the backing ``store``, and the owning MCP ``server`` name."""
         self._fernet = Fernet(key)
         self._store = store
         self._server = server

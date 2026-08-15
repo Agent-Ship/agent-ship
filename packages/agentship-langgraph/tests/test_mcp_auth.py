@@ -2,7 +2,7 @@
 
 The ``mcp`` SDK runs the OAuth 2.1 + PKCE flow for us; the one piece we own is **persistence** — so
 a remote MCP server's tokens (and its dynamically-registered client info) survive a process restart
-without re-running the flow, encrypted at rest. This is where the old repo's encrypted-DB token store
+without re-running the flow, encrypted at rest. This is where the old repo's encrypted token store
 maps in (no OAuth-persistence regression). These tests pin the round-trip + encryption + restart
 survival of :class:`EncryptedTokenStorage`; the interactive browser flow itself is manual.
 """
