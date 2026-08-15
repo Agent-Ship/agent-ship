@@ -17,6 +17,11 @@ mcp:
     command: python3
     args:
       - agents/mcp/time_server.py
+# A skill (how-to guidance) that teaches the agent HOW to use the MCP's tool — this is what you
+# add when a tool/MCP needs usage instructions beyond its bare description. It's the Agent Skills
+# SKILL.md format (name + description + instructions).
+skills:
+  - agents/mcp/skills/date-math
 prompt: >-
-  You are a precise assistant. Use the available tools for date math rather than computing
-  it yourself, then state the answer in one short sentence.
+  You are a precise assistant. Prefer the available tools over doing work yourself, and answer
+  in one short sentence.

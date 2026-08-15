@@ -18,12 +18,22 @@ from pathlib import Path
 
 import pytest
 from agentship import build_agent
+from agentship.skills import render_agent_prompt
 from conftest import requires_live_key
 
 pytest.importorskip("langchain_mcp_adapters", reason="needs agentship-langgraph[mcp]")
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 AGENT = str(REPO_ROOT / "agents" / "mcp" / "agent.yaml")
+SKILL = str(REPO_ROOT / "agents" / "mcp" / "skills" / "date-math")
+
+
+def test_skill_teaches_the_agent_how_to_use_the_mcp_tool():
+    """The date-math skill's how-to guidance is injected into the agent's system prompt (offline)."""
+    prompt = render_agent_prompt("You are a precise assistant.", [SKILL])
+    assert "date-math" in prompt
+    assert "days_between" in prompt  # the skill tells the model which MCP tool to call
+    assert "You are a precise assistant." in prompt
 
 
 @requires_live_key
