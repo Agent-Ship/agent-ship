@@ -145,6 +145,10 @@ class AgentSpec(BaseModel):
     #: :class:`McpServerSpec` (a local ``stdio`` or remote ``streamable_http`` server); their tools
     #: are discovered via ``langchain-mcp-adapters`` and bound alongside native ``tools``.
     mcp: dict[str, McpServerSpec] | None = None
+    #: Skills (how-to guidance) this agent has — each a registered skill name or a path to a
+    #: SKILL.md folder (the Agent Skills format). Their instructions augment the system prompt so
+    #: the model knows *how* to use its tools/MCP. Distinct from ``tools`` (executable ones).
+    skills: list[str] | None = None
     model: str | None = None
     prompt: str | None = None
     #: Optional generation params (temperature/max_tokens/api_base/timeout) threaded

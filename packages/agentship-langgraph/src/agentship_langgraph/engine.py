@@ -192,7 +192,11 @@ class LangGraphEngine(Engine):
             else:
                 graph = self._build_graph(model)
         compiled = graph if isinstance(graph, CompiledStateGraph) else graph.compile()
-        system_prompt = None if prompt_owned_by_graph else spec.prompt
+        from agentship.skills import render_agent_prompt
+
+        system_prompt = (
+            None if prompt_owned_by_graph else render_agent_prompt(spec.prompt, spec.skills)
+        )
         return _CompiledAgent(
             compiled,
             system_prompt,

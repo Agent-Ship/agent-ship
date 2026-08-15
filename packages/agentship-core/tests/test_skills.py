@@ -93,3 +93,33 @@ def test_resolve_unknown_skill_is_a_spec_error():
     """An unresolvable skill reference fails fast with an actionable error."""
     with pytest.raises(SpecError, match="nope-not-a-skill"):
         resolve_skill("nope-not-a-skill")
+
+
+def test_render_agent_prompt_appends_skill_guidance(tmp_path):
+    """Declared skills' name/description/instructions are appended to the base prompt."""
+    from agentship.skills import render_agent_prompt
+
+    path = _write_skill(
+        tmp_path,
+        "github-triage",
+        """
+        ---
+        name: github-triage
+        description: Triage GitHub issues. Use when the user mentions issues or triage.
+        ---
+        1. List open issues.
+        2. Label each by area.
+        """,
+    )
+    prompt = render_agent_prompt("You are a helpful assistant.", [path])
+    assert "You are a helpful assistant." in prompt
+    assert "github-triage" in prompt
+    assert "Label each by area." in prompt
+
+
+def test_render_agent_prompt_no_skills_returns_base():
+    """With no skills the base prompt is returned unchanged (nothing invented)."""
+    from agentship.skills import render_agent_prompt
+
+    assert render_agent_prompt("base", None) == "base"
+    assert render_agent_prompt(None, []) is None

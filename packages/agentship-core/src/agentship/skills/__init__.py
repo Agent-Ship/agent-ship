@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from .loader import load_skill
 from .registry import SKILLS, resolve_skill
+from .render import render_agent_prompt
 from .skill import Skill
 
-__all__ = ["SKILLS", "Skill", "load_skill", "resolve_skill"]
+__all__ = ["SKILLS", "Skill", "load_skill", "render_agent_prompt", "resolve_skill"]

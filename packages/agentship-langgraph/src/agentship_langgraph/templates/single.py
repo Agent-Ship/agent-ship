@@ -33,7 +33,10 @@ def build_single(spec: AgentSpec):
     def build_graph(
         model: BaseChatModel, tools: list[BaseTool]
     ) -> CompiledStateGraph:
-        """Build the prebuilt ReAct graph over the wired model, tools, and prompt."""
-        return create_react_agent(model, tools=tools, prompt=spec.prompt)
+        """Build the prebuilt ReAct graph over the model, tools, and skill-augmented prompt."""
+        from agentship.skills import render_agent_prompt
+
+        prompt = render_agent_prompt(spec.prompt, spec.skills)
+        return create_react_agent(model, tools=tools, prompt=prompt)
 
     return build_graph
