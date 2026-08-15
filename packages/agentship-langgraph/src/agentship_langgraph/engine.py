@@ -419,9 +419,17 @@ class LangGraphEngine(Engine):
                         f"no checkpoint found for thread {thread_id!r} — the run cannot be "
                         f"resumed (it may have been compacted or never started)"
                     )
-                return await self._invoke_and_finalize(
-                    graph, invoke_input, thread_id, compiled.durability_mode, compiled.model_id
-                )
+                # Establish the run context so replayed nodes/tools can read it (idempotency
+                # keys, dispatch identity) — resume is entered directly, not via RunnableAgent.run.
+                from agentship.context import current_run
+
+                token_ctx = current_run.set(ctx)
+                try:
+                    return await self._invoke_and_finalize(
+                        graph, invoke_input, thread_id, compiled.durability_mode, compiled.model_id
+                    )
+                finally:
+                    current_run.reset(token_ctx)
 
     async def stream(
         self, compiled: _CompiledAgent, text: str, ctx: RunContext
