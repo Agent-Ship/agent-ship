@@ -190,7 +190,14 @@ class DeepResearchAgent(LangGraphAgent):
             return {"go_deeper": go_deeper}
 
         def synthesize(state: ResearchState) -> dict:
-            """Write the final research report from all findings and append it as the answer."""
+            """Write the final research report from all findings and append it as the answer.
+
+            If no finding carries a real result URL — i.e. every search was a keyless stub because
+            ``BRAVE_API_KEY`` was unset — the report is prefixed with an honest disclaimer so a
+            reader is never misled into thinking model-knowledge prose is grounded in fresh web
+            results. The depth machinery is real; this just says plainly when the grounding was not.
+            """
+            grounded = any(r.get("url") for f in state["findings"] for r in f["results"])
             digest = "\n".join(
                 f"[round {f['round']}] {f['query']}: "
                 + "; ".join(r.get("title", "") for r in f["results"])
@@ -203,8 +210,17 @@ class DeepResearchAgent(LangGraphAgent):
                 ),
                 HumanMessage(f"Topic: {state['question']}\n\nFindings:\n{digest}"),
             ]
-            report = model.invoke(prompt).content
-            _log.info("synthesize rounds=%d findings=%d", state["round"], len(state["findings"]))
+            report = str(model.invoke(prompt).content)
+            if not grounded:
+                report = (
+                    "> ⚠️ No live web results (BRAVE_API_KEY not set) — the searches returned "
+                    "stubs, so the report below is the model's own knowledge, NOT grounded in "
+                    "fresh web findings. Set BRAVE_API_KEY for a real deep-research run.\n\n"
+                ) + report
+            _log.info(
+                "synthesize rounds=%d findings=%d grounded=%s",
+                state["round"], len(state["findings"]), grounded,
+            )
             return {"messages": [AIMessage(content=report)]}
 
         def route_after_search(state: ResearchState) -> str:

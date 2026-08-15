@@ -138,6 +138,26 @@ async def test_resume_approve_runs_another_round_and_pauses_again(wired):
     assert deeper.interrupt["round"] == 2
 
 
+async def test_report_discloses_when_search_was_a_keyless_stub(monkeypatch):
+    """With stub-only search (no key), the report is prefixed with an honest disclaimer."""
+    monkeypatch.setattr(models_module, "resolve_model", lambda *a, **k: _ScriptedModel())
+    monkeypatch.delenv("AGENT_SESSION_STORE_URI", raising=False)
+    # Stub results have an empty url — the "no live web results" signal.
+    monkeypatch.setattr(
+        graph_module,
+        "search_web",
+        lambda q, num_results=5: [{"title": f"stub: {q}", "url": "", "snippet": "no key"}],
+    )
+    engine, compiled = _build(max_auto_rounds=1)
+    ctx = _ctx("dr-stub")
+    paused = await engine.run(compiled, "small modular reactors", ctx)
+    done = await engine.resume(
+        compiled, paused.resume_token, ctx, resume_value={"go_deeper": False}
+    )
+    assert "No live web results" in done.output  # the disclaimer fired
+    assert "REPORT" in done.output  # the actual report is still there, below the disclaimer
+
+
 async def test_resume_is_a_fresh_engine_instance(wired):
     """A brand-new engine resumes the paused run from its checkpoint — the crash-resume guarantee.
 
