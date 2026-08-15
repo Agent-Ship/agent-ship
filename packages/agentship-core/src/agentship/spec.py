@@ -65,8 +65,8 @@ class McpServerSpec(BaseModel):
 
     An MCP server is reached over one of two transports: **``stdio``** (a **local** server the
     client spawns as a subprocess — needs ``command`` + ``args``) or **``streamable_http``** (a
-    **remote** server the client connects to over HTTP — needs ``url`` + optional ``headers``). Plain
-    protocol config; the LangGraph adapter hands it to ``langchain-mcp-adapters``'
+    **remote** server the client connects to over HTTP — needs ``url`` + optional ``headers``).
+    Plain protocol config; the LangGraph adapter hands it to ``langchain-mcp-adapters``'
     ``MultiServerMCPClient`` (we do not hand-roll the client — see the P03 spec / memory).
     """
 
