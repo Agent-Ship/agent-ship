@@ -342,6 +342,36 @@ def test_code_hook_resolves_file_ref(tmp_path):
     assert spec.name == "from-code"
 
 
+def test_code_hook_file_module_resolves_annotated_type_hints(tmp_path):
+    """A file-loaded ``code:`` module resolves ``typing.get_type_hints`` on its own classes.
+
+    Regression: the file-loaded module must be registered in ``sys.modules`` so ``get_type_hints``
+    can find its globals to resolve string forward refs (``from __future__ import annotations`` +
+    ``Annotated[...]``). This is what LangGraph does to a custom graph's ``TypedDict`` state; before
+    the fix it raised ``NameError: name 'Annotated' is not defined`` for a file-path agent.
+    """
+    mod = tmp_path / "author.py"
+    mod.write_text(
+        textwrap.dedent(
+            """
+            from __future__ import annotations
+            from typing import Annotated, get_type_hints
+            from typing_extensions import TypedDict
+
+            class State(TypedDict):
+                values: Annotated[list, "reducer"]
+
+            def build():
+                # Resolving the forward refs needs this module's globals via sys.modules.
+                return get_type_hints(State, include_extras=True)
+            """
+        )
+    )
+    fn = resolve_code(f"{mod}:build")
+    hints = fn()
+    assert "values" in hints  # resolved without NameError
+
+
 def test_code_hook_bad_ref_raises():
     """A malformed code reference (no ':function') fails loudly."""
     with pytest.raises(SpecError):

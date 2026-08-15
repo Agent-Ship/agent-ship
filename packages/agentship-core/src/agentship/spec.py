@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Literal
@@ -296,5 +297,15 @@ def _load_module_from_file(path: str):
     if spec is None or spec.loader is None:
         raise SpecError(f"could not load code file: {file}")
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    # Register the module in ``sys.modules`` *before* executing it — the importlib-recommended
+    # pattern. Without this, ``typing.get_type_hints`` (called by LangGraph on a graph's
+    # ``TypedDict`` state) cannot find the module's globals to resolve string forward refs like
+    # ``Annotated[list, add_messages]``, and fails with ``NameError`` for a custom agent authored
+    # via a file-path ``code:`` ref. Registering it also lets the module's dataclasses/enums pickle.
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception:
+        sys.modules.pop(spec.name, None)  # don't leave a half-initialised module registered
+        raise
     return module
