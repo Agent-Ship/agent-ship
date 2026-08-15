@@ -10,9 +10,10 @@ Named cells that pin the phase's core promises against the LangGraph engine:
   the other gets ``ThreadBusyError``.
 * ``regression_single_agent`` — a plain non-durable agent is unchanged (mints no token).
 
-Two cells are deferred with cause: ``replay_idempotency`` (needs tool execution — P03; the
-``call_once`` primitive itself is proven in ``test_idempotency.py``) and ``reclaim_mid_flight``
-(needs a lock-lease-loss/connection-death simulation). ``hitl_reject`` is proven in the engine suite
+``replay_idempotency`` now lands here (unblocked by P03 tool execution): a side-effecting tool is
+wrapped in ``call_once``, so a resumed invocation with the same args replays the recorded result
+instead of re-firing the effect. One cell stays deferred with cause: ``reclaim_mid_flight`` (needs a
+lock-lease-loss/connection-death simulation). ``hitl_reject`` is proven in the engine suite
 (``test_langgraph_hitl.py``).
 """
 
@@ -95,6 +96,37 @@ async def test_cell_two_workers_one_thread():
     await started.wait()
     await asyncio.gather(first, asyncio.create_task(worker(0.0)))
     assert sorted(outcomes) == ["busy", "held"]
+
+
+async def test_cell_replay_idempotency():
+    """A side-effecting tool fires exactly once across a replay (the P02-deferred cell, now landed).
+
+    Mirrors "counting side-effect tool → kill after tool → resume": the tool wrapper routes a
+    side-effecting call through ``call_once`` keyed by the canonical ``idem_key``, so re-invoking it
+    with the same args (what a resumed run does) reads the recorded result and never re-fires.
+    """
+    from agentship.context import current_run
+    from agentship.tools import Tool
+    from agentship_langgraph.tools import to_langchain_tool
+    from pydantic import BaseModel
+
+    class _Args(BaseModel):
+        label: str
+
+    fired: list[str] = []
+    tool = to_langchain_tool(
+        Tool("charge", "charges once", lambda label: fired.append(label) or "charged",
+             args_schema=_Args, side_effecting=True)
+    )
+    token = current_run.set(_ctx("cell-idem"))
+    try:
+        first = await tool.ainvoke({"label": "order-1"})
+        replay = await tool.ainvoke({"label": "order-1"})  # the resume re-fire
+    finally:
+        current_run.reset(token)
+
+    assert len(fired) == 1, "side effect fired more than once across the replay"
+    assert first == replay
 
 
 async def test_cell_regression_single_agent(fake_model):

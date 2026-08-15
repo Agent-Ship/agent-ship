@@ -10,8 +10,70 @@ from __future__ import annotations
 
 import json
 
+from agentship.context import Caller, RunContext, RunMode, current_run
 from agentship.spec import AgentSpec
+from agentship.tools import Tool
 from agentship_langgraph.engine import LangGraphEngine
+from agentship_langgraph.tools import to_langchain_tool
+from pydantic import BaseModel
+
+
+class _BumpArgs(BaseModel):
+    label: str
+
+
+def _ctx(thread: str) -> RunContext:
+    return RunContext(
+        caller=Caller(user_id="u"),
+        session_id=thread,
+        run_id="r",
+        agent_name="a",
+        mode=RunMode.INVOKE,
+    )
+
+
+async def test_side_effecting_tool_fires_exactly_once_on_replay():
+    """A side-effecting tool invoked twice with the same args (a resume re-fire) fires ONCE.
+
+    This is the P02-deferred ``replay_idempotency`` guarantee: the engine wraps side-effecting tool
+    calls in ``call_once`` keyed by ``idem_key(thread, node, tool, args)``, so a resumed run reads
+    the recorded result instead of re-firing the effect.
+    """
+    calls = {"n": 0}
+
+    def bump(label: str) -> str:
+        calls["n"] += 1
+        return f"bumped {label} (call #{calls['n']})"
+
+    lc = to_langchain_tool(Tool("bump", "increments a counter", bump, args_schema=_BumpArgs,
+                                side_effecting=True))
+    token = current_run.set(_ctx("idem-thread"))
+    try:
+        first = await lc.ainvoke({"label": "x"})
+        again = await lc.ainvoke({"label": "x"})  # the resume re-invocation
+    finally:
+        current_run.reset(token)
+
+    assert calls["n"] == 1, "the side effect fired more than once across the replay"
+    assert first == again  # the recorded result is replayed byte-identically
+
+
+async def test_pure_tool_is_not_memoised():
+    """A non-side-effecting tool is not idempotency-gated — each invocation runs (no cache)."""
+    calls = {"n": 0}
+
+    def peek(label: str) -> str:
+        calls["n"] += 1
+        return f"read {label}"
+
+    lc = to_langchain_tool(Tool("peek", "reads", peek, args_schema=_BumpArgs))
+    token = current_run.set(_ctx("pure-thread"))
+    try:
+        await lc.ainvoke({"label": "x"})
+        await lc.ainvoke({"label": "x"})
+    finally:
+        current_run.reset(token)
+    assert calls["n"] == 2
 
 
 def test_langgraph_declares_tool_calling():
