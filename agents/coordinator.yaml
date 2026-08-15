@@ -1,0 +1,23 @@
+# The coordinator: a thin classifier that routes a request to the quick or the deep agent.
+#
+# It does ONE job — decide whether a request needs a fast single-turn lookup (quick-search) or a
+# long, iterative, human-in-the-loop investigation (deep-research) — and answers with a single word.
+# The demos/coordinated_research.py driver reads that label and dispatches to the matching STANDALONE
+# agent, so the deep agent runs as its own durable top-level graph (its pause/resume works natively).
+# The coordinator deliberately does NOT own the deep agent as a sub-agent: a supervisor's dispatch
+# does not propagate a sub-agent's human-in-the-loop pause, so routing-then-dispatch is what keeps
+# the deep agent's checkpoint/interrupt/resume intact.
+#
+#   agentship run agents/coordinator.yaml --input "Who is the CEO of OpenAI?"        -> quick
+#   agentship run agents/coordinator.yaml --input "Compare every EU AI regulation"   -> deep
+name: coordinator
+engine: langgraph
+template: single
+model: openai/gpt-4o-mini
+durability: none
+prompt: >-
+  You are a routing coordinator. Decide whether the user's request needs QUICK or DEEP research.
+  QUICK = a single fact or a simple, current lookup answerable in one web search (a name, a date, a
+  score, a definition). DEEP = a broad, multi-part, or comparative investigation that needs several
+  rounds of searching and synthesis (surveys, comparisons, "state of X", trade-off analyses).
+  Respond with EXACTLY one lowercase word and nothing else: quick or deep.

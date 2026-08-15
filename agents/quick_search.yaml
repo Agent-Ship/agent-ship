@@ -1,0 +1,21 @@
+# The "quick agent": a single-turn web search that answers in seconds.
+#
+# The fast counterpart to agents/deep_research.yaml. A plain ReAct single-agent (the `single`
+# template) with the built-in `web_search` tool: it does ONE turn — search, then answer — with no
+# rounds, no checkpoints, no human pause. `durability: none` because a quick lookup has nothing
+# worth checkpointing; if it fails you just re-run it.
+#
+#   agentship run agents/quick_search.yaml --input "Who won the 2026 Super Bowl?" --verbose
+#
+# Real results need BRAVE_API_KEY (else the tool returns an actionable setup message).
+name: quick-search
+engine: langgraph
+template: single
+model: openai/gpt-4o-mini
+durability: none
+tools:
+  - web_search
+prompt: >-
+  You are a fast web-search assistant. For a question that needs current information, call the
+  web_search tool ONCE, then answer concisely in a sentence or two citing what you found. Do not
+  overthink it — this is the quick path, not deep research.

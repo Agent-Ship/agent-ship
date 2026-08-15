@@ -1,0 +1,17 @@
+# The "long agent": a durable, iterative, human-in-the-loop deep-research agent.
+#
+# Authored natively in LangGraph (deep_research/graph.py). It plans sub-queries, searches the web,
+# reflects and deepens for a few automatic rounds, then PAUSES to ask the human "go deeper?" before
+# spending more effort. Because durability is `checkpoint`, every round is checkpointed — the run
+# survives a crash or hours of waiting for the human and resumes from the exact frontier, then
+# synthesizes a final report.
+#
+#   agentship run agents/deep_research.yaml --input "State of small nuclear reactors in 2026"
+#     -> runs a couple of rounds, then returns a resume token (paused, asking to go deeper)
+#   resume with {"go_deeper": false} -> writes the report; {"go_deeper": true} -> another round
+#
+# Real web results need BRAVE_API_KEY (else each search returns a clearly-labelled stub — the loop
+# still runs). Tune the automatic rounds with DEEP_RESEARCH_AUTO_ROUNDS (default 2).
+name: deep-research
+engine: langgraph
+code: deep_research/graph.py:build_agent

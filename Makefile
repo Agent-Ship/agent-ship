@@ -52,6 +52,12 @@ INPUT ?=
 run:
 	$(VENV)/bin/agentship run agents/assistant.yaml --input "$(if $(INPUT),$(INPUT),Give one productivity tip.)"
 
+## research: classify a request, then run the quick or deep research agent end-to-end
+##   usage: make research INPUT="Compare small modular reactor vendors in 2026"
+##   deep path pauses for "go deeper?"; set DEEP_APPROVE_ROUNDS=N to approve extra rounds
+research:
+	$(PY) demos/coordinated_research.py "$(if $(INPUT),$(INPUT),Compare small modular reactor vendors in 2026)"
+
 ## clean: remove the venv and caches
 clean:
 	rm -rf $(VENV) .pytest_cache tests/__pycache__
