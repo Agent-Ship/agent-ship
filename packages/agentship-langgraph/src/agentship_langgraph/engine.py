@@ -244,7 +244,9 @@ class LangGraphEngine(Engine):
 
         from .tools import to_langchain_tool
 
-        tools = [to_langchain_tool(resolve_tool(ref)) for ref in (spec.tools or [])]
+        confirm = spec.confirm_writes
+        tools = [to_langchain_tool(resolve_tool(ref), confirm_writes=confirm)
+                 for ref in (spec.tools or [])]
         if spec.mcp:
             from .mcp import discover_mcp_tools_sync
 

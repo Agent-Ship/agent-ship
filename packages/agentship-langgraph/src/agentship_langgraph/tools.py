@@ -44,21 +44,32 @@ class _ToolInvocation:
         return f"(idempotency) a prior '{self._tool.name}' call may have completed; not re-run"
 
 
-def to_langchain_tool(tool: Tool) -> StructuredTool:
+def to_langchain_tool(tool: Tool, *, confirm_writes: bool = False) -> StructuredTool:
     """Wrap a core :class:`~agentship.tools.Tool` as a LangChain ``StructuredTool``.
 
     The wrapper exposes the tool's ``name``/``description``/``args_schema`` (so the model sees a
     typed tool-call) and routes execution to the core tool's async ``run`` — the single source of
     truth for what the tool does, whether it is a built-in tool, an authored function, or an MCP
-    tool. A tool marked ``side_effecting`` is run through :func:`~agentship.primitives.idempotency.
-    call_once` keyed by ``idem_key(thread_id, "tool", name, args)`` so a resumed run replays the
-    recorded result instead of re-firing the effect (Phase 03 · C4).
+    tool. Two behaviours attach to a ``side_effecting`` tool:
+
+    - **HITL confirm** (``confirm_writes``, Phase 03 · C5): before the effect runs, the wrapper
+      ``interrupt()``\\s with the pending write so a human approves it; a non-``approved`` decision
+      returns a "rejected" message and the effect never fires.
+    - **Exactly-once** (Phase 03 · C4): execution goes through
+      :func:`~agentship.primitives.idempotency.call_once` keyed by ``idem_key(thread_id, "tool",
+      name, args)`` so a resumed run replays the recorded result instead of re-firing.
     """
 
     async def _run(**kwargs: object) -> str:
         """Async coroutine LangChain invokes — delegates to the core tool's ``run``."""
         if not tool.side_effecting:
             return await tool.run(**kwargs)
+        if confirm_writes:
+            from langgraph.types import interrupt
+
+            decision = interrupt({"action": "confirm_write", "tool": tool.name, "args": kwargs})
+            if not (isinstance(decision, dict) and decision.get("approved")):
+                return f"the write to {tool.name!r} was rejected by the human and was not executed"
         thread_id = get_run_context().session_id
         key = idem_key(thread_id, "tool", tool.name, kwargs)
         return await call_once(_TOOL_LEDGER, key, _ToolInvocation(tool, dict(kwargs)),

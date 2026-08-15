@@ -58,6 +58,92 @@ async def test_side_effecting_tool_fires_exactly_once_on_replay():
     assert first == again  # the recorded result is replayed byte-identically
 
 
+async def test_side_effecting_tool_asks_for_approval_before_firing():
+    """With ``confirm_writes``, a side-effecting tool interrupts for approval; approve → fires once.
+
+    Drives the wrapped tool from a minimal checkpointed graph (standing in for the ReAct tool node):
+    the first invoke pauses (``__interrupt__`` present, effect not fired); resuming with
+    ``{"approved": true}`` runs the effect exactly once.
+    """
+    from langgraph.checkpoint.memory import InMemorySaver
+    from langgraph.graph import END, START, StateGraph
+    from langgraph.types import Command
+    from typing_extensions import TypedDict
+
+    sent: list[str] = []
+
+    def send_email(label: str) -> str:
+        sent.append(label)
+        return f"sent to {label}"
+
+    wrapped = to_langchain_tool(
+        Tool("send_email", "sends email", send_email, args_schema=_BumpArgs, side_effecting=True),
+        confirm_writes=True,
+    )
+
+    class _S(TypedDict, total=False):
+        result: str
+
+    async def call_tool(_state: _S) -> dict:
+        return {"result": await wrapped.ainvoke({"label": "a@b.com"})}
+
+    g = StateGraph(_S)
+    g.add_node("t", call_tool)
+    g.add_edge(START, "t")
+    g.add_edge("t", END)
+    graph = g.compile(checkpointer=InMemorySaver())
+    cfg = {"configurable": {"thread_id": "hitl-approve"}}
+
+    token = current_run.set(_ctx("hitl-approve"))
+    try:
+        paused = await graph.ainvoke({}, config=cfg)
+        assert "__interrupt__" in paused and sent == []  # paused for approval, not fired
+        done = await graph.ainvoke(Command(resume={"approved": True}), config=cfg)
+    finally:
+        current_run.reset(token)
+
+    assert sent == ["a@b.com"]  # fired exactly once after approval
+    assert "sent to" in done["result"]
+
+
+async def test_rejected_write_is_never_executed():
+    """A non-approved decision returns a rejection and the side effect never fires."""
+    from langgraph.checkpoint.memory import InMemorySaver
+    from langgraph.graph import END, START, StateGraph
+    from langgraph.types import Command
+    from typing_extensions import TypedDict
+
+    sent: list[str] = []
+    wrapped = to_langchain_tool(
+        Tool("send_email", "sends", lambda label: sent.append(label) or "ok",
+             args_schema=_BumpArgs, side_effecting=True),
+        confirm_writes=True,
+    )
+
+    class _S(TypedDict, total=False):
+        result: str
+
+    async def call_tool(_state: _S) -> dict:
+        return {"result": await wrapped.ainvoke({"label": "x"})}
+
+    g = StateGraph(_S)
+    g.add_node("t", call_tool)
+    g.add_edge(START, "t")
+    g.add_edge("t", END)
+    graph = g.compile(checkpointer=InMemorySaver())
+    cfg = {"configurable": {"thread_id": "hitl-reject"}}
+
+    token = current_run.set(_ctx("hitl-reject"))
+    try:
+        await graph.ainvoke({}, config=cfg)
+        done = await graph.ainvoke(Command(resume={"approved": False}), config=cfg)
+    finally:
+        current_run.reset(token)
+
+    assert sent == []  # never fired
+    assert "rejected" in done["result"]
+
+
 async def test_pure_tool_is_not_memoised():
     """A non-side-effecting tool is not idempotency-gated — each invocation runs (no cache)."""
     calls = {"n": 0}

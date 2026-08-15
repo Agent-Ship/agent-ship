@@ -153,6 +153,10 @@ class AgentSpec(BaseModel):
     #: **or** MCP) whose name is listed are bound — the guard against many MCP servers flooding the
     #: model with hundreds of tools. ``None`` means expose every resolved tool.
     allowed_tools: list[str] | None = None
+    #: When true, a **side-effecting** tool pauses for human approval (HITL) *before* it runs — the
+    #: engine ``interrupt()``\\s with the pending write, and the run resumes only on an
+    #: ``{"approved": true}`` decision. Requires a durable run (``durability: checkpoint``).
+    confirm_writes: bool = False
     model: str | None = None
     prompt: str | None = None
     #: Optional generation params (temperature/max_tokens/api_base/timeout) threaded
