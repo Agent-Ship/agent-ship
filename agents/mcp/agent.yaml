@@ -1,0 +1,22 @@
+# Phase 03 demo: an agent that uses a LOCAL MCP server. Zero author code.
+#
+# The `mcp:` block connects to a local stdio MCP server (agents/mcp/time_server.py) via
+# langchain-mcp-adapters — no hand-rolled MCP client. Its `days_between` tool is discovered
+# and bound automatically; the model calls it and answers. A remote server would look
+# identical but with `transport: streamable_http` + a `url:`.
+#
+# Needs the MCP extra:  pip install "agentship-langgraph[mcp]"
+#   agentship run agents/mcp/agent.yaml --input "How many days from 2026-01-01 to 2026-08-14?"
+name: mcp-agent
+engine: langgraph
+template: single
+model: openai/gpt-4o-mini
+mcp:
+  time:
+    transport: stdio
+    command: python3
+    args:
+      - agents/mcp/time_server.py
+prompt: >-
+  You are a precise assistant. Use the available tools for date math rather than computing
+  it yourself, then state the answer in one short sentence.
