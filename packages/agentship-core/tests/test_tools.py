@@ -42,3 +42,43 @@ def test_resolve_unknown_tool_is_a_spec_error():
     """An unresolvable tool reference fails fast with an actionable :class:`SpecError`."""
     with pytest.raises(SpecError, match="nope-not-a-tool"):
         resolve_tool("nope-not-a-tool")
+
+
+@pytest.fixture
+def http_server():
+    """A tiny local HTTP server returning JSON on GET — for the http_request tool test."""
+    import http.server
+    import socketserver
+    import threading
+
+    class _Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802 - stdlib handler name
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"hello":"world"}')
+
+        def log_message(self, *args):  # silence the server's stderr logging
+            pass
+
+    srv = socketserver.TCPServer(("127.0.0.1", 0), _Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        yield srv.server_address[1]
+    finally:
+        srv.shutdown()
+
+
+async def test_http_request_performs_a_get(http_server):
+    """The built-in http_request tool GETs a URL and returns status + body."""
+    tool = resolve_tool("http_request")
+    assert tool.name == "http_request"
+    out = json.loads(await tool.run(url=f"http://127.0.0.1:{http_server}/"))
+    assert out["status"] == 200
+    assert "world" in out["body"]
+
+
+async def test_http_request_empty_url_is_a_clean_error():
+    """A missing URL returns a clean error payload, not a crash."""
+    out = json.loads(await resolve_tool("http_request").run(url=""))
+    assert "error" in out

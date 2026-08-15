@@ -3,5 +3,6 @@
 from __future__ import annotations
 
 from .calculator import calculator
+from .http_request import http_request
 
-__all__ = ["calculator"]
+__all__ = ["calculator", "http_request"]

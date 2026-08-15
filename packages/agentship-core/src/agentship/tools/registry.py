@@ -14,6 +14,7 @@ import importlib
 from ..errors import SpecError
 from ..registry import Registry
 from .builtins.calculator import calculator
+from .builtins.http_request import http_request
 from .tool import Tool
 
 #: The registry of tools, discoverable via the ``agentship.tools`` entry-point group.
@@ -21,6 +22,7 @@ TOOLS: Registry[Tool] = Registry("agentship.tools", label="tool")
 
 # Register the built-in tools carried forward from the old repo.
 TOOLS.register("calculator", calculator)
+TOOLS.register("http_request", http_request)
 
 
 def resolve_tool(ref: str) -> Tool:
