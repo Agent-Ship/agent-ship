@@ -47,6 +47,52 @@ def test_member_defaults_have_no_ref_or_description():
     assert member.description is None
 
 
+def test_mcp_servers_load_from_yaml(tmp_path):
+    """An ``mcp:`` block declares local (stdio) and remote (streamable_http) MCP servers."""
+    f = tmp_path / "a.yaml"
+    f.write_text(
+        textwrap.dedent(
+            """
+            name: a
+            engine: langgraph
+            model: openai/gpt-4o-mini
+            mcp:
+              files:
+                transport: stdio
+                command: npx
+                args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+              github:
+                transport: streamable_http
+                url: https://api.githubcopilot.com/mcp/
+                headers:
+                  Authorization: Bearer TOKEN
+            """
+        )
+    )
+    spec = load_spec(f)
+    assert set(spec.mcp) == {"files", "github"}
+    assert spec.mcp["files"].transport == "stdio"
+    assert spec.mcp["files"].command == "npx"
+    assert spec.mcp["github"].transport == "streamable_http"
+    assert spec.mcp["github"].url.endswith("/mcp/")
+
+
+def test_stdio_mcp_server_requires_a_command():
+    """A stdio server without a ``command`` is a coherence error (nothing to spawn)."""
+    from agentship.spec import McpServerSpec
+
+    with pytest.raises(SpecError, match="command"):
+        McpServerSpec(transport="stdio")
+
+
+def test_http_mcp_server_requires_a_url():
+    """A streamable_http server without a ``url`` is a coherence error (nowhere to connect)."""
+    from agentship.spec import McpServerSpec
+
+    with pytest.raises(SpecError, match="url"):
+        McpServerSpec(transport="streamable_http")
+
+
 def test_load_spec_parses_yaml(tmp_path):
     """A well-formed YAML file loads into an AgentSpec with its fields populated."""
     f = tmp_path / "a.yaml"

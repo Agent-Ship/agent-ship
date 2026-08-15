@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from .errors import SpecError
 
@@ -57,6 +57,36 @@ class MemberSpec(BaseModel):
                 f"member {self.name!r} sets both ref: {self.ref!r} and an inline prompt — a "
                 f"referenced sub-agent already brings its own prompt. Use one or the other."
             )
+        return self
+
+
+class McpServerSpec(BaseModel):
+    """One MCP server the agent connects to — the vendor-neutral half of the ``mcp:`` block.
+
+    An MCP server is reached over one of two transports: **``stdio``** (a **local** server the
+    client spawns as a subprocess — needs ``command`` + ``args``) or **``streamable_http``** (a
+    **remote** server the client connects to over HTTP — needs ``url`` + optional ``headers``). Plain
+    protocol config; the LangGraph adapter hands it to ``langchain-mcp-adapters``'
+    ``MultiServerMCPClient`` (we do not hand-roll the client — see the P03 spec / memory).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    transport: Literal["stdio", "streamable_http"]
+    #: stdio: the executable to spawn (e.g. ``npx``) and its arguments.
+    command: str | None = None
+    args: list[str] = Field(default_factory=list)
+    #: streamable_http: the server endpoint and optional static headers (e.g. an auth bearer).
+    url: str | None = None
+    headers: dict[str, str] | None = None
+
+    @model_validator(mode="after")
+    def _check_transport_coherence(self) -> McpServerSpec:
+        """Require the field the chosen transport needs: stdio→``command``, http→``url``."""
+        if self.transport == "stdio" and not self.command:
+            raise SpecError("stdio MCP server needs a `command` to spawn (nothing to launch)")
+        if self.transport == "streamable_http" and not self.url:
+            raise SpecError("streamable_http MCP server needs a `url` to connect to")
         return self
 
 
@@ -111,6 +141,10 @@ class AgentSpec(BaseModel):
     #: and the capability gate can reason about tool use honestly. ``None`` means
     #: "no tools", distinct from an explicit empty list.
     tools: list[str] | None = None
+    #: MCP servers this agent connects to, keyed by a local name. Each entry is an
+    #: :class:`McpServerSpec` (a local ``stdio`` or remote ``streamable_http`` server); their tools
+    #: are discovered via ``langchain-mcp-adapters`` and bound alongside native ``tools``.
+    mcp: dict[str, McpServerSpec] | None = None
     model: str | None = None
     prompt: str | None = None
     #: Optional generation params (temperature/max_tokens/api_base/timeout) threaded
