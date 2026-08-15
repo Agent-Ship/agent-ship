@@ -102,6 +102,40 @@ def test_doctor_deepagents_version_drift_is_flagged(tmp_path):
     assert "Traceback" not in drift_result.output
 
 
+def test_doctor_mcp_version_out_of_range_is_flagged(tmp_path):
+    """An agent declaring mcp: servers is flagged when the installed mcp SDK is out of range.
+
+    Green when the installed mcp is within >=1.28,<2; simulating drift (patching the supported
+    minimum above the installed version) must make doctor exit 1 with an actionable pip hint —
+    proving the guard is wired, not dormant.
+    """
+    import pytest
+
+    pytest.importorskip("mcp")
+    import agentship_langgraph.mcp as mcp_mod
+
+    _write(
+        tmp_path / "m.yaml",
+        "name: files\nengine: langgraph\nmodel: openai/gpt-4o-mini\n"
+        "mcp:\n  fs:\n    transport: stdio\n    command: echo\n",
+    )
+    runner = CliRunner()
+
+    ok_result = runner.invoke(main, ["doctor", str(tmp_path / "m.yaml")])
+    assert ok_result.exit_code == 0, ok_result.output
+
+    saved = mcp_mod._MCP_MIN
+    mcp_mod._MCP_MIN = (99, 0)
+    try:
+        drift_result = runner.invoke(main, ["doctor", str(tmp_path / "m.yaml")])
+    finally:
+        mcp_mod._MCP_MIN = saved
+    assert drift_result.exit_code == 1
+    assert "mcp" in drift_result.output
+    assert "pip install" in drift_result.output
+    assert "Traceback" not in drift_result.output
+
+
 def test_doctor_bad_yaml_is_a_clean_error(tmp_path):
     """Malformed YAML reports a clean Error/status line, exit 1, no traceback."""
     _write(tmp_path / "broken.yaml", "name: [unclosed\n")

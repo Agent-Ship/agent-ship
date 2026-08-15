@@ -13,7 +13,14 @@ from pathlib import Path
 
 from agentship.spec import AgentSpec, McpServerSpec
 from agentship_langgraph.engine import LangGraphEngine
-from agentship_langgraph.mcp import to_connections
+from agentship_langgraph.mcp import mcp_version_ok, to_connections
+
+
+def test_mcp_version_guard_accepts_the_installed_pin():
+    """With the pinned mcp SDK installed, the version guard reports OK (>=1.28,<2)."""
+    ok, installed = mcp_version_ok()
+    assert ok is True
+    assert installed is not None and installed.startswith("1.")
 
 _FIXTURE = str(Path(__file__).parent / "fixtures" / "mcp_echo_server.py")
 

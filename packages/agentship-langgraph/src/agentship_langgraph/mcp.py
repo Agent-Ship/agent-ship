@@ -21,6 +21,32 @@ if TYPE_CHECKING:
     from langchain_core.tools import BaseTool
 
 
+#: The supported ``mcp`` SDK range: ``>=1.28,<2``. v2 reshaped the client API the adapters target,
+#: so an out-of-range install is flagged by ``agentship doctor`` (see :func:`mcp_version_ok`).
+_MCP_MIN = (1, 28)
+_MCP_MAX_EXCLUSIVE = (2, 0)
+
+
+def mcp_version_ok() -> tuple[bool, str | None]:
+    """Return ``(ok, installed_version)`` for the ``agentship doctor`` MCP version guard.
+
+    ``ok`` is ``True`` only when the ``mcp`` SDK is installed *and* its version is within
+    ``>=1.28,<2``. When ``mcp`` is not installed the version is ``None`` and ``ok`` is ``False``
+    (an agent with ``mcp:`` servers cannot connect). Never raises.
+    """
+    try:
+        from importlib.metadata import PackageNotFoundError, version
+
+        try:
+            installed = version("mcp")
+        except PackageNotFoundError:
+            return (False, None)
+    except Exception:  # noqa: BLE001 - a metadata hiccup must not crash doctor
+        return (False, None)
+    parts = tuple(int(p) for p in installed.split(".")[:2] if p.isdigit())
+    return (_MCP_MIN <= parts < _MCP_MAX_EXCLUSIVE, installed)
+
+
 def to_connections(mcp: dict[str, McpServerSpec]) -> dict[str, dict[str, Any]]:
     """Translate the spec's ``mcp:`` block into a ``MultiServerMCPClient`` connections dict.
 

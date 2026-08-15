@@ -231,7 +231,35 @@ def _check_agent(path: Path) -> str | None:
     deepagents_reason = _check_deepagents_version(spec)
     if deepagents_reason is not None:
         return deepagents_reason
+    mcp_reason = _check_mcp_version(spec)
+    if mcp_reason is not None:
+        return mcp_reason
     return None
+
+
+def _check_mcp_version(spec) -> str | None:
+    """Guard an agent that declares ``mcp:`` servers against a missing/out-of-range ``mcp`` SDK.
+
+    Returns an actionable reason when the ``[mcp]`` extra is not installed or the installed ``mcp``
+    version is outside the supported ``>=1.28,<2`` range, or ``None`` when the spec has no ``mcp:``
+    servers or the install is fine. Never raises — if the langgraph adapter is not importable here
+    the guard is simply skipped.
+    """
+    if not getattr(spec, "mcp", None):
+        return None
+    try:
+        from agentship_langgraph.mcp import mcp_version_ok
+    except ImportError:
+        return None
+    ok, installed = mcp_version_ok()
+    if ok:
+        return None
+    if installed is None:
+        return "this agent declares mcp: servers — pip install 'agentship-langgraph[mcp]'"
+    return (
+        f"mcp {installed} is installed but agentship needs mcp>=1.28,<2 "
+        f"(v2 reshaped the client API) — pip install 'mcp>=1.28,<2'"
+    )
 
 
 def _check_deepagents_version(spec) -> str | None:
