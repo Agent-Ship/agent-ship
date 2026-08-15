@@ -1,0 +1,17 @@
+# Phase 03 demo: an autonomous deepagents agent that USES A TOOL. Zero author code.
+#
+# `template: deepagents` builds an autonomous planning/sub-agent/filesystem loop (the deepagents
+# library) over the wired model + tools. Now that tool execution is wired (Phase 03), it can drive
+# a full autonomous turn — here it uses the built-in calculator to answer a multi-step question.
+#
+# Needs the deepagents extra:  pip install "agentship-langgraph[deepagents]"
+#   agentship run agents/deepagent.yaml --input "What is (18 * 7) + (100 / 4)?"
+name: deep-calc
+engine: langgraph
+template: deepagents
+model: openai/gpt-4o-mini
+tools:
+  - calculator
+prompt: >-
+  You are a careful problem-solver. Break the task into steps and use the calculator tool for
+  every arithmetic operation. Give the final numeric answer in one short sentence.
