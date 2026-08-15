@@ -236,7 +236,9 @@ class LangGraphEngine(Engine):
 
         When ``spec.mcp`` declares MCP servers, their tools are discovered via
         ``langchain-mcp-adapters`` (:func:`~agentship_langgraph.mcp.discover_mcp_tools_sync`) and
-        appended — an MCP tool and a native skill are indistinguishable to the graph.
+        appended — an MCP tool and a native tool are indistinguishable to the graph. Finally, when
+        ``spec.allowed_tools`` is set, the combined list is filtered to those names (the guard
+        against many MCP servers flooding the model with tools).
         """
         from agentship.tools import resolve_tool
 
@@ -247,6 +249,9 @@ class LangGraphEngine(Engine):
             from .mcp import discover_mcp_tools_sync
 
             tools.extend(discover_mcp_tools_sync(spec.mcp))
+        if spec.allowed_tools is not None:
+            allow = set(spec.allowed_tools)
+            tools = [t for t in tools if t.name in allow]
         return tools
 
     def _build_graph(self, model: BaseChatModel) -> Any:

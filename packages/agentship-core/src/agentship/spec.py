@@ -149,6 +149,10 @@ class AgentSpec(BaseModel):
     #: SKILL.md folder (the Agent Skills format). Their instructions augment the system prompt so
     #: the model knows *how* to use its tools/MCP. Distinct from ``tools`` (executable ones).
     skills: list[str] | None = None
+    #: Optional allow-list of tool names to expose to the model. When set, only tools (native
+    #: **or** MCP) whose name is listed are bound — the guard against many MCP servers flooding the
+    #: model with hundreds of tools. ``None`` means expose every resolved tool.
+    allowed_tools: list[str] | None = None
     model: str | None = None
     prompt: str | None = None
     #: Optional generation params (temperature/max_tokens/api_base/timeout) threaded

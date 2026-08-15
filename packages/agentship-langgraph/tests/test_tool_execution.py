@@ -39,3 +39,16 @@ def test_no_tools_resolves_to_empty_list():
     """A spec with no ``tools:`` still builds with an empty tool list (unchanged behaviour)."""
     spec = AgentSpec(name="a", engine="langgraph", model="x")
     assert LangGraphEngine()._resolve_tools(spec) == []
+
+
+def test_allowed_tools_filters_the_bound_set():
+    """``allowed_tools`` curates which resolved tools are exposed (the 10-MCP overload guard)."""
+    keep = AgentSpec(
+        name="a", engine="langgraph", model="x", tools=["calculator"], allowed_tools=["calculator"]
+    )
+    assert [t.name for t in LangGraphEngine()._resolve_tools(keep)] == ["calculator"]
+
+    drop = AgentSpec(
+        name="a", engine="langgraph", model="x", tools=["calculator"], allowed_tools=["other"]
+    )
+    assert LangGraphEngine()._resolve_tools(drop) == []
