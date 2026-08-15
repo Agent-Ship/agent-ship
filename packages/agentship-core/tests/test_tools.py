@@ -82,3 +82,19 @@ async def test_http_request_empty_url_is_a_clean_error():
     """A missing URL returns a clean error payload, not a crash."""
     out = json.loads(await resolve_tool("http_request").run(url=""))
     assert "error" in out
+
+
+async def test_web_search_without_a_key_explains_setup(monkeypatch):
+    """web_search resolves and, with no BRAVE_API_KEY, returns an actionable setup error."""
+    monkeypatch.delenv("BRAVE_API_KEY", raising=False)
+    tool = resolve_tool("web_search")
+    assert tool.name == "web_search"
+    out = json.loads(await tool.run(query="agentship"))
+    assert "error" in out
+    assert "BRAVE_API_KEY" in (out.get("error", "") + out.get("setup", ""))
+
+
+async def test_web_search_empty_query_is_a_clean_error():
+    """An empty query returns a clean error, not a crash."""
+    out = json.loads(await resolve_tool("web_search").run(query="  "))
+    assert "error" in out
