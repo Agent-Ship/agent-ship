@@ -28,12 +28,17 @@ agentship doctor agents/           # validates every agent YAML; flags bad specs
 
 ## 1. Tool calling — the calculator
 
-The model calls a real tool instead of doing math itself. `--verbose` shows nothing extra here
-(single agents don't log routing), but the answer proves the tool ran.
+The model calls a real tool instead of doing math itself. `--verbose` surfaces each tool
+invocation on stderr so you can *see* that the model actually called the tool rather than answering
+from its own knowledge.
 
 ```bash
-agentship run agents/calculator.yaml --input "What is (45 * 3) - 17?"
-# expect: "... 118."
+agentship run agents/calculator.yaml --input "What is (45 * 3) - 17?" --verbose
+# stdout: "... 118."
+# stderr (interleaved): lines like:
+#   · tool call: calculator({"expression": "45 * 3 - 17"})
+#   ·   -> {"expression": "45 * 3 - 17", "result": 118}
+
 agentship run agents/calculator.yaml --input "What is 2 to the power of 12, minus 96?"
 # expect: 4000
 ```
@@ -119,13 +124,15 @@ cd ../agentship
 cd ../agentship-demo
 ```
 
-## 8. deepagents — an autonomous multi-step agent that uses a tool
+## 8. autonomous — a single self-directing agent that uses a tool
 
-`agents/deepagent.yaml` runs the deepagents planning loop and uses the calculator for each step.
+`agents/autonomous.yaml` runs one autonomous planning loop (the `autonomous` template, wrapping the
+deepagents library) and uses the calculator for each step. This is ONE agent driving itself — not
+the multi-agent supervisor (that is section 9).
 
 ```bash
-agentship run agents/deepagent.yaml --input "What is (18 * 7) + (100 / 4)?"      # expect 151
-agentship run agents/deepagent.yaml --input "If I save $250/month for 18 months, how much total? Then subtract a $400 fee."
+agentship run agents/autonomous.yaml --input "What is (18 * 7) + (100 / 4)?"      # expect 151
+agentship run agents/autonomous.yaml --input "If I save $250/month for 18 months, how much total? Then subtract a $400 fee."
 ```
 
 ## 9. Multi-agent (from Phase 02) — routing + fan-out + durable resume

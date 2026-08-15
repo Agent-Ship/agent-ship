@@ -1,0 +1,20 @@
+# Phase 03 demo: a single autonomous agent that USES A TOOL. Zero author code.
+#
+# `template: autonomous` builds one self-directing planning/sub-agent/filesystem loop (wrapping the
+# deepagents library) over the wired model + tools. Now that tool execution is wired (Phase 03), it
+# can drive a full autonomous turn — here it uses the built-in calculator to answer a multi-step
+# question. (This is ONE agent driving itself, not the multi-agent supervisor — that is the graph.)
+#
+# Needs the autonomous extra:  pip install "agentship-langgraph[autonomous]"
+#   agentship run agents/autonomous.yaml --input "What is (18 * 7) + (100 / 4)?"
+name: auto-calc
+engine: langgraph
+template: autonomous
+model: openai/gpt-4o-mini
+tools:
+  - calculator
+prompt: >-
+  You are a careful problem-solver. Break the task into steps and use the calculator tool for
+  every arithmetic operation. Give the final numeric answer in one short sentence.
+
+
