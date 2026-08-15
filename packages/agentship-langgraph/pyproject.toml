@@ -22,6 +22,11 @@ dependencies = [
 # `agentship doctor` flags a version mismatch (see templates/deepagents_tpl.py).
 [project.optional-dependencies]
 deepagents = ["deepagents==0.6.12"]
+# MCP tools (Phase 03 §C3): consume the OSS client stack — do NOT hand-roll it.
+# `langchain-mcp-adapters` (MultiServerMCPClient) connects to local stdio + remote streamable-HTTP
+# MCP servers and returns LangChain tools the engine binds. `mcp` is pinned <2 because v2 reshaped
+# the client API the adapters target. Opt-in: a bare install runs without MCP; imported lazily.
+mcp = ["langchain-mcp-adapters>=0.3", "mcp>=1.28,<2"]
 # Durable checkpointing (Phase 02 §C4): the AsyncPostgresSaver + its psycopg driver.
 # Opt-in so a bare install runs on the in-memory saver; `pip install agentship-langgraph[postgres]`
 # turns on crash-durable, resumable runs. Pairs with agentship-core[postgres] (the ThreadLock).

@@ -229,12 +229,21 @@ class LangGraphEngine(Engine):
         reference) and converted to a LangChain ``StructuredTool`` the ``single`` template binds
         into its ReAct loop. ``None``/empty ``tools`` yields ``[]`` (unchanged). A bad reference
         fails fast via :class:`~agentship.errors.SpecError`.
+
+        When ``spec.mcp`` declares MCP servers, their tools are discovered via
+        ``langchain-mcp-adapters`` (:func:`~agentship_langgraph.mcp.discover_mcp_tools_sync`) and
+        appended — an MCP tool and a native skill are indistinguishable to the graph.
         """
         from agentship.tools import resolve_tool
 
         from .tools import to_langchain_tool
 
-        return [to_langchain_tool(resolve_tool(ref)) for ref in (spec.tools or [])]
+        tools = [to_langchain_tool(resolve_tool(ref)) for ref in (spec.tools or [])]
+        if spec.mcp:
+            from .mcp import discover_mcp_tools_sync
+
+            tools.extend(discover_mcp_tools_sync(spec.mcp))
+        return tools
 
     def _build_graph(self, model: BaseChatModel) -> Any:
         """Wire and compile the minimal ``START → agent → END`` graph for ``model``."""

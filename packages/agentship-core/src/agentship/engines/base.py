@@ -121,11 +121,11 @@ class EngineCapabilities(BaseModel):
                 f"spec declares {len(spec.members)} member(s) — use a multi-agent engine or "
                 f"remove the `members` field so they are not silently dropped"
             )
-        if spec.tools and not self.tool_calling:
+        if (spec.tools or spec.mcp) and not self.tool_calling:
             raise CapabilityError(
                 f"engine {spec.engine!r} does not support tool calling, but the spec declares "
-                f"{len(spec.tools)} tool(s) — use a tool-calling engine or remove the `tools` "
-                f"field so they are not silently dropped"
+                f"tools/MCP servers — use a tool-calling engine or remove the `tools`/`mcp` "
+                f"fields so they are not silently dropped"
             )
         if spec.durability != "none" and spec.durability != self.durability:
             engine_mode = (
