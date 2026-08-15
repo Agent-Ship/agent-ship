@@ -1,0 +1,19 @@
+# Phase 03 demo: HITL confirm-before-write. A side-effecting tool pauses for human approval.
+#
+# `confirm_writes: true` makes any side-effecting tool interrupt() before it runs; the turn returns
+# a resume token, and the write fires only when you resume with {"approved": true}. Durable so the
+# pause survives a restart. The `save_note` tool is registered by the test (a side-effecting Tool).
+#
+#   run  -> pauses (result.interrupt set, nothing written)
+#   resume {"approved": true}  -> the write fires exactly once
+name: note-taker
+engine: langgraph
+template: single
+model: openai/gpt-4o-mini
+durability: checkpoint
+confirm_writes: true
+tools:
+  - save_note
+prompt: >-
+  You save notes for the user. When asked to save or record something, call the save_note tool
+  with the note text. Confirm what you saved in one short sentence.
