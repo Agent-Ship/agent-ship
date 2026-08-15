@@ -68,13 +68,14 @@ def build_deepagents_template(spec: AgentSpec):
     """
 
     def build_graph(model: BaseChatModel, tools: list[BaseTool]):
-        """Configure the deepagents deep agent over the wired model, tools, prompt."""
+        """Configure the deep agent over the wired model, tools, and skill-augmented prompt."""
+        from agentship.skills import render_agent_prompt
         from deepagents import create_deep_agent
 
         return create_deep_agent(
             model=model,
             tools=tools,
-            system_prompt=spec.prompt or None,
+            system_prompt=render_agent_prompt(spec.prompt, spec.skills) or None,
         )
 
     return build_graph
