@@ -1,4 +1,4 @@
-"""Built-in skills shipped with AgentShip — each a :class:`~agentship.tools.tool.Tool` instance."""
+"""Built-in tools shipped with AgentShip — each a :class:`~agentship.tools.tool.Tool` instance."""
 
 from __future__ import annotations
 

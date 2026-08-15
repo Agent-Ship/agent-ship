@@ -1,4 +1,4 @@
-"""The ``calculator`` built-in skill — safe arithmetic, carried forward from the old repo.
+"""The ``calculator`` built-in tool — safe arithmetic, carried forward from the old repo.
 
 Evaluates ``+ - * / // % **`` and parentheses over an AST allow-list — never Python ``eval`` — so a
 model can do math without opening a code-execution hole. Any function call, name, or import in the

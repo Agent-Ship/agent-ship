@@ -1,6 +1,6 @@
 """The tool registry + ``resolve_tool`` — how a ``tools:`` reference becomes a runnable ``Tool``.
 
-Built-in skills register here at import; third parties add tools via the ``agentship.tools``
+Built-in tools register here at import; third parties add tools via the ``agentship.tools``
 entry-point group (same mechanism as engines). A spec's ``tools:`` entry is resolved by
 :func:`resolve_tool`, which accepts either a **registered name** (``"calculator"``) or a
 **``"module:attr"``** reference to a :class:`~agentship.tools.tool.Tool` an author defines. An
@@ -19,7 +19,7 @@ from .tool import Tool
 #: The registry of tools, discoverable via the ``agentship.tools`` entry-point group.
 TOOLS: Registry[Tool] = Registry("agentship.tools", label="tool")
 
-# Register the built-in skills carried forward from the old repo.
+# Register the built-in tools carried forward from the old repo.
 TOOLS.register("calculator", calculator)
 
 

@@ -2,9 +2,11 @@
 
 A ``Tool`` is deliberately tiny: a ``name``, a ``description`` the model reads to decide whether to
 call it, an optional Pydantic ``args_schema`` describing its arguments, and a plain callable that
-does the work. A "skill" (a built-in like the calculator) is just a ``Tool`` — there is no separate
-base class to subclass. This keeps tools composition-first: you build one by handing it a function,
-not by inheriting from it.
+does the work. A built-in like the calculator is just a ``Tool`` — there is no separate base class
+to subclass. This keeps tools composition-first: you build one by handing it a function, not by
+inheriting from it. (A ``Skill`` is a different concept — a *how-to guidance* bundle that teaches
+the agent how to use tools/MCP; see :mod:`agentship.skills`. Tools are the hands; skills are the
+playbook.)
 
 The engine adapter (e.g. ``agentship-langgraph``) converts a ``Tool`` into whatever the underlying
 framework wants (a LangChain ``StructuredTool``), so this type never imports a vendor. ``run`` is
