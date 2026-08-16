@@ -19,7 +19,8 @@ across turns, so they remember the earlier conversation. The Trace panel is just
 ``agentship.*`` INFO logs captured for the turn, so it works for every agent without the UI knowing
 any agent's internals.
 
-Run it (needs a real ``OPENAI_API_KEY``; ``BRAVE_API_KEY`` optional for real web results)::
+Run it (needs a real ``OPENAI_API_KEY``; ``FIRECRAWL_API_KEY`` — free at https://firecrawl.dev —
+optional for real web search + page scraping)::
 
     set -a; source ../agentship/.env; set +a
     make ui                       # or: python demos/chat_ui.py

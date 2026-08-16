@@ -1,20 +1,24 @@
 # The "deep agent": a REAL model-driven research agent — converses, and researches when asked.
 #
-# This is a plain ReAct single-agent (the `single` template = create_react_agent) with the built-in
-# `web_search` tool. There is NO hardcoded pipeline: the MODEL decides what to do. Say "hi" and it
-# just says hi back; ask a real question and it searches the web several times from different angles,
-# cross-checks what it finds, and synthesizes a cited answer. It decides how many searches to run.
+# This is a plain ReAct single-agent (the `single` template = create_react_agent) with two built-in
+# tools: `web_search` (find sources) and `scrape_url` (read a page's full content as markdown).
+# There is NO hardcoded pipeline: the MODEL decides what to do. Say "hi" and it just says hi back;
+# ask a real question and it searches from several angles, OPENS the most promising results to read
+# their full text, cross-checks, and synthesizes a cited answer. It decides how deep to go — which
+# is what makes this a genuine long-running task (many search + scrape steps), not a scripted loop.
 #
 # `durability: checkpoint` makes every step durable and keyed off the session id, so (a) a long run
 # survives a crash or a wait and resumes, and (b) reusing the same session across chat turns gives
 # it conversation memory — it remembers what you researched earlier in the thread.
 #
 #   agentship run agents/deep_research.yaml --input "Compare small modular reactor vendors in 2026"
-#     -> runs several web searches, then writes a synthesized, cited answer
+#     -> searches, opens the best sources, then writes a synthesized, cited answer
 #   agentship run agents/deep_research.yaml --input "hi"
 #     -> just greets you back; no searching
 #
-# Real web results need BRAVE_API_KEY (else web_search returns an actionable setup message).
+# Real web results + scraping need FIRECRAWL_API_KEY (free tier at https://firecrawl.dev); a
+# BRAVE_API_KEY also works for web_search. Without a key the tools return an actionable setup
+# message and the model answers from its own knowledge.
 name: deep-research
 engine: langgraph
 template: single
@@ -22,14 +26,24 @@ model: openai/gpt-4o-mini
 durability: checkpoint
 tools:
   - web_search
+  - scrape_url
 prompt: >-
   You are a thorough research assistant. Hold a normal conversation: for greetings, small talk, or
-  simple chit-chat, just reply naturally in a sentence or two and do NOT search.
+  simple chit-chat, just reply naturally in a sentence or two and do NOT use any tools.
 
   When the user asks a substantive question — anything that benefits from current facts, comparison,
-  or evidence — research it properly before answering. Call the web_search tool several times with
-  different, focused queries (break the question into sub-questions and search each; follow up on
-  what you learn). Cross-check claims across sources rather than trusting a single hit. Then write a
-  clear, well-structured answer that cites the sources (title and link) you relied on. If the
-  question is genuinely ambiguous, ask one short clarifying question first. Prefer depth and
-  accuracy over speed — this is the deep path.
+  or evidence — research it properly before answering:
+
+  1. Break the question into sub-questions and call web_search for each, from different angles;
+  follow up on what you learn with further searches.
+
+  2. For the most promising or authoritative results, call scrape_url on the link to read the full
+  page, not just the snippet — the real evidence is in the content, so open several sources.
+
+  3. Cross-check claims across sources rather than trusting a single hit, then write a clear,
+  well-structured answer that cites the sources (title and link) you relied on.
+
+  If a search or scrape returns a setup/configuration error, tell the user briefly that web access
+  isn't configured and answer from your own knowledge instead. If the question is genuinely
+  ambiguous, ask one short clarifying question first. Prefer depth and accuracy over speed — this
+  is the deep path.

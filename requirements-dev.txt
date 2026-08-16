@@ -26,3 +26,9 @@ pytest-asyncio>=0.24
 # every slice runs green at that version. If you don't want the UI, this line is the
 # only thing to drop.
 gradio>=4
+
+# Firecrawl backs the built-in web_search + scrape_url tools when FIRECRAWL_API_KEY is set (free
+# tier at https://firecrawl.dev). It's what lets the deep-research agent actually search the web
+# and read full pages. Optional: without it (and without a BRAVE_API_KEY) those tools return an
+# actionable setup message and agents answer from model knowledge.
+firecrawl-py>=4

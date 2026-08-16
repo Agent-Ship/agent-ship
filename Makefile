@@ -54,7 +54,8 @@ run:
 
 ## ui: open a browser chat to drive ANY agent — pick one and send a request. Real agents chat
 ##   and research on demand; the note-taker pauses for write approval (reply yes/no). No script.
-##   Needs a real OPENAI_API_KEY; BRAVE_API_KEY optional for real web results.
+##   Needs a real OPENAI_API_KEY; FIRECRAWL_API_KEY (free, firecrawl.dev) optional for real
+##   web search + page scraping.
 ui:
 	$(PY) demos/chat_ui.py
 

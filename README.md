@@ -55,7 +55,7 @@ top to bottom.
 | 5 | P01 | **`ModelRouter`** — router picks the model id, then a real turn runs | _(spec built inline)_ | `pytest tests/test_router.py -q` |
 | 6 | P02 | **Durable multi-agent supervisor** — 1 supervisor + 3 real sub-agents; classify → route to **one** sub-agent → resolve; then a **fresh engine resumes from the checkpoint and produces byte-identical output** (the kill-9 guarantee, actually proven). The classify → route → dispatch → resolve trace prints inline so the routing is visible. | `agents/triage/triage.yaml` | `pytest tests/test_triage.py -q` |
 | 7 | P02 | **Multi-agent fan-out** — one question dispatched to **all 3 sub-agents concurrently** (`strategy: parallel`), then the `ConflictResolver` merges their competing answers by priority. You watch several real sub-agents run at once and get reconciled. | `agents/triage/panel.yaml` | `pytest tests/test_triage.py -q` |
-| 8 | P02 | **Quick vs deep research (the many-speed ecosystem)** — a fast single-turn **quick-search** agent (seconds, `durability: none`) and a real **model-driven deep-research** agent (`template: single` ReAct, `durability: checkpoint`, `tools: [web_search]`): say "hi" and it just greets you (no search, no pause); ask a substantive question and it runs several `web_search` calls from different angles, cross-checks, and writes a cited answer. Because it's durable and the chat reuses one `session_id`, it remembers the conversation and a long run survives a crash/wait and resumes. Drive both from the **browser chat** (`make ui`). | `agents/quick_search.yaml` · `agents/deep_research.yaml` · `demos/chat_ui.py` | `pytest tests/test_deep_research.py tests/test_chat_ui.py -q` |
+| 8 | P02 | **Quick vs deep research (the many-speed ecosystem)** — a fast single-turn **quick-search** agent (seconds, `durability: none`) and a real **model-driven deep-research** agent (`template: single` ReAct, `durability: checkpoint`, `tools: [web_search, scrape_url]`): say "hi" and it just greets you (no search, no pause); ask a substantive question and it runs several `web_search` calls from different angles, `scrape_url`s the best sources to read their full content, cross-checks, and writes a cited answer. Because it's durable and the chat reuses one `session_id`, it remembers the conversation and a long run survives a crash/wait and resumes. Drive both from the **browser chat** (`make ui`). | `agents/quick_search.yaml` · `agents/deep_research.yaml` · `demos/chat_ui.py` | `pytest tests/test_deep_research.py tests/test_chat_ui.py -q` |
 
 > **Prerequisite for tests:** source your `.env` first so `OPENAI_API_KEY` is set.
 > Without a key the live tests skip cleanly — they never fake-pass and never hard-error.
@@ -295,9 +295,10 @@ Two agents at opposite ends of the speed spectrum:
 - **`quick-search`** (`agents/quick_search.yaml`) — a single ReAct turn: search, answer, done.
   `durability: none`, because a quick lookup has nothing worth checkpointing.
 - **`deep-research`** (`agents/deep_research.yaml`) — a real **model-driven** agent
-  (`template: single` ReAct, `durability: checkpoint`, `tools: [web_search]`) with a research-grade
-  prompt. **The model decides what to do:** say "hi" and it just greets you (no search, no pause);
-  ask a substantive question and it runs several `web_search` calls from different angles,
+  (`template: single` ReAct, `durability: checkpoint`, `tools: [web_search, scrape_url]`) with a
+  research-grade prompt. **The model decides what to do:** say "hi" and it just greets you (no
+  search, no pause); ask a substantive question and it runs several `web_search` calls from
+  different angles, `scrape_url`s the most promising sources to read their full content,
   cross-checks them, and writes a cited answer. It is **not** a hardcoded pipeline and does not
   force a "go deeper?" pause. Because it declares `durability: checkpoint` and the chat reuses one
   `session_id` across turns, it **remembers the conversation** and a long run survives a crash or a
@@ -306,12 +307,13 @@ Two agents at opposite ends of the speed spectrum:
 **Drive it from a browser chat (recommended — no scripts):**
 
 ```bash
-set -a; source ../agentship/.env; set +a   # OPENAI_API_KEY (+ optional BRAVE_API_KEY for real search)
+set -a; source ../agentship/.env; set +a   # OPENAI_API_KEY (+ optional FIRECRAWL_API_KEY)
 make ui                                     # opens http://127.0.0.1:7860
 ```
 
 Pick **deep-research**, send *"hi"* → it just greets you (no search). Send *"State of small modular
-reactors in 2026"* → it runs several web searches, cross-checks, and returns a cited answer.
+reactors in 2026"* → it runs several web searches, opens the best sources with `scrape_url`,
+cross-checks, and returns a cited answer.
 
 The chat UI (`demos/chat_ui.py`) is the **one interactive front door for every agent** — the
 dropdown lists all of them (deep-research, quick-search, triage, triage panel, note-taker HITL,
@@ -321,7 +323,8 @@ multi-agent supervisors' **classify → route → dispatch → resolve** path is
 hidden behind a single reply. It's all on the same public `run`/`resume` API any caller would use;
 build/run failures are shown in the chat rather than crashing the app.
 
-> Without `BRAVE_API_KEY`, each `web_search` returns a clearly-labelled setup message and the model
+> With `FIRECRAWL_API_KEY` (free at firecrawl.dev) or `BRAVE_API_KEY`, `web_search`/`scrape_url`
+> return real results; without a key each returns a clearly-labelled setup message and the model
 > answers from its own knowledge — the agent still runs end-to-end.
 
 The **durable pause/resume** guarantee is showcased by the **note-taker HITL** agent
@@ -404,7 +407,7 @@ agentship-demo/
         clinical.yaml           #   clinical_specialist — also runnable on its own
         faq.yaml                #   faq_specialist — also runnable on its own
     quick_search.yaml           # slice 8: the fast agent — single-turn web search (durability: none)
-    deep_research.yaml          # slice 8: the deep agent — model-driven ReAct + web_search (durability: checkpoint)
+    deep_research.yaml          # slice 8: the deep agent — model-driven ReAct + web_search + scrape_url (durability: checkpoint)
     hitl/
       agent.yaml                # note-taker HITL — confirm_writes: true, pauses for approval before save_note
   demos/

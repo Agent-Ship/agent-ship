@@ -49,14 +49,17 @@ agentship run agents/calculator.yaml --input "Use the calculator to evaluate __i
 # expect: it reports an error / refuses; no code executes
 ```
 
-## 2. Built-in tools carried over from the old repo
+## 2. Built-in tools
 
-Three built-ins ship: `calculator`, `http_request`, `web_search`. Point an agent at any of them via
-`tools:`. `web_search` needs a `BRAVE_API_KEY` (else it returns a clear setup message — try it
-without a key to see the graceful behaviour).
+Built-ins ship ready to use: `calculator`, `http_request`, `web_search`, and `scrape_url`. Point an
+agent at any of them via `tools:`. `web_search` uses **Firecrawl** when `FIRECRAWL_API_KEY` is set
+(free tier at https://firecrawl.dev), or **Brave** when `BRAVE_API_KEY` is set; with neither it
+returns a clear setup message (try it without a key to see the graceful behaviour). `scrape_url`
+fetches a page's full content as markdown via Firecrawl — this is what lets a research agent read a
+source, not just its snippet.
 
 ```bash
-# quick unit check of all three (no OpenAI, no network for calculator; local server for http):
+# quick unit check of all four (no OpenAI; provider calls are stubbed so it's offline):
 cd ../agentship && .venv/bin/python -m pytest packages/agentship-core/tests/test_tools.py -q ; cd ../agentship-demo
 ```
 
@@ -159,8 +162,10 @@ make demo        # runs the whole labelled tour of every slice, live
 
 The "many-speed ecosystem" demo: a fast single-turn **quick-search** agent (seconds,
 `durability: none`) and a real **model-driven deep-research** agent (`template: single` ReAct,
-`durability: checkpoint`, `tools: [web_search]`). The model decides what to do — it is **not** a
-hardcoded pipeline and does not force a "go deeper?" pause. The chat UI is the front door.
+`durability: checkpoint`, `tools: [web_search, scrape_url]`). The model decides what to do — it is
+**not** a hardcoded pipeline and does not force a "go deeper?" pause. It searches for sources, then
+`scrape_url`s the most promising ones to read their full content before answering. The chat UI is
+the front door.
 
 ### The chat UI (drives every agent, no scripts)
 
@@ -170,7 +175,7 @@ slices (assistant, streaming, calculator, graph, custom, triage, triage panel, n
 autonomous) — not just the research ones.
 
 ```bash
-set -a; source ../agentship/.env; set +a   # get OPENAI_API_KEY (and optional BRAVE_API_KEY)
+set -a; source ../agentship/.env; set +a   # OPENAI_API_KEY (+ optional FIRECRAWL_API_KEY)
 make ui                                     # opens http://127.0.0.1:7860
 ```
 
@@ -178,9 +183,10 @@ make ui                                     # opens http://127.0.0.1:7860
 
 - **deep-research** — send *"hi"* → it just greets you (**no** web search, **no** pause). Then send
   *"State of small modular reactors in 2026"* → it runs several `web_search` calls from different
-  angles, cross-checks them, and writes a **cited** answer. Because it's durable and the chat reuses
-  one `session_id`, it **remembers the conversation** across turns and a long run survives a crash
-  or wait and resumes.
+  angles, `scrape_url`s the most promising sources to read their full text, cross-checks them, and
+  writes a **cited** answer. That search-then-scrape loop is a genuine long-running task. Because
+  it's durable and the chat reuses one `session_id`, it **remembers the conversation** across turns
+  and a long run survives a crash or wait and resumes.
 - **note-taker** — ask it to *"save a note that says buy milk"* → the framework **pauses before the
   write** for your approval (nothing is written yet) → reply **yes** to fire the write exactly once,
   or **no** to reject it. This is the durable human-in-the-loop pause/resume guarantee (the model
@@ -191,8 +197,9 @@ make ui                                     # opens http://127.0.0.1:7860
   it works for any agent.
 - **quick-search** — a one-shot web-search answer. **calculator** — a single agent using a tool.
 
-Real web results need `BRAVE_API_KEY` (without it, `web_search` returns a clearly-labelled setup
-message and the model answers from its own knowledge). Build/run errors (e.g. selecting an agent
+Real web results need `FIRECRAWL_API_KEY` (free at firecrawl.dev) or `BRAVE_API_KEY` for
+`web_search`; `scrape_url` needs `FIRECRAWL_API_KEY`. Without a key, each returns a labelled setup
+message and the model answers from its own knowledge. Build/run errors (e.g. selecting an agent
 that needs external setup) are shown in the chat rather than crashing the app.
 
 **What to verify:**
