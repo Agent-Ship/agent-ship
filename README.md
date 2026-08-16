@@ -1,12 +1,18 @@
 # AgentShip demo
 
 A small, **forkable** app built on [AgentShip](../agentship) that shows every
-feature shipped so far. One runnable slice per feature, one live test per slice, and
-a single `make demo` that runs them all and prints a real result for each.
+feature shipped so far. One runnable slice per feature, a test per slice, and a
+single `make demo` that runs them all and prints a real result for each. You can also
+just **talk to any agent in a browser chat** (`make ui`) — including the long-running
+deep-research agent that pauses to ask "go deeper?" and resumes from its checkpoint.
 
 **This demo is LIVE.** It needs a real API key and calls OpenAI for real, so it costs
 a little each time you run it. No fakes, no echo stand-ins, no saved recordings, no
-offline models — every slice and every test makes a real call to the OpenAI API.
+offline models — every slice makes a real call to the OpenAI API. The tests are live
+too, with one deliberate exception: the deep-research pause/resume machinery (slice 8)
+is proven by **deterministic offline tests**, because "the run paused, then resumed
+after the human replied" is a control-flow guarantee, not model quality — a live model
+can't reproduce it reliably. That slice also ships a live end-to-end test on top.
 
 New slices arrive one per phase as the framework ships each feature.
 
@@ -50,7 +56,8 @@ top to bottom.
 | 8 | P02 | **Quick vs deep research (the many-speed ecosystem)** — a **coordinator** classifies a request and routes it to a fast single-turn **quick-search** agent (seconds, `durability: none`) or a long, iterative **deep-research** agent that runs several rounds, **pauses to ask "go deeper?"** (`interrupt`), and is **durable** (`durability: checkpoint`) so it survives a crash/long wait and resumes from the exact round to synthesize a report. The deep loop is authored natively in LangGraph. Drive it from a **browser chat** (`make ui`) — reply "yes"/"no" to the pause — or run it headless. | `agents/coordinator.yaml` · `agents/quick_search.yaml` · `agents/deep_research.yaml` · `demos/chat_ui.py` | `pytest tests/test_deep_research.py tests/test_chat_ui.py -q` |
 
 > **Prerequisite for tests:** source your `.env` first so `OPENAI_API_KEY` is set.
-> Without a key every test skips cleanly — it never fake-passes and never hard-errors.
+> Without a key the live tests skip cleanly — they never fake-pass and never hard-error.
+> Slice 8's offline deep-research tests run either way.
 
 ---
 
@@ -279,6 +286,52 @@ all three named sub-agents and the resolver *considered* all three before pickin
 |---|---|
 | `test_triage_panel_fans_out_to_multiple_sub_agents_in_parallel` | Fan-out is real: 3 named sub-agents dispatched in parallel, all 3 considered by the resolver |
 
+### 8 — Quick vs deep research (the many-speed ecosystem)
+
+Two agents at opposite ends of the speed spectrum:
+
+- **`quick-search`** (`agents/quick_search.yaml`) — a single ReAct turn: search, answer, done.
+  `durability: none`, because a quick lookup has nothing worth checkpointing.
+- **`deep-research`** (`agents/deep_research.yaml`) — a long, iterative agent authored natively in
+  LangGraph (`deep_research/graph.py`). It plans sub-queries, searches, reflects and **deepens**
+  for a few automatic rounds, then **pauses to ask the human "go deeper?"** (`interrupt`). Because
+  it declares `durability: checkpoint`, every round is checkpointed — the run survives a crash or
+  hours of waiting for the human and **resumes from the exact round**, then synthesizes a report.
+
+**Drive it from a browser chat (recommended — no scripts):**
+
+```bash
+set -a; source ../agentship/.env; set +a   # OPENAI_API_KEY (+ optional BRAVE_API_KEY for real search)
+make ui                                     # opens http://127.0.0.1:7860
+```
+
+Pick **deep-research**, send *"State of small modular reactors in 2026"* → it works a couple of
+rounds, then the *"go deeper?"* question appears in the chat. Reply **yes** to dig another round
+(it pauses again) or **no** to get the synthesized report. Switch the dropdown to **quick-search**
+for a one-shot answer. The chat UI (`demos/chat_ui.py`) is generic — it drives *any* agent and
+handles the pause/resume loop for you, on the same public `run`/`resume` API any caller would use.
+
+**Or run it headless** — a coordinator classifies the request and routes to the right agent:
+
+```bash
+python demos/coordinated_research.py "Compare small modular reactor vendors in 2026"  # -> deep
+python demos/coordinated_research.py "Who won the 2026 Super Bowl?"                    # -> quick
+DEEP_APPROVE_ROUNDS=2 python demos/coordinated_research.py "State of EU AI regulation" # approve rounds
+# or: make research INPUT="Compare small modular reactor vendors in 2026"
+```
+
+> Without `BRAVE_API_KEY`, each web search returns a clearly-labelled stub and the report is
+> prefixed with an honest disclaimer that it is model knowledge, not grounded web findings — the
+> depth/pause/resume machinery still runs end-to-end. Tune the automatic rounds before the pause
+> with `DEEP_RESEARCH_AUTO_ROUNDS` (default 2).
+
+| Test | What it proves |
+|---|---|
+| `tests/test_deep_research.py` | **Offline, deterministic:** N auto rounds → pause with a resume token + no output → resume declines → report; resume approves → another round; a **fresh engine resumes from the checkpoint** (the kill-9 guarantee); the stub disclaimer fires |
+| `tests/test_chat_ui.py` | **Offline:** the chat handler drives ask → pause → yes → pause → no → report, and maps yes/no to the agent's resume value |
+| `tests/test_coordinated_routing.py` | **Offline:** the coordinator's quick/deep label normalisation |
+| `tests/test_coordinated_research.py` | **Live:** the real coordinator routes quick vs deep, and the deep path pauses then resumes to a real report |
+
 ---
 
 ## Run all slices at once
@@ -287,9 +340,11 @@ all three named sub-agents and the resolver *considered* all three before pickin
 make demo
 ```
 
-This runs all seven slices in order, prints a labeled block for each, and exits
+This runs slices 1–7 in order, prints a labeled block for each, and exits
 non-zero if any slice fails — it is a real integration gate. The streaming slice
-prints tokens as they arrive. Example output:
+prints tokens as they arrive. (Slice 8, deep research, is interactive — it pauses for
+a human — so you drive it from the chat UI (`make ui`) or `make research`, not `make demo`.)
+Example output:
 
 ```
 ========================================================================
@@ -320,7 +375,11 @@ set -a; source ../agentship/.env; set +a
 pytest -q        # or: make test
 ```
 
-All the tests call OpenAI live. Without a key they skip; they never fake-pass.
+Most tests call OpenAI live — without a key they skip, and never fake-pass. The
+exception is the deep-research pause/resume machinery (slice 8), covered by
+deterministic **offline** tests (`test_deep_research.py`, `test_chat_ui.py`,
+`test_coordinated_routing.py`) that run with or without a key; its live end-to-end
+(`test_coordinated_research.py`) skips cleanly when no key is set.
 
 ---
 
@@ -344,8 +403,17 @@ agentship-demo/
         billing.yaml            #   billing_specialist — also runnable on its own
         clinical.yaml           #   clinical_specialist — also runnable on its own
         faq.yaml                #   faq_specialist — also runnable on its own
+    coordinator.yaml            # slice 8: thin classifier — labels a request quick or deep
+    quick_search.yaml           # slice 8: the fast agent — single-turn web search (durability: none)
+    deep_research.yaml          # slice 8: the long agent — native LangGraph loop (code: reference)
+  deep_research/
+    graph.py                    # slice 8: the durable, HITL deep-research StateGraph (build_agent)
+    web_search.py               # slice 8: Brave web search (labelled stub when BRAVE_API_KEY unset)
   demos/
-    run_all.py                  # `make demo` runner — runs every slice LIVE, prints each result
+    run_all.py                  # `make demo` runner — runs slices 1–7 LIVE, prints each result
+    chat_ui.py                  # `make ui` — generic browser chat for ANY agent, incl. pause/resume
+    coordinated_research.py     # `make research` — headless: coordinator classifies, runs quick/deep
+    ask_multiagent.py           # `make ask` — give the multi-agent panel your own task
   tests/
     conftest.py                 # requires_live_key skip guard + LiteLLM transport setup
     test_smoke.py               # slice 1: single template real answer (live)
@@ -354,9 +422,13 @@ agentship-demo/
     test_custom.py              # slice 4: custom graph answer (live)
     test_router.py              # slice 5: router picks model + real turn runs (live)
     test_triage.py              # slices 6+7: happy path, kill-9 resume, parallel fan-out (live)
+    test_deep_research.py       # slice 8: multi-round loop, pause, resume, disclaimer (offline)
+    test_chat_ui.py             # slice 8: chat handler ask→pause→resume→report (offline)
+    test_coordinated_routing.py # slice 8: coordinator quick/deep label normalisation (offline)
+    test_coordinated_research.py# slice 8: real coordinator routes + deep pause→resume (live)
   pyproject.toml                # pins agentship[starter]==0.0.1 (future PyPI install)
-  requirements-dev.txt          # editable-local install of the framework (dev mode)
-  Makefile                      # install / test / demo / run shortcuts
+  requirements-dev.txt          # editable-local install of the framework + gradio (dev mode)
+  Makefile                      # install / test / demo / ui / research / run shortcuts
   .env.example                  # credentials template — copy to .env and set OPENAI_API_KEY
   .github/workflows/ci.yml      # runs the live tests (needs the OPENAI_API_KEY repo secret)
 ```
@@ -372,7 +444,9 @@ The slices exercise AgentShip's three authoring paths:
 - **Custom `build_graph`** — full control: subclass `LangGraphAgent`, write native
   LangGraph in `build_graph(model, tools)`, reference via `code:`. The harness wires
   the model and drives `run`/`stream`; the author never touches a vendor SDK
-  (slices 4 and 6).
+  (slices 4 and 6, and the deep-research loop in slice 8). Slice 8 also shows the
+  durable, human-in-the-loop shape: `interrupt()` to pause + `durability: checkpoint`
+  to resume from the exact round.
 
 ---
 
