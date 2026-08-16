@@ -155,18 +155,18 @@ agentship run agents/custom/custom.yaml --input "Name three primary colors."
 make demo        # runs the whole labelled tour of every slice, live
 ```
 
-## 11. Coordinator + quick vs deep research — the long-running, resumable agent
+## 11. Quick vs deep research — the model-driven agents, driven from the chat UI
 
-The flagship "many-speed ecosystem" demo: a fast single-turn **quick-search** agent (seconds,
-`durability: none`) and a long, iterative **deep-research** agent that runs several rounds,
-**pauses to ask you "go deeper?"**, and is durable (`durability: checkpoint`) so it survives a
-crash or a long wait and resumes from the exact round.
+The "many-speed ecosystem" demo: a fast single-turn **quick-search** agent (seconds,
+`durability: none`) and a real **model-driven deep-research** agent (`template: single` ReAct,
+`durability: checkpoint`, `tools: [web_search]`). The model decides what to do — it is **not** a
+hardcoded pipeline and does not force a "go deeper?" pause. The chat UI is the front door.
 
-### The nicest way — the chat UI (drives every agent, no scripts)
+### The chat UI (drives every agent, no scripts)
 
 Open a browser chat, pick an agent from the dropdown, send input, and watch it work. It's the one
 interactive front door for **every** demo agent, so this is also how to manually exercise the other
-slices (assistant, streaming, calculator, graph, custom, coordinator, triage, triage panel,
+slices (assistant, streaming, calculator, graph, custom, triage, triage panel, note-taker,
 autonomous) — not just the research ones.
 
 ```bash
@@ -176,58 +176,46 @@ make ui                                     # opens http://127.0.0.1:7860
 
 **What to try:**
 
-- **deep-research** — send *"State of small modular reactors in 2026"* → it works a couple of
-  rounds, then pauses to ask *"go deeper?"* → reply **yes** to dig deeper (it pauses again) or
-  **no** to get the synthesized report. This is the durable, human-in-the-loop, resumable agent.
+- **deep-research** — send *"hi"* → it just greets you (**no** web search, **no** pause). Then send
+  *"State of small modular reactors in 2026"* → it runs several `web_search` calls from different
+  angles, cross-checks them, and writes a **cited** answer. Because it's durable and the chat reuses
+  one `session_id`, it **remembers the conversation** across turns and a long run survives a crash
+  or wait and resumes.
+- **note-taker** — ask it to *"save a note that says buy milk"* → the framework **pauses before the
+  write** for your approval (nothing is written yet) → reply **yes** to fire the write exactly once,
+  or **no** to reject it. This is the durable human-in-the-loop pause/resume guarantee (the model
+  decides to call the write tool; the framework gates it).
 - **triage** or **triage panel** — send *"My bill is wrong and I feel dizzy"* → open the **Trace**
   panel (below the chat) to watch the supervisor **classify → route → dispatch → resolve** and fan
   out to the specialist sub-agents. The Trace panel is AgentShip's own INFO log for that turn, so
   it works for any agent.
 - **quick-search** — a one-shot web-search answer. **calculator** — a single agent using a tool.
 
-Build/run errors (e.g. selecting an agent that needs external setup) are shown in the chat rather
-than crashing the app.
+Real web results need `BRAVE_API_KEY` (without it, `web_search` returns a clearly-labelled setup
+message and the model answers from its own knowledge). Build/run errors (e.g. selecting an agent
+that needs external setup) are shown in the chat rather than crashing the app.
 
-### Non-interactive alternative — one command
-
-```bash
-# Classifies via the coordinator, then runs the right agent end-to-end:
-python demos/coordinated_research.py "Who won the 2026 Super Bowl?"                 # -> QUICK path
-python demos/coordinated_research.py "Compare small modular reactor vendors in 2026" # -> DEEP path
-# On the deep path, approve extra rounds instead of stopping at the first pause:
-DEEP_APPROVE_ROUNDS=2 python demos/coordinated_research.py "State of EU AI regulation"
-# or: make research INPUT="Compare small modular reactor vendors in 2026"
-```
-
-Run the agents directly too:
-
-```bash
-agentship run agents/quick_search.yaml --input "Who is the CEO of OpenAI?" --verbose  # one turn
-agentship run agents/coordinator.yaml  --input "Compare every EU AI regulation"       # prints: deep
-```
-
-Real web results need `BRAVE_API_KEY` (without it, each search returns a clearly-labelled stub and
-the loop still runs). Tune how many rounds run automatically before the pause with
-`DEEP_RESEARCH_AUTO_ROUNDS` (default 2).
-
-**What to verify (the long-running guarantees):**
-- The deep run **pauses** — `agent.run(...)` returns with `result.interrupt` set (the "go deeper?"
-  payload) and `result.output is None`; **no report yet**.
-- Resuming with `{"go_deeper": false}` synthesizes the report; `{"go_deeper": true}` runs another
-  round and pauses again (depth is unbounded, human-gated).
+**What to verify:**
+- **deep-research greets without searching** — sending "hi" returns a normal reply and runs **no**
+  `web_search` (the old force-pause bug, now guarded).
+- **The note-taker pauses** — the first turn returns `result.interrupt` set (a write-approval
+  payload) and **nothing saved**; resuming with `{"approved": true}` fires the write exactly once,
+  and `{"approved": false}` never writes.
 - **Crash/restart survival:** with `AGENT_SESSION_STORE_URI` set to Postgres, the resume token
-  round-trips through the DB — a *fresh process* can resume the paused run. Proven deterministically
-  offline in `tests/test_deep_research.py` (in-memory + fresh-engine resume) and live in
-  `tests/test_coordinated_research.py`:
+  round-trips through the DB — a *fresh process* can resume the paused run.
 
 ```bash
+# deep-research answers "hi" without searching (live):
 cd ../agentship && .venv/bin/python -m pytest ../agentship-demo/tests/test_deep_research.py -q
-cd ../agentship-demo && pytest tests/test_coordinated_research.py -q -s   # live: pause -> resume -> report
+# note-taker: pause -> approve -> write fires once (live):
+.venv/bin/python -m pytest ../agentship-demo/tests/test_hitl_write.py -q -s
+cd ../agentship-demo
 ```
 
-The chat UI is exercised the same way — `tests/test_chat_ui.py` drives its `respond()` handler
-through a full ask → pause → yes → pause → no → report cycle offline, so the browser path is
-covered without a browser.
+The chat UI plumbing is covered offline — `tests/test_chat_ui.py` (a fake chat model) checks that
+every picker agent builds, that a confirm-write yes/no maps to `{"approved": bool}`, that the
+write-approval prompt renders, that `session_id` is stable across turns (conversation memory), that
+the UI holds a resume token then resumes a paused run, and that a build failure is shown in chat.
 
 ---
 

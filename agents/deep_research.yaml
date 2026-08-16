@@ -1,17 +1,35 @@
-# The "long agent": a durable, iterative, human-in-the-loop deep-research agent.
+# The "deep agent": a REAL model-driven research agent — converses, and researches when asked.
 #
-# Authored natively in LangGraph (deep_research/graph.py). It plans sub-queries, searches the web,
-# reflects and deepens for a few automatic rounds, then PAUSES to ask the human "go deeper?" before
-# spending more effort. Because durability is `checkpoint`, every round is checkpointed — the run
-# survives a crash or hours of waiting for the human and resumes from the exact frontier, then
-# synthesizes a final report.
+# This is a plain ReAct single-agent (the `single` template = create_react_agent) with the built-in
+# `web_search` tool. There is NO hardcoded pipeline: the MODEL decides what to do. Say "hi" and it
+# just says hi back; ask a real question and it searches the web several times from different angles,
+# cross-checks what it finds, and synthesizes a cited answer. It decides how many searches to run.
 #
-#   agentship run agents/deep_research.yaml --input "State of small nuclear reactors in 2026"
-#     -> runs a couple of rounds, then returns a resume token (paused, asking to go deeper)
-#   resume with {"go_deeper": false} -> writes the report; {"go_deeper": true} -> another round
+# `durability: checkpoint` makes every step durable and keyed off the session id, so (a) a long run
+# survives a crash or a wait and resumes, and (b) reusing the same session across chat turns gives
+# it conversation memory — it remembers what you researched earlier in the thread.
 #
-# Real web results need BRAVE_API_KEY (else each search returns a clearly-labelled stub — the loop
-# still runs). Tune the automatic rounds with DEEP_RESEARCH_AUTO_ROUNDS (default 2).
+#   agentship run agents/deep_research.yaml --input "Compare small modular reactor vendors in 2026"
+#     -> runs several web searches, then writes a synthesized, cited answer
+#   agentship run agents/deep_research.yaml --input "hi"
+#     -> just greets you back; no searching
+#
+# Real web results need BRAVE_API_KEY (else web_search returns an actionable setup message).
 name: deep-research
 engine: langgraph
-code: deep_research/graph.py:build_agent
+template: single
+model: openai/gpt-4o-mini
+durability: checkpoint
+tools:
+  - web_search
+prompt: >-
+  You are a thorough research assistant. Hold a normal conversation: for greetings, small talk, or
+  simple chit-chat, just reply naturally in a sentence or two and do NOT search.
+
+  When the user asks a substantive question — anything that benefits from current facts, comparison,
+  or evidence — research it properly before answering. Call the web_search tool several times with
+  different, focused queries (break the question into sub-questions and search each; follow up on
+  what you learn). Cross-check claims across sources rather than trusting a single hit. Then write a
+  clear, well-structured answer that cites the sources (title and link) you relied on. If the
+  question is genuinely ambiguous, ask one short clarifying question first. Prefer depth and
+  accuracy over speed — this is the deep path.

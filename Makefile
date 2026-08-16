@@ -13,7 +13,7 @@ VENV := .venv
 PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
 
-.PHONY: install test demo demo-multiagent ask run research ui clean
+.PHONY: install test demo demo-multiagent ask run ui clean
 
 ## install: create .venv and install the framework editable-local + test tooling
 install:
@@ -52,14 +52,8 @@ INPUT ?=
 run:
 	$(VENV)/bin/agentship run agents/assistant.yaml --input "$(if $(INPUT),$(INPUT),Give one productivity tip.)"
 
-## research: classify a request, then run the quick or deep research agent end-to-end
-##   usage: make research INPUT="Compare small modular reactor vendors in 2026"
-##   deep path pauses for "go deeper?"; set DEEP_APPROVE_ROUNDS=N to approve extra rounds
-research:
-	$(PY) demos/coordinated_research.py "$(if $(INPUT),$(INPUT),Compare small modular reactor vendors in 2026)"
-
-## ui: open a browser chat to drive ANY agent — pick one, send a request, and reply
-##   yes/no when the deep-research agent pauses to "go deeper?". No per-demo script.
+## ui: open a browser chat to drive ANY agent — pick one and send a request. Real agents chat
+##   and research on demand; the note-taker pauses for write approval (reply yes/no). No script.
 ##   Needs a real OPENAI_API_KEY; BRAVE_API_KEY optional for real web results.
 ui:
 	$(PY) demos/chat_ui.py

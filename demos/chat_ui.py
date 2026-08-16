@@ -3,17 +3,21 @@
 This is the one interactive front door for the whole demo. It replaces per-demo driver scripts
 with a single Gradio app that can drive *any* agent in ``agents/``:
 
-* simple agents (``assistant``, ``calculator``, ``streaming``) answer in one turn;
+* real model-driven agents (``deep-research``, ``quick-search``, ``assistant``, ``calculator``)
+  hold a normal conversation and reach for a tool only when the model decides to — say "hi" to
+  deep-research and it just greets you; ask a real question and it researches;
 * the multi-agent supervisors (``triage``, ``triage panel``) classify, route, and fan out to
   sub-agents — and the **Trace** panel shows that decision path (classify → route → dispatch →
   resolve) live, so the routing is visible, not hidden behind a single chat bubble;
-* the durable ``deep-research`` agent (and the ``hitl`` agent) **pause** for a human — the pause
-  shows up as a chat message and your next reply resumes the checkpointed run in-conversation.
+* the ``note-taker`` (HITL) agent **pauses** before a write for your approval — the pause shows up
+  as a chat message and your next reply (**yes**/**no**) resumes the checkpointed run in-place.
 
 So the interaction is exactly what you'd expect — *pick an agent, send input, see it work* — and
 the pause→resume plumbing lives here once, generically, on the same public ``run``/``resume`` API
-any caller would use. The Trace panel is just AgentShip's own ``agentship.*`` INFO logs captured
-for the turn, so it works for every agent without the UI knowing any agent's internals.
+any caller would use. Durable agents (``durability: checkpoint``) keep the same ``session_id``
+across turns, so they remember the earlier conversation. The Trace panel is just AgentShip's own
+``agentship.*`` INFO logs captured for the turn, so it works for every agent without the UI knowing
+any agent's internals.
 
 Run it (needs a real ``OPENAI_API_KEY``; ``BRAVE_API_KEY`` optional for real web results)::
 
@@ -34,10 +38,11 @@ import gradio as gr
 import litellm
 from agentship import build_agent
 from agentship.context import Caller, RunContext, RunMode
+from agentship.tools import TOOLS, Tool
+from pydantic import BaseModel
 
-# The deep-research spec (and the triage supervisor) reference other files by repo-root-relative
-# paths, so resolve the working directory to the demo root before any agent is built (mirrors the
-# CLI's behaviour).
+# The triage supervisor references sub-agent files by repo-root-relative paths, so resolve the
+# working directory to the demo root before any agent is built (mirrors the CLI's behaviour).
 REPO_ROOT = Path(__file__).resolve().parents[1]
 os.chdir(REPO_ROOT)
 
@@ -45,16 +50,49 @@ os.chdir(REPO_ROOT)
 litellm.disable_aiohttp_transport = True
 os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
 
-#: Every standalone-runnable agent, label → YAML path (repo-relative). The flagship deep-research
-#: agent is first; the multi-agent supervisors show their routing in the Trace panel. Two agents
-#: are omitted because they need setup the generic UI can't do: ``mcp`` (needs an external MCP
-#: server) and ``hitl`` (needs its ``save_note`` write tool registered — see test_hitl_write.py).
+
+class _NoteArgs(BaseModel):
+    """Argument schema for the demo ``save_note`` write tool."""
+
+    text: str
+
+
+#: Notes the HITL agent has been approved to save this session (visible proof the write fired).
+SAVED_NOTES: list[str] = []
+
+
+def _register_save_note() -> None:
+    """Register the side-effecting ``save_note`` tool so the ``note-taker`` agent can resolve it.
+
+    Idempotent: the tool is registered once per process. It is side-effecting, so the framework's
+    ``confirm_writes`` guard pauses for human approval before it runs — that is the HITL demo.
+    """
+    if "save_note" in TOOLS:
+        return
+    TOOLS.register(
+        "save_note",
+        Tool(
+            "save_note",
+            "Save a note to the user's notebook.",
+            lambda text: SAVED_NOTES.append(text) or f"saved: {text}",
+            args_schema=_NoteArgs,
+            side_effecting=True,
+        ),
+    )
+
+
+_register_save_note()
+
+#: Every standalone-runnable agent, label → YAML path (repo-relative). The deep-research agent is
+#: first; the multi-agent supervisors show their routing in the Trace panel; the note-taker is the
+#: human-in-the-loop demo (it pauses for write approval). One agent is omitted because the generic
+#: UI can't stand up its dependency: ``mcp`` (needs an external MCP server).
 AGENTS: dict[str, str] = {
-    "deep-research — durable, pauses to ask 'go deeper?'": "agents/deep_research.yaml",
+    "deep-research — researches when asked, chats otherwise (durable)": "agents/deep_research.yaml",
     "quick-search — single-turn web search": "agents/quick_search.yaml",
     "triage — multi-agent supervisor (classify → route → dispatch)": "agents/triage/triage.yaml",
     "triage panel — parallel fan-out to specialists": "agents/triage/panel.yaml",
-    "coordinator — classifier that labels a request quick or deep": "agents/coordinator.yaml",
+    "note-taker — HITL: pauses for approval before a write": "agents/hitl/agent.yaml",
     "assistant — plain single agent": "agents/assistant.yaml",
     "calculator — single agent with a tool": "agents/calculator.yaml",
     "streaming — single agent (streaming-capable)": "agents/streaming.yaml",
@@ -63,10 +101,10 @@ AGENTS: dict[str, str] = {
     "autonomous — deepagents-style planner": "agents/autonomous.yaml",
 }
 
-#: Words that resume a "go deeper?" style pause as approve / decline. Anything else is passed to
-#: the agent verbatim as the resume value, so this UI also drives non-boolean HITL agents.
-_APPROVE = {"yes", "y", "go deeper", "deeper", "approve", "continue", "more", "keep going"}
-_DECLINE = {"no", "n", "stop", "done", "enough", "decline", "that's enough"}
+#: Words that resume a pause as approve / decline. Anything else is passed to the agent verbatim as
+#: the resume value, so this UI also drives free-form (non yes/no) interrupts.
+_APPROVE = {"yes", "y", "approve", "ok", "okay", "go", "continue", "sure", "do it"}
+_DECLINE = {"no", "n", "stop", "reject", "decline", "cancel", "don't", "dont"}
 
 
 def _new_state() -> dict:
@@ -78,10 +116,9 @@ class _TraceCollector(logging.Handler):
     """A logging handler that buffers AgentShip's ``agentship.*`` INFO logs for one turn.
 
     Attaching this to the ``agentship`` logger for the duration of a run captures the decision
-    trace every agent already emits — the supervisor's classify/route/dispatch/resolve lines, tool
-    calls, and the deep-research rounds — so the Trace panel is generic and needs no per-agent
-    wiring. Each record is rendered as ``<logger tail>: <message>`` (e.g. ``supervisor: dispatch
-    …``).
+    trace every agent already emits — the supervisor's classify/route/dispatch/resolve lines and
+    tool calls — so the Trace panel is generic and needs no per-agent wiring. Each record is
+    rendered as ``<logger tail>: <message>`` (e.g. ``supervisor: dispatch …``).
     """
 
     def __init__(self) -> None:
@@ -126,28 +163,29 @@ def _release_trace(collector: _TraceCollector) -> str:
 def _resume_value(reply: str, payload: dict) -> object:
     """Turn a human's chat reply into the value the paused ``interrupt()`` should receive.
 
-    The deep-research agent's pause expects ``{"go_deeper": bool}``; when the pending interrupt
-    looks like that (its payload mentions ``go_deeper`` or a "deeper" question) a yes/no reply is
-    mapped to that shape. For any other HITL agent the raw reply text is passed straight through,
-    so this one UI can resume arbitrary ``interrupt()`` payloads without knowing the agent.
+    The HITL confirm-before-write pause (payload ``{"action": "confirm_write", ...}``) expects
+    ``{"approved": bool}``, so a yes/no reply is mapped to that shape. For any other interrupt the
+    raw reply text is passed straight through, so this one UI can resume arbitrary ``interrupt()``
+    payloads without knowing the agent's internals.
     """
     text = reply.strip().lower()
-    question = str(payload.get("question", "")).lower()
-    looks_boolean = "go_deeper" in payload or "deeper" in question
-    if looks_boolean:
-        return {"go_deeper": text in _APPROVE and text not in _DECLINE}
+    approve = text in _APPROVE and text not in _DECLINE
+    if payload.get("action") == "confirm_write":
+        return {"approved": approve}
     return reply.strip()
 
 
 def _pause_message(payload: dict) -> str:
     """Render a pending ``interrupt()`` payload as an assistant chat message inviting a reply."""
+    if payload.get("action") == "confirm_write":
+        tool = payload.get("tool", "a write")
+        args = payload.get("args", {})
+        return (
+            f"⏸️ **Approve write?** The agent wants to run `{tool}` with `{args}`.\n\n"
+            "Reply **yes** to approve (it runs) or **no** to reject (it won't)."
+        )
     question = payload.get("question", "The agent paused and needs your input.")
-    context_bits = [f"round {payload['round']}"] if "round" in payload else []
-    if "queries_run" in payload:
-        context_bits.append(f"{payload['queries_run']} searches so far")
-    suffix = f"  _({', '.join(context_bits)})_" if context_bits else ""
-    reply_hint = "Reply **yes** to go deeper / approve, or **no** to stop and get the result."
-    return f"⏸️ **{question}**{suffix}\n\n{reply_hint}"
+    return f"⏸️ **{question}**\n\nReply to continue."
 
 
 def _resume_ctx(agent, session_id: str) -> RunContext:
@@ -166,10 +204,10 @@ async def respond(message: str, history: list, agent_label: str, state: dict):
 
     Either starts a fresh run or resumes a paused one, capturing AgentShip's INFO logs for the
     turn into the Trace panel. ``state`` carries the built agent, its conversation ``session_id``,
-    and any pending resume token/payload between turns: when a token is pending, this turn's
-    ``message`` resumes the paused run; otherwise it (re)builds the selected agent on a new thread
-    and runs it. Build/run errors are shown in the chat rather than crashing the app, so selecting
-    an agent that needs external setup fails gracefully.
+    and any pending resume token/payload between turns. When a token is pending, this turn's
+    ``message`` resumes the paused run; otherwise it (re)builds the selected agent — reusing the
+    same ``session_id`` across turns so a durable agent remembers the conversation — and runs it.
+    Build/run errors are shown in the chat rather than crashing the app.
     """
     if not (os.environ.get("OPENAI_API_KEY") or "").strip():
         warning = "⚠️ Set OPENAI_API_KEY (source ../agentship/.env) and reload."
@@ -191,11 +229,15 @@ async def respond(message: str, history: list, agent_label: str, state: dict):
                 agent.compiled, state["token"], ctx, resume_value=decision
             )
         else:
-            # Fresh turn: (re)build the selected agent on a new checkpoint thread and run it.
+            # Fresh turn. Rebuild only when the selected agent changed, and start a new
+            # conversation thread then; otherwise keep the same session_id so a durable agent
+            # remembers the earlier turns (the checkpointer keys memory off session_id).
             if state.get("agent") is None or state.get("label") != agent_label:
                 state["agent"] = build_agent(AGENTS[agent_label])
                 state["label"] = agent_label
-            state["session_id"] = uuid.uuid4().hex
+                state["session_id"] = uuid.uuid4().hex
+            elif not state.get("session_id"):
+                state["session_id"] = uuid.uuid4().hex
             agent = state["agent"]
             result = await agent.run(message, session_id=state["session_id"])
     except Exception as exc:  # noqa: BLE001  # a UI must show any agent failure, not crash
@@ -229,10 +271,10 @@ def build_ui() -> gr.Blocks:
     with gr.Blocks(title="AgentShip chat") as ui:
         gr.Markdown(
             "# AgentShip — chat & debug\n"
-            "Pick an agent, send input, and watch it work. Multi-agent supervisors show their "
-            "**classify → route → dispatch → resolve** path in the Trace panel; the "
-            "**deep-research** and **hitl** agents pause for you — just reply **yes**/**no** to "
-            "resume. No scripts."
+            "Pick an agent, send input, and watch it work. Real agents chat normally and use a "
+            "tool only when they decide to; multi-agent supervisors show their **classify → route "
+            "→ dispatch → resolve** path in the Trace panel; the **note-taker** pauses before a "
+            "write — reply **yes**/**no** to approve. No scripts."
         )
         state = gr.State(_new_state())
         with gr.Row():
