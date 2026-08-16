@@ -3,8 +3,10 @@
 A small, **forkable** app built on [AgentShip](../agentship) that shows every
 feature shipped so far. One runnable slice per feature, a test per slice, and a
 single `make demo` that runs them all and prints a real result for each. You can also
-just **talk to any agent in a browser chat** (`make ui`) — including the long-running
-deep-research agent that pauses to ask "go deeper?" and resumes from its checkpoint.
+**drive every agent from one browser chat** (`make ui`) — pick an agent, send input,
+and watch it work: the multi-agent supervisors show their classify → route → dispatch
+path in a Trace panel, and the long-running deep-research agent pauses to ask "go
+deeper?" and resumes from its checkpoint, all in the conversation.
 
 **This demo is LIVE.** It needs a real API key and calls OpenAI for real, so it costs
 a little each time you run it. No fakes, no echo stand-ins, no saved recordings, no
@@ -32,7 +34,7 @@ pip install -r requirements-dev.txt   # or: make install
 # 3. Run every slice live
 make demo
 
-# ...or open a browser chat and talk to any agent (incl. the deep-research pause/resume):
+# ...or open one browser chat to drive EVERY agent (routing trace + deep-research pause/resume):
 make ui   # http://127.0.0.1:7860
 ```
 
@@ -307,9 +309,15 @@ make ui                                     # opens http://127.0.0.1:7860
 
 Pick **deep-research**, send *"State of small modular reactors in 2026"* → it works a couple of
 rounds, then the *"go deeper?"* question appears in the chat. Reply **yes** to dig another round
-(it pauses again) or **no** to get the synthesized report. Switch the dropdown to **quick-search**
-for a one-shot answer. The chat UI (`demos/chat_ui.py`) is generic — it drives *any* agent and
-handles the pause/resume loop for you, on the same public `run`/`resume` API any caller would use.
+(it pauses again) or **no** to get the synthesized report.
+
+The chat UI (`demos/chat_ui.py`) is the **one interactive front door for every agent** — the
+dropdown lists all of them (assistant, streaming, calculator, graph, custom, coordinator,
+quick-search, deep-research, triage, triage panel, autonomous). Pick any, send input, watch it
+work. A collapsible **Trace** panel shows AgentShip's own decision log for the turn, so the
+multi-agent supervisors' **classify → route → dispatch → resolve** path is visible instead of
+hidden behind a single reply. It's all on the same public `run`/`resume` API any caller would use;
+build/run failures are shown in the chat rather than crashing the app.
 
 **Or run it headless** — a coordinator classifies the request and routes to the right agent:
 
@@ -411,7 +419,7 @@ agentship-demo/
     web_search.py               # slice 8: Brave web search (labelled stub when BRAVE_API_KEY unset)
   demos/
     run_all.py                  # `make demo` runner — runs slices 1–7 LIVE, prints each result
-    chat_ui.py                  # `make ui` — generic browser chat for ANY agent, incl. pause/resume
+    chat_ui.py                  # `make ui` — one browser chat for EVERY agent: trace panel + pause/resume
     coordinated_research.py     # `make research` — headless: coordinator classifies, runs quick/deep
     ask_multiagent.py           # `make ask` — give the multi-agent panel your own task
   tests/

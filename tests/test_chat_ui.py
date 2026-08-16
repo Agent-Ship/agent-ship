@@ -68,6 +68,21 @@ def wired(monkeypatch):
     monkeypatch.setenv("DEEP_RESEARCH_AUTO_ROUNDS", "1")
 
 
+def test_every_agent_in_the_picker_builds():
+    """Every YAML in the picker must build, so the dropdown never offers a broken entry.
+
+    Building resolves the spec, model, and tools but makes no model call, so this is offline. A
+    picker entry that needs external setup (an MCP server, an unregistered tool) is deliberately
+    excluded from ``AGENTS`` — this test is what keeps that list honest.
+    """
+    from agentship import build_agent
+    from demos.chat_ui import AGENTS
+
+    for label, path in AGENTS.items():
+        agent = build_agent(path)
+        assert agent.spec.name, f"{label} ({path}) built without a name"
+
+
 def test_resume_value_maps_yes_no_and_passes_other_text_through():
     """A yes/no reply becomes ``{"go_deeper": bool}``; any other reply passes through verbatim."""
     from demos.chat_ui import _resume_value
@@ -81,23 +96,40 @@ def test_resume_value_maps_yes_no_and_passes_other_text_through():
 
 async def test_chat_turns_pause_then_resume_to_a_report(wired):
     """Three chat turns drive the deep agent: ask → pause → yes → pause → no → report."""
-    from demos.chat_ui import AGENTS, respond
+    from demos.chat_ui import AGENTS, _new_state, respond
 
     deep_label = next(iter(AGENTS))  # the deep-research agent is listed first
-    state = {"agent": None, "label": None, "session_id": None, "token": None, "payload": None}
+    state = _new_state()
 
     # Turn 1: a fresh question runs one automatic round and pauses for the human.
-    history, cleared_box, state = await respond("State of SMRs in 2026", [], deep_label, state)
+    history, cleared_box, state, trace = await respond("SMRs in 2026", [], deep_label, state)
     assert cleared_box == ""  # the input box is cleared after each turn
     assert state["token"] is not None, "the agent should pause and hold a resume token"
     assert "Go deeper" in history[-1]["content"]
+    # The Trace panel captured the agent's own INFO log lines for the turn.
+    assert "deep_research:" in trace
 
     # Turn 2: approving runs another round and pauses again — the token is still held.
-    history, _, state = await respond("yes", history, deep_label, state)
+    history, _, state, _ = await respond("yes", history, deep_label, state)
     assert state["token"] is not None
     assert "Go deeper" in history[-1]["content"]
 
     # Turn 3: declining resumes to the synthesized report and clears the pending token.
-    history, _, state = await respond("no", history, deep_label, state)
+    history, _, state, _ = await respond("no", history, deep_label, state)
     assert state["token"] is None
     assert "REPORT" in history[-1]["content"]
+
+
+async def test_a_build_failure_is_shown_in_chat_not_crashed(wired, monkeypatch):
+    """If building/running an agent raises, the error is surfaced in the chat, not propagated."""
+    import demos.chat_ui as chat_ui
+    from demos.chat_ui import _new_state, respond
+
+    def _boom(*a, **k):
+        raise RuntimeError("no MCP server running")
+
+    monkeypatch.setattr(chat_ui, "build_agent", _boom)
+    label = next(iter(chat_ui.AGENTS))
+    history, box, state, _ = await respond("hello", [], label, _new_state())
+    assert box == "" and state["token"] is None
+    assert "RuntimeError" in history[-1]["content"] and "no MCP server" in history[-1]["content"]

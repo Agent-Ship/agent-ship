@@ -162,20 +162,31 @@ The flagship "many-speed ecosystem" demo: a fast single-turn **quick-search** ag
 **pauses to ask you "go deeper?"**, and is durable (`durability: checkpoint`) so it survives a
 crash or a long wait and resumes from the exact round.
 
-### The nicest way — a chat UI (no scripts)
+### The nicest way — the chat UI (drives every agent, no scripts)
 
-Open a browser chat, pick the **deep-research** agent, and just talk to it. When it pauses to ask
-"go deeper?", the question appears as a chat message; reply **yes** or **no** and the paused run
-resumes from its checkpoint straight back into the conversation. One generic UI drives *any* agent:
+Open a browser chat, pick an agent from the dropdown, send input, and watch it work. It's the one
+interactive front door for **every** demo agent, so this is also how to manually exercise the other
+slices (assistant, streaming, calculator, graph, custom, coordinator, triage, triage panel,
+autonomous) — not just the research ones.
 
 ```bash
 set -a; source ../agentship/.env; set +a   # get OPENAI_API_KEY (and optional BRAVE_API_KEY)
 make ui                                     # opens http://127.0.0.1:7860
 ```
 
-**What to try:** send *"State of small modular reactors in 2026"* to the deep-research agent →
-it works a couple of rounds, then pauses → reply **yes** to dig deeper (it pauses again) or **no**
-to get the synthesized report. Switch the dropdown to **quick-search** for a one-shot answer.
+**What to try:**
+
+- **deep-research** — send *"State of small modular reactors in 2026"* → it works a couple of
+  rounds, then pauses to ask *"go deeper?"* → reply **yes** to dig deeper (it pauses again) or
+  **no** to get the synthesized report. This is the durable, human-in-the-loop, resumable agent.
+- **triage** or **triage panel** — send *"My bill is wrong and I feel dizzy"* → open the **Trace**
+  panel (below the chat) to watch the supervisor **classify → route → dispatch → resolve** and fan
+  out to the specialist sub-agents. The Trace panel is AgentShip's own INFO log for that turn, so
+  it works for any agent.
+- **quick-search** — a one-shot web-search answer. **calculator** — a single agent using a tool.
+
+Build/run errors (e.g. selecting an agent that needs external setup) are shown in the chat rather
+than crashing the app.
 
 ### Non-interactive alternative — one command
 
