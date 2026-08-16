@@ -16,3 +16,13 @@
 
 pytest>=8
 pytest-asyncio>=0.24
+
+# The generic chat UI (demos/chat_ui.py, `make ui`) — a browser chat to drive any agent,
+# including the deep-research agent's pause→resume, without a per-demo script.
+#
+# Note: gradio caps pydantic (<=2.12.3) below the floor a framework transitive dep
+# (google-genai) prefers (>=2.12.5), so `pip` prints a harmless conflict warning and
+# settles on 2.12.3. The demo's LangGraph→LiteLLM path never touches google-genai, so
+# every slice runs green at that version. If you don't want the UI, this line is the
+# only thing to drop.
+gradio>=4

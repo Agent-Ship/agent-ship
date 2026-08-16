@@ -157,13 +157,30 @@ make demo        # runs the whole labelled tour of every slice, live
 
 ## 11. Coordinator + quick vs deep research — the long-running, resumable agent
 
-The flagship "many-speed ecosystem" demo: a **coordinator** classifies a request and routes it to a
-fast single-turn **quick-search** agent (seconds, `durability: none`) or a long, iterative
-**deep-research** agent that runs several rounds, **pauses to ask you "go deeper?"**, and is durable
-(`durability: checkpoint`) so it survives a crash or a long wait and resumes from the exact round.
+The flagship "many-speed ecosystem" demo: a fast single-turn **quick-search** agent (seconds,
+`durability: none`) and a long, iterative **deep-research** agent that runs several rounds,
+**pauses to ask you "go deeper?"**, and is durable (`durability: checkpoint`) so it survives a
+crash or a long wait and resumes from the exact round.
+
+### The nicest way — a chat UI (no scripts)
+
+Open a browser chat, pick the **deep-research** agent, and just talk to it. When it pauses to ask
+"go deeper?", the question appears as a chat message; reply **yes** or **no** and the paused run
+resumes from its checkpoint straight back into the conversation. One generic UI drives *any* agent:
 
 ```bash
-# One command that classifies, then runs the right agent end-to-end:
+set -a; source ../agentship/.env; set +a   # get OPENAI_API_KEY (and optional BRAVE_API_KEY)
+make ui                                     # opens http://127.0.0.1:7860
+```
+
+**What to try:** send *"State of small modular reactors in 2026"* to the deep-research agent →
+it works a couple of rounds, then pauses → reply **yes** to dig deeper (it pauses again) or **no**
+to get the synthesized report. Switch the dropdown to **quick-search** for a one-shot answer.
+
+### Non-interactive alternative — one command
+
+```bash
+# Classifies via the coordinator, then runs the right agent end-to-end:
 python demos/coordinated_research.py "Who won the 2026 Super Bowl?"                 # -> QUICK path
 python demos/coordinated_research.py "Compare small modular reactor vendors in 2026" # -> DEEP path
 # On the deep path, approve extra rounds instead of stopping at the first pause:
@@ -196,6 +213,10 @@ the loop still runs). Tune how many rounds run automatically before the pause wi
 cd ../agentship && .venv/bin/python -m pytest ../agentship-demo/tests/test_deep_research.py -q
 cd ../agentship-demo && pytest tests/test_coordinated_research.py -q -s   # live: pause -> resume -> report
 ```
+
+The chat UI is exercised the same way — `tests/test_chat_ui.py` drives its `respond()` handler
+through a full ask → pause → yes → pause → no → report cycle offline, so the browser path is
+covered without a browser.
 
 ---
 

@@ -25,6 +25,9 @@ pip install -r requirements-dev.txt   # or: make install
 
 # 3. Run every slice live
 make demo
+
+# ...or open a browser chat and talk to any agent (incl. the deep-research pause/resume):
+make ui   # http://127.0.0.1:7860
 ```
 
 ---
@@ -44,7 +47,7 @@ top to bottom.
 | 5 | P01 | **`ModelRouter`** — router picks the model id, then a real turn runs | _(spec built inline)_ | `pytest tests/test_router.py -q` |
 | 6 | P02 | **Durable multi-agent supervisor** — 1 supervisor + 3 real sub-agents; classify → route to **one** sub-agent → resolve; then a **fresh engine resumes from the checkpoint and produces byte-identical output** (the kill-9 guarantee, actually proven). The classify → route → dispatch → resolve trace prints inline so the routing is visible. | `agents/triage/triage.yaml` | `pytest tests/test_triage.py -q` |
 | 7 | P02 | **Multi-agent fan-out** — one question dispatched to **all 3 sub-agents concurrently** (`strategy: parallel`), then the `ConflictResolver` merges their competing answers by priority. You watch several real sub-agents run at once and get reconciled. | `agents/triage/panel.yaml` | `pytest tests/test_triage.py -q` |
-| 8 | P02 | **Quick vs deep research (the many-speed ecosystem)** — a **coordinator** classifies a request and routes it to a fast single-turn **quick-search** agent (seconds, `durability: none`) or a long, iterative **deep-research** agent that runs several rounds, **pauses to ask "go deeper?"** (`interrupt`), and is **durable** (`durability: checkpoint`) so it survives a crash/long wait and resumes from the exact round to synthesize a report. The deep loop is authored natively in LangGraph. | `agents/coordinator.yaml` · `agents/quick_search.yaml` · `agents/deep_research.yaml` | `pytest tests/test_deep_research.py tests/test_coordinated_research.py -q` |
+| 8 | P02 | **Quick vs deep research (the many-speed ecosystem)** — a **coordinator** classifies a request and routes it to a fast single-turn **quick-search** agent (seconds, `durability: none`) or a long, iterative **deep-research** agent that runs several rounds, **pauses to ask "go deeper?"** (`interrupt`), and is **durable** (`durability: checkpoint`) so it survives a crash/long wait and resumes from the exact round to synthesize a report. The deep loop is authored natively in LangGraph. Drive it from a **browser chat** (`make ui`) — reply "yes"/"no" to the pause — or run it headless. | `agents/coordinator.yaml` · `agents/quick_search.yaml` · `agents/deep_research.yaml` · `demos/chat_ui.py` | `pytest tests/test_deep_research.py tests/test_chat_ui.py -q` |
 
 > **Prerequisite for tests:** source your `.env` first so `OPENAI_API_KEY` is set.
 > Without a key every test skips cleanly — it never fake-passes and never hard-errors.

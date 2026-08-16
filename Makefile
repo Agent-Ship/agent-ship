@@ -13,7 +13,7 @@ VENV := .venv
 PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
 
-.PHONY: install test demo demo-multiagent ask run clean
+.PHONY: install test demo demo-multiagent ask run research ui clean
 
 ## install: create .venv and install the framework editable-local + test tooling
 install:
@@ -57,6 +57,12 @@ run:
 ##   deep path pauses for "go deeper?"; set DEEP_APPROVE_ROUNDS=N to approve extra rounds
 research:
 	$(PY) demos/coordinated_research.py "$(if $(INPUT),$(INPUT),Compare small modular reactor vendors in 2026)"
+
+## ui: open a browser chat to drive ANY agent — pick one, send a request, and reply
+##   yes/no when the deep-research agent pauses to "go deeper?". No per-demo script.
+##   Needs a real OPENAI_API_KEY; BRAVE_API_KEY optional for real web results.
+ui:
+	$(PY) demos/chat_ui.py
 
 ## clean: remove the venv and caches
 clean:
