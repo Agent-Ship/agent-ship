@@ -15,6 +15,7 @@ from ..errors import SpecError
 from ..registry import Registry
 from .builtins.calculator import calculator
 from .builtins.http_request import http_request
+from .builtins.scrape_url import scrape_url
 from .builtins.web_search import web_search
 from .tool import Tool
 
@@ -25,6 +26,7 @@ TOOLS: Registry[Tool] = Registry("agentship.tools", label="tool")
 TOOLS.register("calculator", calculator)
 TOOLS.register("http_request", http_request)
 TOOLS.register("web_search", web_search)
+TOOLS.register("scrape_url", scrape_url)
 
 
 def resolve_tool(ref: str) -> Tool:
