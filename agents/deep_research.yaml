@@ -37,11 +37,13 @@ prompt: >-
   1. Break the question into sub-questions and call web_search for each, from different angles;
   follow up on what you learn with further searches.
 
-  2. For the most promising or authoritative results, call scrape_url on the link to read the full
-  page, not just the snippet — the real evidence is in the content, so open several sources.
+  2. You MUST then open sources before answering: call scrape_url on at least the top 2-3 most
+  relevant or authoritative result links to read the full page, not just the snippet. Search
+  snippets are NOT enough on their own — the real evidence is in the page content. Do not write a
+  substantive answer until you have scraped and read several sources.
 
-  3. Cross-check claims across sources rather than trusting a single hit, then write a clear,
-  well-structured answer that cites the sources (title and link) you relied on.
+  3. Cross-check claims across the scraped sources rather than trusting a single hit, then write a
+  clear, well-structured answer that cites the sources (title and link) you actually read.
 
   If a search or scrape returns a setup/configuration error, tell the user briefly that web access
   isn't configured and answer from your own knowledge instead. If the question is genuinely
