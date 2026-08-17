@@ -11,7 +11,7 @@ from __future__ import annotations
 from abc import ABC
 
 import pytest
-from agentship.auth import AuthProvider, RequestLike
+from agentship.auth import AuthProvider, RequestLike, authorize
 from agentship.context import Caller
 from agentship.errors import AgentShipError, AuthError
 
@@ -106,3 +106,56 @@ def test_auth_error_carries_a_machine_code_and_is_actionable() -> None:
     with_msg = AuthError("expired_token", "the JWT 'exp' is in the past")
     assert with_msg.code == "expired_token"
     assert "past" in str(with_msg)
+
+
+def _caller_with(*scopes: str) -> Caller:
+    """A caller holding exactly ``scopes`` (helper for the authorize matrix)."""
+    return Caller(user_id="u", scopes=set(scopes))
+
+
+@pytest.mark.parametrize(
+    ("granted", "agent", "verb", "allowed"),
+    [
+        # Superuser wildcard grants everything.
+        ("*", "support", "invoke", True),
+        ("*", "billing", "stream", True),
+        # Exact scope grants only that agent+verb.
+        ("agent:support:invoke", "support", "invoke", True),
+        ("agent:support:invoke", "support", "stream", False),
+        ("agent:support:invoke", "billing", "invoke", False),
+        # Verb wildcard: any verb on the named agent.
+        ("agent:support:*", "support", "invoke", True),
+        ("agent:support:*", "support", "stream", True),
+        ("agent:support:*", "billing", "invoke", False),
+        # Agent wildcard: the named verb on any agent.
+        ("agent:*:invoke", "support", "invoke", True),
+        ("agent:*:invoke", "billing", "invoke", True),
+        ("agent:*:invoke", "support", "stream", False),
+        # A shorter pattern must not grant a longer required scope.
+        ("agent:support", "support", "invoke", False),
+    ],
+)
+def test_authorize_grant_deny_matrix(granted: str, agent: str, verb: str, allowed: bool) -> None:
+    """The wildcard grammar grants/denies exactly per the documented segment rules."""
+    caller = _caller_with(granted)
+    if allowed:
+        authorize(caller, agent=agent, verb=verb)  # returns None, no raise
+    else:
+        with pytest.raises(AuthError) as excinfo:
+            authorize(caller, agent=agent, verb=verb)
+        assert excinfo.value.code == "forbidden"
+
+
+def test_authorize_with_no_scopes_always_denies() -> None:
+    """A caller with an empty scope set is denied every action (403 forbidden)."""
+    with pytest.raises(AuthError) as excinfo:
+        authorize(_caller_with(), agent="support", verb="invoke")
+    assert excinfo.value.code == "forbidden"
+
+
+def test_authorize_grants_when_any_held_scope_matches() -> None:
+    """Authorization is a union: holding several scopes grants if any one matches."""
+    caller = _caller_with("agent:billing:invoke", "agent:support:stream")
+    authorize(caller, agent="support", verb="stream")
+    with pytest.raises(AuthError):
+        authorize(caller, agent="support", verb="invoke")

@@ -6,11 +6,14 @@ It reads credentials off an incoming request (:class:`RequestLike`) and returns 
 ``user_id``, the granted ``scopes``, and the ``auth_method`` — or raises
 :class:`~agentship.errors.AuthError` when the credentials are missing or invalid.
 
+Once a caller is known, :func:`authorize` checks whether its granted ``scopes`` allow
+a given action on a given agent, raising :class:`~agentship.errors.AuthError` on denial.
+
 This module is deliberately dependency-light: it imports only ``Caller`` and
-``AuthError``, never an engine, so the service can authenticate a request without
-pulling the agent runtime in. Concrete adapters (API key, JWT, composite), their
-registry, and authorization (``authorize`` over a caller's scopes) land in the
-following Phase-04 tasks; this file fixes only the contract they implement.
+``AuthError``, never an engine, so the service can authenticate and authorize a request
+without pulling the agent runtime in. Concrete adapters (API key, JWT, composite) and
+their registry land in the following Phase-04 tasks; this file fixes the contract they
+implement plus the scope grammar they grant against.
 """
 
 from __future__ import annotations
@@ -20,6 +23,7 @@ from collections.abc import Mapping
 from typing import Protocol, runtime_checkable
 
 from .context import Caller
+from .errors import AuthError
 
 
 @runtime_checkable
@@ -59,4 +63,40 @@ class AuthProvider(ABC):
         """
 
 
-__all__ = ["AuthProvider", "RequestLike", "Caller"]
+def _scope_grants(granted: str, required: str) -> bool:
+    """Whether one granted scope pattern covers a required ``agent:{name}:{verb}`` scope.
+
+    A bare ``"*"`` grants everything. Otherwise both are split on ``":"`` and matched
+    segment-by-segment: a granted segment matches when it is ``"*"`` (wildcard) or
+    equals the required segment. Segment counts must match, so ``agent:support`` does
+    not accidentally grant ``agent:support:invoke``. Examples: ``agent:*:invoke`` grants
+    invoke on any agent; ``agent:support:*`` grants any verb on the support agent.
+    """
+    if granted == "*":
+        return True
+    granted_parts = granted.split(":")
+    required_parts = required.split(":")
+    if len(granted_parts) != len(required_parts):
+        return False
+    return all(g in ("*", r) for g, r in zip(granted_parts, required_parts, strict=True))
+
+
+def authorize(caller: Caller, *, agent: str, verb: str) -> None:
+    """Authorize ``caller`` to perform ``verb`` on ``agent``, or raise ``AuthError``.
+
+    Builds the required scope string ``agent:{agent}:{verb}`` (e.g.
+    ``agent:support:invoke``) and returns silently if any scope the caller holds grants
+    it under the wildcard grammar in :func:`_scope_grants`. Otherwise raises
+    :class:`~agentship.errors.AuthError` with code ``"forbidden"`` — which the service
+    maps to HTTP 403 (distinct from an authentication failure's 401). The grammar's
+    ``*`` / ``agent:*:{verb}`` / ``agent:{name}:*`` forms are the seam P13's RBAC role
+    model maps onto, so roles resolve to these opaque scope strings without changing
+    this check.
+    """
+    required = f"agent:{agent}:{verb}"
+    if any(_scope_grants(scope, required) for scope in caller.scopes):
+        return
+    raise AuthError("forbidden", f"caller lacks the required scope {required!r}")
+
+
+__all__ = ["AuthProvider", "RequestLike", "Caller", "authorize"]
