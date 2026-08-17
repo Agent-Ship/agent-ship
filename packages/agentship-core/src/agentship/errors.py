@@ -60,6 +60,23 @@ class ResumeError(AgentShipError):
     """
 
 
+class AuthError(AgentShipError):
+    """A request could not be authenticated (missing, malformed, or invalid credentials).
+
+    Raised by an :class:`~agentship.auth.AuthProvider` when it cannot turn a request
+    into a :class:`~agentship.context.Caller` — an unknown API key, an expired or
+    badly-signed JWT, or no credentials at all. Carries a stable machine ``code``
+    (e.g. ``"invalid_api_key"``, ``"no_credentials"``, ``"expired_token"``) so the
+    service can put it in a 401 problem+json body without string-matching the message.
+    The human-readable ``message`` defaults to the code when not given.
+    """
+
+    def __init__(self, code: str, message: str | None = None) -> None:
+        """Create an auth failure with a machine ``code`` and optional human ``message``."""
+        self.code = code
+        super().__init__(message or code)
+
+
 class ModelError(AgentShipError):
     """A model/provider call failed (missing credentials, a provider error, …).
 

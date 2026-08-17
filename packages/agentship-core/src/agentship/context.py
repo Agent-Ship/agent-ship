@@ -35,17 +35,30 @@ class RunMode(StrEnum):
 
 
 class Caller(BaseModel):
-    """The authenticated caller (DESIGN §13.2 canonical, KISS subset).
+    """The authenticated caller (DESIGN §13.2 canonical).
 
     The ``(tenant_id, user_id)`` pair scopes long-term memory and the re-identify
     vault (§13.4). ``tenant_id`` defaults to ``"default"`` so a single-tenant
     project needs no auth plumbing; ``user_id`` is required — even in dev it is a
-    stable anonymous id — so memory/vault reads are always attributable to a
-    caller. Scopes/auth-method land with the auth phase (04); they are omitted now.
+    stable anonymous id — so memory/vault reads are always attributable to a caller.
+
+    :attr:`scopes` and :attr:`auth_method` are populated by the auth phase (04): an
+    :class:`~agentship.auth.AuthProvider` turns a request's credentials into a
+    ``Caller`` carrying the scopes it was granted and how it proved its identity.
+    Both default empty/absent, so an un-authenticated dev caller is simply one with
+    no scopes and no method — the model is identical whether auth is wired or not.
     """
 
     tenant_id: str = "default"
     user_id: str
+    #: The authorization scopes this caller was granted, e.g.
+    #: ``{"agent:support:invoke"}``. A frozenset so a granted set is immutable once
+    #: authenticated. Empty for an un-authenticated caller. Consumed by ``authorize``.
+    scopes: frozenset[str] = frozenset()
+    #: How the caller authenticated (e.g. ``"api_key"``, ``"jwt"``), or ``None`` when
+    #: un-authenticated. A plain label an :class:`~agentship.auth.AuthProvider` stamps
+    #: so later layers (audit, RBAC in P13) can branch on the auth method.
+    auth_method: str | None = None
 
 
 @dataclass
