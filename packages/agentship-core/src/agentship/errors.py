@@ -77,6 +77,25 @@ class AuthError(AgentShipError):
         super().__init__(message or code)
 
 
+class TenantViolation(AgentShipError):
+    """A request tried to reach a resource owned by a different tenant.
+
+    Raised by :func:`~agentship.tenancy.guard_tenant` when the tenant bound for the
+    current request does not own the resource being read or written — the core tenant
+    isolation invariant (DESIGN §13.4). The service maps it to **404** on a read (so a
+    resource's existence is not leaked across tenants) and **403** on a write. Carries the
+    acting and owning tenant ids for audit, never exposed in the client-facing message.
+    """
+
+    def __init__(self, acting_tenant: str, owner_tenant: str) -> None:
+        """Record the acting tenant and the resource's owning tenant for the audit trail."""
+        self.acting_tenant = acting_tenant
+        self.owner_tenant = owner_tenant
+        super().__init__(
+            f"tenant {acting_tenant!r} may not access a resource owned by {owner_tenant!r}"
+        )
+
+
 class ModelError(AgentShipError):
     """A model/provider call failed (missing credentials, a provider error, …).
 
