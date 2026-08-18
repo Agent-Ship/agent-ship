@@ -667,6 +667,109 @@ def run_server(*, host: str, port: int, reload: bool, workers: int | None) -> No
     )
 
 
+#: Hosts treated as loopback — the only interfaces ``agentship studio`` may bind (§13.8).
+LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+
+
+@main.command()
+@click.option(
+    "--engine",
+    type=click.Choice(["langgraph", "adk"]),
+    default="langgraph",
+    show_default=True,
+    help="Which consumed studio UI to open (LangGraph Studio or ADK web).",
+)
+@click.option(
+    "--host",
+    default="127.0.0.1",
+    show_default=True,
+    help="Interface to bind — loopback only (127.0.0.1 | localhost | ::1).",
+)
+@click.option("--port", default=2024, show_default=True, type=int, help="Studio dev-server port.")
+@click.option(
+    "--agents-dir",
+    "agents_dir",
+    type=click.Path(file_okay=False),
+    default="agents",
+    show_default=True,
+    help="Directory of agent specs to open in the studio.",
+)
+@click.option(
+    "--env-file",
+    default=None,
+    help="Load credentials from this .env before launching (default: ./.env).",
+)
+def studio(engine: str, host: str, port: int, agents_dir: str, env_file: str | None) -> None:
+    """Open a consumed studio UI (LangGraph Studio / ADK web) against AGENTS-DIR.
+
+    We do **not** build a studio: for ``--engine langgraph`` we generate a ``langgraph.json``
+    manifest from the discovered LangGraph agents and shell to ``langgraph dev``; for
+    ``--engine adk`` we shell to ADK web. Phoenix remains the trace/eval surface.
+
+    **Loopback-only (§13.8, non-negotiable):** the studio binds ``127.0.0.1`` with a minted dev
+    token and a ``dev`` principal, and **refuses any non-loopback host outright**. Studio
+    time-travel reads checkpoints, so exposing it on a network interface without an ``AuthProvider``
+    is a hard cross-tenant leak — expose it only behind the secure service.
+    """
+    try:
+        _studio(engine, host, port, Path(agents_dir), env_file)
+    except AgentShipError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
+def _require_loopback(host: str) -> None:
+    """Raise unless ``host`` is a loopback interface — the studio's hard §13.8 guard."""
+    if host not in LOOPBACK_HOSTS:
+        raise AgentShipError(
+            f"studio binds loopback only (§13.8); refusing host {host!r}. Studio time-travel reads "
+            "checkpoints — put it behind an AuthProvider to expose it on a network interface."
+        )
+
+
+def _studio(engine: str, host: str, port: int, agents_dir: Path, env_file: str | None) -> None:
+    """Enforce the loopback guard, mint a dev token, generate the manifest, and launch the UI.
+
+    Raises :class:`~agentship.errors.AgentShipError` (→ exit 1) on a non-loopback host or when no
+    renderable agent is found; only past those gates does it hand off to :func:`run_studio_process`,
+    which execs the consumed dev server.
+    """
+    import secrets
+
+    _require_loopback(host)
+    load_env_for_run(env_file)
+
+    # Mint a dev token → dev principal for this loopback session (reuse one already in the env).
+    dev_token = os.environ.get("AGENTSHIP_DEV_TOKEN") or secrets.token_urlsafe(24)
+    env = {**os.environ, "AGENTSHIP_DEV_TOKEN": dev_token, "AGENTSHIP_PRINCIPAL": "dev"}
+
+    if engine == "langgraph":
+        from agentship.observability.studio import generate_langgraph_json
+
+        manifest = generate_langgraph_json(agents_dir, Path("langgraph.json").resolve())
+        click.echo(f"Wrote {manifest}")
+        cmd = ["langgraph", "dev", "--host", host, "--port", str(port)]
+        cwd = manifest.parent
+    else:
+        cmd = ["adk", "web", "--host", host, "--port", str(port), str(agents_dir.resolve())]
+        cwd = agents_dir.parent
+
+    click.echo(f"Dev token (loopback only): {dev_token}")
+    click.echo(f"Opening {engine} studio on http://{host}:{port}")
+    run_studio_process(cmd, env, cwd=cwd)
+
+
+def run_studio_process(cmd: list[str], env: dict[str, str], *, cwd: Path) -> None:
+    """Exec the consumed studio dev server (indirected so tests can avoid launching it).
+
+    Runs ``langgraph dev`` / ``adk web`` in ``cwd`` with the dev-token environment. Tests
+    monkeypatch this to assert the command and loopback host without spawning a process.
+    """
+    import subprocess
+
+    subprocess.run(cmd, env=env, cwd=str(cwd), check=True)
+
+
 @main.group()
 def db() -> None:
     """Database schema commands (the gated owner of all DDL)."""
