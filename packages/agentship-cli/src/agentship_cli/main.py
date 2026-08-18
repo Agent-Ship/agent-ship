@@ -534,6 +534,139 @@ def _scaffold_agent(name: str, template: str, agents_dir: Path, *, force: bool) 
     raise AgentShipError(f"unknown template {template!r} — choose one of {_TEMPLATE_CHOICES}")
 
 
+@main.command()
+@click.option("--host", default="127.0.0.1", show_default=True, help="Interface to bind.")
+@click.option("--port", default=8000, show_default=True, type=int, help="Port to bind.")
+@click.option(
+    "--reload",
+    is_flag=True,
+    help="Auto-reload on code changes (dev; mutually exclusive with --workers>1).",
+)
+@click.option(
+    "--workers",
+    type=int,
+    default=None,
+    help="Number of worker processes (prod; mutually exclusive with --reload).",
+)
+@click.option(
+    "--agents-dir",
+    "agents_dir",
+    type=click.Path(file_okay=False),
+    default="agents",
+    show_default=True,
+    help="Directory of agent specs to serve.",
+)
+@click.option(
+    "--auth",
+    "auth_provider",
+    default="api_key",
+    show_default=True,
+    help="Auth provider name (api_key | forwarded | jwt | composite).",
+)
+@click.option(
+    "--env-file",
+    default=None,
+    help="Load provider credentials from this .env before serving (default: ./.env).",
+)
+def serve(
+    host: str,
+    port: int,
+    reload: bool,
+    workers: int | None,
+    agents_dir: str,
+    auth_provider: str,
+    env_file: str | None,
+) -> None:
+    """Serve the agents in AGENTS-DIR over the secure ``/v1`` REST/SSE/WS surface.
+
+    This is the supported launch path for the runtime service. It is **doctor-gated**: every
+    ``agents/*.yaml`` is validated and the auth provider is built *before* the socket binds,
+    so an invalid spec, an uninstalled engine, or an uninstalled/misconfigured auth provider
+    fails fast (exit ``1``) rather than after the server is already listening. The app is
+    then built by the same ``create_app()`` factory tests use and run under uvicorn.
+
+    ``--host`` defaults to loopback (``127.0.0.1``) so a bare ``agentship serve`` is not
+    network-exposed. ``--reload`` (dev) and ``--workers>1`` (prod) are mutually exclusive —
+    a uvicorn constraint — and passing both is a usage error (exit ``2``).
+    """
+    if reload and workers and workers > 1:
+        raise click.UsageError(
+            "--reload and --workers>1 are mutually exclusive (uvicorn constraint)"
+        )
+    try:
+        _serve(host, port, reload, workers, Path(agents_dir), auth_provider, env_file)
+    except AgentShipError as exc:
+        # Doctor-gate failure (bad spec / uninstalled or misconfigured provider): exit 1
+        # before anything is bound.
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
+def _serve(
+    host: str,
+    port: int,
+    reload: bool,
+    workers: int | None,
+    agents_dir: Path,
+    auth_provider: str,
+    env_file: str | None,
+) -> None:
+    """Doctor-gate, configure the app factory's environment, and launch the server.
+
+    Raises :class:`~agentship.errors.AgentShipError` (→ the command exits 1) if any spec is
+    invalid or the auth provider cannot be built; only past that gate does it hand off to
+    :func:`run_server`, which binds the socket.
+    """
+    from agentship.auth.registry import build_auth_provider
+    from agentship_service.serving import (
+        ENV_AGENTS_DIR,
+        ENV_AUTH_PROVIDER,
+        _auth_config_from_env,
+    )
+
+    load_env_for_run(env_file)
+
+    # Doctor-gate: validate every spec before binding, with actionable per-agent reasons.
+    specs = _agent_files(agents_dir) if agents_dir.is_dir() else []
+    failures = [(path.name, _check_agent(path)) for path in specs]
+    failures = [(name, reason) for name, reason in failures if reason is not None]
+    if failures:
+        for name, reason in failures:
+            click.echo(f"✗ {name}: {reason}", err=True)
+        raise AgentShipError(
+            f"doctor gate failed: {len(failures)} invalid agent spec(s) — fix before serving"
+        )
+
+    # Configure the factory's environment, then build the provider once to fail fast on an
+    # uninstalled or misconfigured provider (e.g. forwarded-header without an allow-list).
+    os.environ[ENV_AGENTS_DIR] = str(agents_dir)
+    os.environ[ENV_AUTH_PROVIDER] = auth_provider
+    build_auth_provider(auth_provider, _auth_config_from_env(auth_provider))
+
+    click.echo(f"Serving {len(specs)} agent(s) from {agents_dir} on http://{host}:{port}")
+    click.echo(f"Auth provider: {auth_provider}")
+    run_server(host=host, port=port, reload=reload, workers=workers)
+
+
+def run_server(*, host: str, port: int, reload: bool, workers: int | None) -> None:
+    """Launch uvicorn against the env-configured app factory (indirected for testability).
+
+    Uses the import-string factory ``agentship_service.serving:build_from_env`` so uvicorn
+    can rebuild the app in ``--reload``/``--workers`` subprocesses from the environment the
+    doctor-gate already configured. Tests monkeypatch this function to avoid binding a socket.
+    """
+    import uvicorn
+
+    uvicorn.run(
+        "agentship_service.serving:build_from_env",
+        factory=True,
+        host=host,
+        port=port,
+        reload=reload,
+        workers=workers or None,
+    )
+
+
 @main.group()
 def db() -> None:
     """Database schema commands (the gated owner of all DDL)."""
