@@ -21,6 +21,11 @@ dependencies = [
 [project.optional-dependencies]
 postgres = ["psycopg[binary]>=3.1"]
 
+# The optional in-app JWT auth path (JwtAuthProvider). Not the default — behind a
+# gateway the gateway validates tokens — so PyJWT (with crypto for RS256/ES256 and
+# JWKS) is an opt-in extra rather than a base dependency. httpx backs the JWKS fetch.
+jwt = ["pyjwt[crypto]>=2.9", "httpx>=0.27"]
+
 # The zero-dependency echo engine registers here; adapter packages (e.g.
 # agentship-langgraph) add their own engines to the same group. Core discovers
 # them via importlib.metadata — no core edit needed to add an engine.
