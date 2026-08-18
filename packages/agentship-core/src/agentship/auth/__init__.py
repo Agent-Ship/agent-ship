@@ -109,6 +109,7 @@ def authorize(caller: Caller, *, agent: str, verb: str) -> None:
 # to avoid a cycle (each adapter imports the contract defined above). Adapters are added
 # here as their Phase-04 tasks land.
 from .api_key import ApiKeyAuthProvider, ApiKeyStore, EnvApiKeyStore  # noqa: E402
+from .composite import CompositeAuthProvider  # noqa: E402
 from .forwarded import ForwardedHeaderAuthProvider  # noqa: E402
 
 __all__ = [
@@ -120,4 +121,5 @@ __all__ = [
     "ApiKeyAuthProvider",
     "ApiKeyStore",
     "EnvApiKeyStore",
+    "CompositeAuthProvider",
 ]

@@ -113,11 +113,16 @@ async def test_untrusted_source_is_rejected() -> None:
     assert excinfo.value.code == "untrusted_source"
 
 
-async def test_missing_forwarded_by_marker_is_rejected() -> None:
-    """A request with no forwarded-by marker at all is treated as untrusted."""
+async def test_missing_forwarded_by_marker_is_no_credentials() -> None:
+    """A request with no forwarded-by marker is 'no credentials', not an attack.
+
+    Reported as ``no_credentials`` (rather than ``untrusted_source``) so that inside a
+    :class:`CompositeAuthProvider` a non-gateway request falls through to the next
+    provider (e.g. the API-key one) instead of being rejected outright.
+    """
     with pytest.raises(AuthError) as excinfo:
         await _provider().authenticate(_request({"x-agentship-user": "u"}))
-    assert excinfo.value.code == "untrusted_source"
+    assert excinfo.value.code == "no_credentials"
 
 
 async def test_trusted_source_but_no_user_is_no_credentials() -> None:

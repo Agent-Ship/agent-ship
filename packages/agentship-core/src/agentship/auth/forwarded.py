@@ -78,6 +78,15 @@ class ForwardedHeaderAuthProvider(AuthProvider):
         invented anonymous identity — that means the gateway was misconfigured.
         """
         forwarded_by = request.headers.get(self._forwarded_by_header)
+        if forwarded_by is None:
+            # No forwarded-identity marker at all: this request was not shaped by a
+            # gateway, so this provider has nothing to authenticate. Reported as
+            # ``no_credentials`` (not ``untrusted_source``) so a CompositeAuthProvider
+            # falls through to the next provider rather than treating it as an attack.
+            raise AuthError(
+                "no_credentials",
+                f"no {self._forwarded_by_header!r} marker — request did not come via a gateway",
+            )
         if forwarded_by not in self._trusted:
             raise AuthError(
                 "untrusted_source",
