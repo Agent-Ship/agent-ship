@@ -20,7 +20,7 @@ from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
 from .errors import install_error_handlers
-from .middleware import AuthMiddleware, SecurityHeadersMiddleware
+from .middleware import AuthMiddleware, RateLimitMiddleware, SecurityHeadersMiddleware
 from .registry import AgentRegistry
 from .routers import agents_router, live_router, tasks_router
 from .routers.tasks import TaskStore
@@ -32,15 +32,20 @@ def create_app(
     agents: AgentRegistry | None = None,
     cors_origins: Sequence[str] = (),
     hsts: bool = False,
+    rate_limit: bool = False,
+    requests_per_second: float = 10.0,
+    rate_limit_burst: int = 20,
     title: str = "AgentShip",
 ) -> FastAPI:
     """Build the runtime-service app authenticated by ``auth`` serving ``agents``.
 
     ``agents`` is the catalog the v1 routes invoke and discover (an empty registry when
     omitted). ``cors_origins`` is an explicit allow-list (never ``*`` with credentials);
-    ``hsts`` turns on Strict-Transport-Security for a TLS deployment. The returned app
-    already has a public ``GET /healthz`` liveness probe, the v1 agent + task routers, and
-    the problem+json error handlers installed.
+    ``hsts`` turns on Strict-Transport-Security for a TLS deployment. ``rate_limit`` enables
+    the optional in-process token-bucket limiter (off by default — a gateway-free safety
+    net only; real rate-limiting is agentgateway's job). The returned app already has a
+    public ``GET /healthz`` liveness probe, the v1 agent + task routers, and the problem+json
+    error handlers installed.
     """
     app = FastAPI(title=title, docs_url="/docs", redoc_url="/redoc")
     app.state.agents = agents if agents is not None else AgentRegistry()
@@ -57,8 +62,15 @@ def create_app(
     app.include_router(tasks_router)
 
     # Mount inner → outer. add_middleware makes each call the new outermost layer, so the
-    # last call (CORS) runs first on a request and the first call (Auth) runs last.
+    # last call (CORS) runs first on a request and the first call (Auth) runs last. The
+    # resulting request-path order is CORS → SecurityHeaders → RateLimit → Auth → router.
     app.add_middleware(AuthMiddleware, auth=auth)
+    app.add_middleware(
+        RateLimitMiddleware,
+        enabled=rate_limit,
+        requests_per_second=requests_per_second,
+        burst=rate_limit_burst,
+    )
     app.add_middleware(SecurityHeadersMiddleware, hsts=hsts)
     if cors_origins:
         app.add_middleware(

@@ -11,7 +11,11 @@ from __future__ import annotations
 import pytest
 from agentship.auth import ApiKeyAuthProvider, EnvApiKeyStore
 from agentship_service import create_app
-from agentship_service.middleware import AuthMiddleware, SecurityHeadersMiddleware
+from agentship_service.middleware import (
+    AuthMiddleware,
+    RateLimitMiddleware,
+    SecurityHeadersMiddleware,
+)
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from starlette.middleware.cors import CORSMiddleware
@@ -94,22 +98,28 @@ def test_hsts_opt_in() -> None:
     assert "strict-transport-security" in resp.headers
 
 
-def test_middleware_order_is_cors_then_headers_then_auth() -> None:
-    """The stack is mounted outermost→innermost: CORS, SecurityHeaders, Auth.
+def test_middleware_order_is_cors_then_headers_then_ratelimit_then_auth() -> None:
+    """The stack is mounted outermost→innermost: CORS, SecurityHeaders, RateLimit, Auth.
 
     Starlette lists ``user_middleware`` outermost-first (index 0 = added last), so the
-    documented request path CORS → SecurityHeaders → Auth → router is exactly this order.
+    documented request path CORS → SecurityHeaders → RateLimit → Auth → router is exactly
+    this order.
     """
     app = create_app(auth=_auth(), cors_origins=["https://app.example"])
     classes = [m.cls for m in app.user_middleware]
-    assert classes == [CORSMiddleware, SecurityHeadersMiddleware, AuthMiddleware]
+    assert classes == [
+        CORSMiddleware,
+        SecurityHeadersMiddleware,
+        RateLimitMiddleware,
+        AuthMiddleware,
+    ]
 
 
 def test_cors_absent_when_no_origins() -> None:
-    """With no allow-list, CORS is not mounted — only SecurityHeaders and Auth."""
+    """With no allow-list, CORS is not mounted — only SecurityHeaders, RateLimit, Auth."""
     app = create_app(auth=_auth())
     classes = [m.cls for m in app.user_middleware]
-    assert classes == [SecurityHeadersMiddleware, AuthMiddleware]
+    assert classes == [SecurityHeadersMiddleware, RateLimitMiddleware, AuthMiddleware]
 
 
 def test_options_preflight_short_circuits_before_auth() -> None:

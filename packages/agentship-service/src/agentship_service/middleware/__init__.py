@@ -7,9 +7,11 @@ All middleware here is written as pure-ASGI wrappers rather than
 
 from .auth import AuthMiddleware, get_caller, require_scope
 from .headers import SecurityHeadersMiddleware
+from .ratelimit import RateLimitMiddleware
 
 __all__ = [
     "AuthMiddleware",
+    "RateLimitMiddleware",
     "SecurityHeadersMiddleware",
     "get_caller",
     "require_scope",
