@@ -22,7 +22,7 @@ from starlette.middleware.cors import CORSMiddleware
 from .errors import install_error_handlers
 from .middleware import AuthMiddleware, RateLimitMiddleware, SecurityHeadersMiddleware
 from .registry import AgentRegistry
-from .routers import agents_router, live_router, tasks_router
+from .routers import a2a_router, agents_router, live_router, tasks_router
 from .routers.tasks import TaskStore
 
 
@@ -60,6 +60,7 @@ def create_app(
     app.include_router(agents_router)
     app.include_router(live_router)
     app.include_router(tasks_router)
+    app.include_router(a2a_router)
 
     # Mount inner → outer. add_middleware makes each call the new outermost layer, so the
     # last call (CORS) runs first on a request and the first call (Auth) runs last. The

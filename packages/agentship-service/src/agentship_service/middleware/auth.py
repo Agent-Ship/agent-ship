@@ -43,9 +43,12 @@ class AuthMiddleware:
             await self.app(scope, receive, send)
             return
         if scope["type"] == "http" and (
-            scope["method"] == "OPTIONS" or scope["path"] in self._public_paths
+            scope["method"] == "OPTIONS"
+            or scope["path"] in self._public_paths
+            or "/.well-known/" in scope["path"]
         ):
-            # CORS preflight and public endpoints never require a credential.
+            # CORS preflight, public endpoints, and the RFC 8615 ``.well-known`` discovery space
+            # (A2A Agent Cards + the agents index) never require a credential.
             await self.app(scope, receive, send)
             return
 
