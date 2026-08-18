@@ -9,5 +9,6 @@ problem+json. :func:`create_app` assembles the FastAPI app and its middleware st
 from __future__ import annotations
 
 from .app import create_app
+from .registry import AgentRegistry
 
-__all__ = ["create_app"]
+__all__ = ["AgentRegistry", "create_app"]

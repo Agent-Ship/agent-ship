@@ -100,6 +100,22 @@ class AgentCard(BaseModel):
     output_schema: dict[str, Any] | None = None
 
 
+class TaskCreateRequest(BaseModel):
+    """Enqueue a durable task: which agent to run and its input. Identity is the caller's.
+
+    Like :class:`InvokeRequest` this carries no ``user_id``/``tenant_id`` — the task is
+    owned by the authenticated caller's tenant so it can never be created for another.
+    """
+
+    model_config = {"extra": "forbid"}
+
+    agent: str = Field(..., description="Name of the agent to run for this task.")
+    input: str = Field(..., description="The input text for the task's first turn.")
+    session_id: str | None = Field(
+        default=None, description="Conversation id to continue; omit to start a new one."
+    )
+
+
 #: A durable task's lifecycle state (the ``/v1/tasks`` skeleton; full executor → P11).
 TaskStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
 

@@ -22,7 +22,9 @@ from agentship.errors import (
     ThreadBusyError,
 )
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .context import current_trace_id
 from .models.v1 import ProblemDetail
@@ -112,9 +114,61 @@ def _agentship_error(request: Request, exc: AgentShipError) -> JSONResponse:
     )
 
 
+#: Machine ``code`` for the common HTTP statuses a route raises directly (via
+#: ``HTTPException``). Anything not listed falls back to a generic ``http_error`` code.
+_HTTP_CODES = {
+    400: "bad_request",
+    404: "not_found",
+    405: "method_not_allowed",
+    409: "conflict",
+    413: "payload_too_large",
+    415: "unsupported_media_type",
+    429: "rate_limited",
+}
+
+
+def _http_exception(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+    """A route-raised ``HTTPException`` → problem+json with a code for its status.
+
+    Routes raise ``HTTPException(status_code, detail=...)`` for the ordinary client
+    errors (404 unknown agent, 413 body too large, 415 wrong content type); this renders
+    them in the same problem+json shape as every other failure instead of FastAPI's
+    default ``{"detail": ...}`` body.
+    """
+    code = _HTTP_CODES.get(exc.status_code, "http_error")
+    title = _HTTP_STATUS_TITLES.get(exc.status_code, "Error")
+    detail = exc.detail if isinstance(exc.detail, str) else None
+    return problem_response(status=exc.status_code, title=title, code=code, detail=detail)
+
+
+def _validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """A malformed request body/params → 422 with a stable ``invalid_request`` code.
+
+    The individual field errors are summarised into a short human ``detail``; the raw
+    pydantic error list (which can echo submitted values) is deliberately not returned.
+    """
+    fields = ", ".join(".".join(str(p) for p in err.get("loc", ())) for err in exc.errors())
+    detail = f"request validation failed for: {fields}" if fields else "request validation failed"
+    return problem_response(
+        status=422, title="Unprocessable Entity", code="invalid_request", detail=detail
+    )
+
+
 def _unhandled(request: Request, exc: Exception) -> JSONResponse:
     """An unexpected error → 500 with a generic body (never leak the exception text)."""
     return problem_response(status=500, title="Internal Server Error", code="internal_error")
+
+
+#: Human ``title`` per HTTP status for a route-raised ``HTTPException``.
+_HTTP_STATUS_TITLES = {
+    400: "Bad Request",
+    404: "Not Found",
+    405: "Method Not Allowed",
+    409: "Conflict",
+    413: "Payload Too Large",
+    415: "Unsupported Media Type",
+    429: "Too Many Requests",
+}
 
 
 def install_error_handlers(app: FastAPI) -> None:
@@ -134,4 +188,7 @@ def install_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(SpecError, _agentship_error)
     app.add_exception_handler(EngineNotFoundError, _agentship_error)
     app.add_exception_handler(AgentShipError, _agentship_error)
+    # Route-raised HTTP errors (404/413/415/…) and body validation → problem+json too.
+    app.add_exception_handler(StarletteHTTPException, _http_exception)
+    app.add_exception_handler(RequestValidationError, _validation_error)
     app.add_exception_handler(Exception, _unhandled)

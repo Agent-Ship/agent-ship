@@ -16,7 +16,8 @@ from agentship.auth import AuthProvider, authorize
 from agentship.context import Caller
 from agentship.errors import AuthError
 from agentship.tenancy import TenantScope
-from fastapi import Depends, Request
+from fastapi import Depends
+from starlette.requests import HTTPConnection
 
 from ..context import bind_caller, current_caller, reset_caller
 from ..errors import problem_dict
@@ -48,9 +49,11 @@ class AuthMiddleware:
             await self.app(scope, receive, send)
             return
 
-        request = Request(scope, receive)
+        # HTTPConnection is the shared base of Request and WebSocket; the auth providers
+        # only read headers, so it serves both an HTTP request and a WS handshake.
+        connection = HTTPConnection(scope)
         try:
-            caller = await self._auth.authenticate(request)
+            caller = await self._auth.authenticate(connection)
         except AuthError as exc:
             await self._reject(scope, receive, send, exc)
             return
