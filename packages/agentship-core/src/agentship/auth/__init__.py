@@ -108,6 +108,7 @@ def authorize(caller: Caller, *, agent: str, verb: str) -> None:
 # from ``agentship.auth`` regardless of which file they live in. Imported at the bottom
 # to avoid a cycle (each adapter imports the contract defined above). Adapters are added
 # here as their Phase-04 tasks land.
+from .api_key import ApiKeyAuthProvider, ApiKeyStore, EnvApiKeyStore  # noqa: E402
 from .forwarded import ForwardedHeaderAuthProvider  # noqa: E402
 
 __all__ = [
@@ -116,4 +117,7 @@ __all__ = [
     "Caller",
     "authorize",
     "ForwardedHeaderAuthProvider",
+    "ApiKeyAuthProvider",
+    "ApiKeyStore",
+    "EnvApiKeyStore",
 ]
