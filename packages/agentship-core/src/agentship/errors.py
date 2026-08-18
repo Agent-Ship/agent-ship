@@ -105,3 +105,18 @@ class ModelError(AgentShipError):
     environment variable to set. The original provider exception is always chained
     (``raise … from``) so the full cause is available under ``--debug``.
     """
+
+
+class A2AUnavailable(AgentShipError):
+    """A networked (A2A) specialist could not be reached or answered (retryable).
+
+    Raised by the A2A client path (P05) when a remote agent's Agent Card cannot be
+    fetched or a ``message/send`` call fails at the transport level. It is *retryable*
+    — the outer agent's graph decides whether to retry or degrade; the framework never
+    silently swaps a remote specialist for a local one. Distinct from
+    :class:`CapabilityError`, which means the remote genuinely cannot do what was asked.
+    """
+
+    #: A transport failure is worth retrying; the flag lets callers branch without
+    #: string-matching the message.
+    retryable = True
