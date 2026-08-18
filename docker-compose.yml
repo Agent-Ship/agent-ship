@@ -1,0 +1,30 @@
+# Local deployment of the AgentShip runtime service. `make docker-up` boots the API on
+# :8000, serving the agents in ./examples over the secure /v1 surface.
+#
+# Auth: the dev API-key table is passed via AGENTSHIP_API_KEYS (JSON). Override it — and
+# supply provider keys (OPENAI_API_KEY, …) — through a local .env file (git-ignored).
+services:
+  agentship:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: agentship
+    container_name: agentship-api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - PORT=8000
+      - AGENTSHIP_AGENTS_DIR=/app/agents
+      - AGENTSHIP_AUTH_PROVIDER=api_key
+      # A single dev key with wildcard scopes so the quickstart curl works out of the box.
+      # Replace for anything beyond local dev.
+      - AGENTSHIP_API_KEYS=[{"key":"dev","user":"dev","tenant":"dev","scopes":["*"]}]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s

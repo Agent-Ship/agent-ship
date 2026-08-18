@@ -1,0 +1,132 @@
+{
+  "info": {
+    "name": "AgentShip /v1",
+    "description": "The AgentShip runtime-service /v1 surface: discovery, invoke, stream, and the tasks skeleton. Every request except the liveness probe sends the `X-API-Key` auth header from the environment. Import `AgentShip.postman_environment.json` and run against `make docker-up` (http://localhost:8000).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      { "key": "key", "value": "X-API-Key", "type": "string" },
+      { "key": "value", "value": "{{apiKey}}", "type": "string" },
+      { "key": "in", "value": "header", "type": "string" }
+    ]
+  },
+  "item": [
+    {
+      "name": "Health (public)",
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{baseUrl}}/healthz", "host": ["{{baseUrl}}"], "path": ["healthz"] }
+      }
+    },
+    {
+      "name": "List agents",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{baseUrl}}/v1/agents", "host": ["{{baseUrl}}"], "path": ["v1", "agents"] }
+      }
+    },
+    {
+      "name": "Get agent",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/v1/agents/{{agent}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["v1", "agents", "{{agent}}"]
+        }
+      }
+    },
+    {
+      "name": "Invoke agent",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"input\": \"hello\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/agents/{{agent}}:invoke",
+          "host": ["{{baseUrl}}"],
+          "path": ["v1", "agents", "{{agent}}:invoke"]
+        }
+      }
+    },
+    {
+      "name": "Stream agent (SSE)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Accept", "value": "text/event-stream" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"input\": \"hello\"\n}" },
+        "url": {
+          "raw": "{{baseUrl}}/v1/agents/{{agent}}:stream",
+          "host": ["{{baseUrl}}"],
+          "path": ["v1", "agents", "{{agent}}:stream"]
+        }
+      }
+    },
+    {
+      "name": "Create task",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.response.code === 202) {",
+              "  pm.environment.set('taskId', pm.response.json().id);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"agent\": \"{{agent}}\",\n  \"input\": \"do it\"\n}" },
+        "url": { "raw": "{{baseUrl}}/v1/tasks", "host": ["{{baseUrl}}"], "path": ["v1", "tasks"] }
+      }
+    },
+    {
+      "name": "Get task",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/v1/tasks/{{taskId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["v1", "tasks", "{{taskId}}"]
+        }
+      }
+    },
+    {
+      "name": "List tasks",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{baseUrl}}/v1/tasks", "host": ["{{baseUrl}}"], "path": ["v1", "tasks"] }
+      }
+    },
+    {
+      "name": "Cancel task",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/v1/tasks/{{taskId}}:cancel",
+          "host": ["{{baseUrl}}"],
+          "path": ["v1", "tasks", "{{taskId}}:cancel"]
+        }
+      }
+    }
+  ]
+}

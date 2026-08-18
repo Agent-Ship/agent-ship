@@ -1,0 +1,14 @@
+# Keep the build context lean — the image installs the packages and serves ./examples.
+.venv/
+**/.venv/
+.git/
+**/__pycache__/
+**/*.pyc
+.pytest_cache/
+**/.pytest_cache/
+**/tests/
+conformance/
+.spec-dev/
+*.egg-info/
+**/*.egg-info/
+.env
