@@ -1,0 +1,35 @@
+# Optional Layer 1 interop profile: agentgateway in front of the AgentShip service.
+#
+# OFF BY DEFAULT. `docker compose up` (root compose) runs Layer 0 — the app alone, no gateway. Bring
+# the gateway up explicitly with the `interop` profile:
+#
+#     docker compose -f docker-compose.yml -f deploy/agentgateway/docker-compose.yaml \
+#         --profile interop up
+#
+# The app is unchanged whether or not the gateway is present — that is the phase invariant. Pin the
+# agentgateway image tag to the release your config.yaml was verified against.
+
+services:
+  agentgateway:
+    profiles: ["interop"]
+    image: ghcr.io/agentgateway/agentgateway:0.4  # pin to a verified release
+    depends_on:
+      - agentship
+    ports:
+      - "8080:8080"   # A2A front door
+      - "8081:8081"   # virtual-MCP endpoint
+    volumes:
+      - ./config.yaml:/etc/agentgateway/config.yaml:ro
+    command: ["--config", "/etc/agentgateway/config.yaml"]
+    environment:
+      # Edge auth for A2A + MCP (OIDC issuer/JWKS).
+      A2A_JWT_ISSUER: ${A2A_JWT_ISSUER:-}
+      A2A_JWT_JWKS_URL: ${A2A_JWT_JWKS_URL:-}
+      MCP_JWT_ISSUER: ${MCP_JWT_ISSUER:-}
+      MCP_JWT_JWKS_URL: ${MCP_JWT_JWKS_URL:-}
+      # Upstream MCP server connection details (single source of truth; the app does not duplicate).
+      DATABASE_URL: ${DATABASE_URL:-}
+      GITHUB_MCP_URL: ${GITHUB_MCP_URL:-}
+      GITHUB_MCP_TOKEN: ${GITHUB_MCP_TOKEN:-}
+      # Shared trace collector so gateway spans stitch under the agent trace (P07).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}

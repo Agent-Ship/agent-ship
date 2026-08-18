@@ -1,0 +1,91 @@
+# agentgateway front-door config for AgentShip (Phase 05 · C4/C5 — CONSUME, do not reinvent).
+#
+# agentgateway (https://agentgateway.dev, Rust, Apache-2.0) fronts BOTH the A2A agents and the MCP
+# servers behind one endpoint, providing exactly the auth / mTLS / RBAC / rate-limit / routing /
+# OpenTelemetry that we would otherwise hand-roll. AgentShip's own service stays fully functional
+# with no gateway (Layer 0); this file is the optional Layer 1 scale/prod front door.
+#
+# LLM calls do NOT pass through here — that is LiteLLM's job everywhere (DESIGN §2.1); agentgateway's
+# own LLM mode is deliberately unused. The gateway carries two kinds of traffic only: A2A (agent↔
+# agent) and MCP (agent→tools, federated as one "virtual MCP" endpoint).
+#
+# NOTE: agentgateway's config schema evolves. Pin the version in docker-compose.yaml and verify the
+# field names against that release's reference before deploying — this is a documented recipe, not a
+# vendored binary. Values in ${...} come from the environment (see the README).
+
+binds:
+  # ---- Front door for the A2A agents ---------------------------------------------------------
+  # Route external A2A traffic to the AgentShip service, which serves each agent's Agent Card and
+  # JSON-RPC endpoint. agentgateway terminates JWT/mTLS and rewrites the agent-card URL so peers see
+  # the gateway's public host, not the internal service.
+  - port: 8080
+    listeners:
+      - name: a2a-public
+        protocol: HTTP
+        routes:
+          - name: a2a-agents
+            # Path-route the A2A surface + the public well-known cards to the app.
+            matches:
+              - path:
+                  pathPrefix: /a2a
+              - path:
+                  pathPrefix: /.well-known
+            policies:
+              # JWT/OIDC at the edge; the app still enforces its own AuthProvider + tenant scope
+              # (defense in depth — the gateway authenticates the peer, the app authorizes the verb).
+              jwtAuth:
+                issuer: ${A2A_JWT_ISSUER}
+                jwksUrl: ${A2A_JWT_JWKS_URL}
+              # Per-copy rate limit (the free tier covers per-copy; global limits are the paid tier —
+              # pair with LiteLLM per-key budgets for provider-side spend caps, DESIGN §2.1).
+              localRateLimit:
+                - maxTokens: 100
+                  tokensPerFill: 100
+                  fillInterval: 60s
+            backends:
+              - host: agentship:8000
+
+  # ---- Virtual MCP: fan many upstream MCP servers into one /mcp endpoint ----------------------
+  # Agents point their single MCP server entry at this endpoint (mcp.mode: gateway). The gateway
+  # aggregates every upstream's tools under a per-upstream name prefix and applies tool-level RBAC,
+  # so an agent sees one server exposing e.g. `db_query`, `gh_search_issues`.
+  - port: 8081
+    listeners:
+      - name: virtual-mcp
+        protocol: HTTP
+        routes:
+          - name: mcp-federation
+            matches:
+              - path:
+                  pathPrefix: /mcp
+            policies:
+              jwtAuth:
+                issuer: ${MCP_JWT_ISSUER}
+                jwksUrl: ${MCP_JWT_JWKS_URL}
+              # Tool-level RBAC in CEL: allow only the tools a caller's scopes grant. The gateway
+              # returns a per-caller tools/list — an agent never sees a tool it cannot call.
+              mcpAuthorization:
+                rules:
+                  - 'jwt.scopes.contains("mcp:db") && mcp.tool.startsWith("db_")'
+                  - 'jwt.scopes.contains("mcp:gh") && mcp.tool.startsWith("gh_")'
+            backends:
+              # One MCP backend that federates several upstreams; each `name` becomes the tool prefix.
+              - mcp:
+                  targets:
+                    - name: db
+                      # A local stdio MCP server (Node-based); prefixes tools as `db_*`.
+                      stdio:
+                        command: npx
+                        args: ["-y", "@modelcontextprotocol/server-postgres", "${DATABASE_URL}"]
+                    - name: gh
+                      # A remote Streamable-HTTP MCP server; prefixes tools as `gh_*`.
+                      http:
+                        url: ${GITHUB_MCP_URL}
+                        headers:
+                          Authorization: "Bearer ${GITHUB_MCP_TOKEN}"
+
+# OpenTelemetry: export gateway spans so an MCP/A2A hop shows up inline in the agent's trace. The
+# collector endpoint is shared with the app's exporter (P07) so traces stitch via W3C traceparent.
+telemetry:
+  tracing:
+    otlpEndpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT}
