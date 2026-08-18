@@ -33,7 +33,7 @@ class A2aAuthSpec(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    type: Literal["bearer", "oauth2", "mtls"] = "bearer"
+    type: Literal["none", "bearer", "oauth2", "mtls"] = "none"
     token_env: str | None = None
     token_url: str | None = None
     client_id_env: str | None = None

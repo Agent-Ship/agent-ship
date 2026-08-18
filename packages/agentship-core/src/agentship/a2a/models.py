@@ -39,7 +39,7 @@ class A2AAuthConfig(BaseModel):
     client cert/key pair. Only the fields the chosen ``type`` needs are set; the rest stay ``None``.
     """
 
-    type: Literal["bearer", "oauth2", "mtls"] = "bearer"
+    type: Literal["none", "bearer", "oauth2", "mtls"] = "none"
     #: Environment variable holding the static bearer token (``bearer``).
     token_env: str | None = None
     #: OAuth2 token endpoint + client credentials env vars (``oauth2``).

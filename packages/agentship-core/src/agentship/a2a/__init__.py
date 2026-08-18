@@ -16,6 +16,7 @@ identical whichever side of the wire the specialist lives on. The FastAPI server
 from __future__ import annotations
 
 from .card import build_agent_card
+from .client import HttpxTransport, RemoteA2aAgent
 from .models import (
     AgentCapabilities,
     AgentCard,
@@ -27,16 +28,24 @@ from .models import (
     RemoteSpec,
     TextPart,
 )
+from .resolver import SpecialistResolver
+from .specialist import LocalSpecialist, RemoteSpecialist, Specialist
 
 __all__ = [
     "AgentCapabilities",
     "AgentCard",
     "AgentRef",
     "AgentSkill",
+    "HttpxTransport",
     "JsonRpcRequest",
     "JsonRpcResponse",
+    "LocalSpecialist",
     "Message",
+    "RemoteA2aAgent",
     "RemoteSpec",
+    "RemoteSpecialist",
+    "Specialist",
+    "SpecialistResolver",
     "TextPart",
     "build_agent_card",
 ]
