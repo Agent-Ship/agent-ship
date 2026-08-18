@@ -28,6 +28,17 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _caller_for(caller: Caller | None, user_id: str) -> Caller:
+    """Return the turn's caller: the authenticated ``caller`` if given, else a dev caller.
+
+    The service passes a fully authenticated ``caller`` (tenant + scopes) so the turn is
+    scoped to a real identity. When none is passed — a script or a dev/CLI call — ``user_id``
+    is wrapped in a single-tenant :class:`Caller` (``tenant_id="default"``), so an
+    un-plumbed project still runs. The authenticated caller always wins over ``user_id``.
+    """
+    return caller if caller is not None else Caller(user_id=user_id)
+
+
 async def _run_error_hooks(
     pipeline: Sequence[Middleware], ctx: RunContext, exc: BaseException
 ) -> None:
@@ -74,19 +85,20 @@ class RunnableAgent:
         self.middlewares: tuple[Middleware, ...] = tuple(middlewares)
 
     def _make_context(
-        self, text: str, *, user_id: str, session_id: str | None, mode: RunMode
+        self, text: str, *, caller: Caller, session_id: str | None, mode: RunMode
     ) -> RunContext:
         """Build a fresh :class:`RunContext` for one turn.
 
-        Wraps ``user_id`` in a single-tenant :class:`Caller` (``tenant_id`` falls
-        back to ``"default"``), so a project with no auth just works. ``session_id``
-        is caller-supplied and stable across a conversation's turns; it is only
-        minted (``uuid4().hex``) when the caller passes none. ``run_id`` is always
-        minted fresh, identifying this single turn. ``mode`` marks whether the turn
-        is an invoke or a stream so engines branch off it, not an invented key.
+        ``caller`` is the identity the whole turn is scoped to — its
+        ``(tenant_id, user_id)`` partitions memory and the vault, and its ``scopes``
+        gate what the turn may do. ``session_id`` is caller-supplied and stable across
+        a conversation's turns; it is only minted (``uuid4().hex``) when the caller
+        passes none. ``run_id`` is always minted fresh, identifying this single turn.
+        ``mode`` marks whether the turn is an invoke or a stream so engines branch off
+        it, not an invented key.
         """
         return RunContext(
-            caller=Caller(user_id=user_id),
+            caller=caller,
             session_id=session_id if session_id is not None else uuid.uuid4().hex,
             run_id=uuid.uuid4().hex,
             agent_name=self.spec.name,
@@ -98,11 +110,17 @@ class RunnableAgent:
         self,
         text: str,
         *,
+        caller: Caller | None = None,
         user_id: str = "anonymous",
         session_id: str | None = None,
         middlewares: Sequence[Middleware] = (),
     ) -> Result:
         """Run one turn and return a :class:`Result`.
+
+        Pass ``caller`` to scope the turn to a full authenticated identity (tenant +
+        scopes) — this is how the runtime service threads the request's caller through.
+        When ``caller`` is omitted, ``user_id`` is wrapped in a single-tenant
+        :class:`Caller` so a scriptless/dev call still works.
 
         Sets the request context, runs ``on_request`` hooks in order, calls the
         engine, then ``on_response`` hooks in reverse (LIFO onion). If the engine
@@ -111,7 +129,7 @@ class RunnableAgent:
         re-raised unchanged. The contextvar is always reset in ``finally``.
         """
         ctx = self._make_context(
-            text, user_id=user_id, session_id=session_id, mode=RunMode.INVOKE
+            text, caller=_caller_for(caller, user_id), session_id=session_id, mode=RunMode.INVOKE
         )
         pipeline = (*self.middlewares, *middlewares)
         token = current_run.set(ctx)
@@ -142,19 +160,22 @@ class RunnableAgent:
         self,
         text: str,
         *,
+        caller: Caller | None = None,
         user_id: str = "anonymous",
         session_id: str | None = None,
     ) -> AsyncIterator[Event]:
         """Stream events for one turn (allowed only if the engine declares streaming).
 
-        Like :meth:`run`, but yields events instead of returning a result. Sets the
+        Like :meth:`run`, but yields events instead of returning a result. Pass
+        ``caller`` to scope the stream to a full authenticated identity (tenant +
+        scopes); omit it and ``user_id`` is wrapped in a single-tenant caller. Sets the
         current run for this turn and always puts back the previous one when the
         stream ends — cleanly, on error, or when the caller stops early. We use
         ``set`` (not ``reset``) to restore, so cleanup never crashes even when an
         abandoned stream is torn down in a different context. See ``get_run_context``.
         """
         ctx = self._make_context(
-            text, user_id=user_id, session_id=session_id, mode=RunMode.STREAM
+            text, caller=_caller_for(caller, user_id), session_id=session_id, mode=RunMode.STREAM
         )
         previous = current_run.get(None)  # whatever run (if any) was active before this
         current_run.set(ctx)
