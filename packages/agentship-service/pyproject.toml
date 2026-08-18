@@ -1,0 +1,24 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agentship-service"
+version = "0.0.1"
+description = "AgentShip runtime service — the REST/SSE/WS surface over an agent, with pluggable auth adapters and tenant isolation. The irreducible in-app core a gateway cannot replace."
+readme = "README.md"
+requires-python = ">=3.13"
+license = "Apache-2.0"
+dependencies = [
+    "agentship-core",
+    "fastapi>=0.115",
+]
+
+# `agentship serve` launches the app under uvicorn. Kept as an extra so importing the
+# app (e.g. behind gunicorn, or in tests) does not require the server, while the
+# documented `pip install "agentship-service[serve]"` gives the one-command server.
+[project.optional-dependencies]
+serve = ["uvicorn[standard]>=0.30"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agentship_service"]

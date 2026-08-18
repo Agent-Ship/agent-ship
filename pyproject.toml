@@ -11,6 +11,11 @@ src = ["packages", "conformance"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "BLE"]
 
+[tool.ruff.lint.per-file-ignores]
+# FastAPI's dependency-injection idiom is `param: T = Depends(...)` in the signature
+# default — B008 ("no function call in argument default") is a false positive for it.
+"packages/agentship-service/**" = ["B008"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 # `packages` = the per-package unit/integration suites; `conformance` = the
