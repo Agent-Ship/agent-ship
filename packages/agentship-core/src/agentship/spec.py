@@ -22,6 +22,67 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 from .errors import SpecError
 
 
+class A2aAuthSpec(BaseModel):
+    """How to authenticate an *outbound* A2A call to a networked member (§C6, authoring side).
+
+    Mirrors the runtime injector selection: ``bearer`` reads a static token from ``token_env``,
+    ``oauth2`` runs client-credentials against ``token_url``, ``mtls`` presents a client cert. Only
+    the fields the chosen ``type`` needs are set. Kept here (not in the optional ``agentship.a2a``
+    subtree) so a spec still parses when the interop layer is absent; the resolver maps it across.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["bearer", "oauth2", "mtls"] = "bearer"
+    token_env: str | None = None
+    token_url: str | None = None
+    client_id_env: str | None = None
+    client_secret_env: str | None = None
+    cert_path: str | None = None
+    key_path: str | None = None
+
+
+class A2aRemoteSpec(BaseModel):
+    """A networked member's location + credentials, declared under ``members[].a2a`` (§C3).
+
+    ``url`` is the remote agent's A2A base URL; its Agent Card is fetched from ``url + card_path``.
+    Presence of this block on a member means "resolve me over A2A, not in-process."
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    url: str
+    card_path: str = "/.well-known/agent-card.json"
+    auth: A2aAuthSpec = Field(default_factory=A2aAuthSpec)
+    timeout_seconds: int = 60
+
+
+class A2aExposeSpec(BaseModel):
+    """The ``a2a`` block on an :class:`AgentSpec`: whether/how to serve the agent over A2A (§C4).
+
+    Absent ⇒ the agent is never exposed on the network (Layer 0 default). ``expose: true`` publishes
+    the Agent Card and mounts the A2A JSON-RPC endpoint; ``security`` lists the scheme names the
+    inbound router enforces *and* the card advertises (they are the same set, so they cannot drift).
+    Default-deny: exposing with no ``security`` is rejected at load, so no agent is ever open.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    expose: bool = False
+    security: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _require_security_when_exposed(self) -> A2aExposeSpec:
+        """An exposed agent must declare at least one security scheme (default-deny, §C6)."""
+        if self.expose and not self.security:
+            raise SpecError(
+                "a2a.expose is true but no a2a.security scheme is declared — an exposed agent "
+                "must name at least one scheme (e.g. security: [oauth2]) so it is never open. "
+                "Add a2a.security or set expose: false."
+            )
+        return self
+
+
 class MemberSpec(BaseModel):
     """One member ("sub-agent") of a multi-agent team, declared in YAML.
 
@@ -49,14 +110,19 @@ class MemberSpec(BaseModel):
     description: str | None = None
     prompt: str | None = None
     model: str | None = None
+    #: When set, this member is a **networked** specialist reached over A2A rather than an
+    #: in-process ``ref``/``prompt`` one. Mutually exclusive with both — a member is resolved
+    #: exactly one way. The resolver (P05) turns this into an A2A client at run time.
+    a2a: A2aRemoteSpec | None = None
 
     @model_validator(mode="after")
     def _check_member_coherence(self) -> MemberSpec:
-        """Reject a member that sets both ``ref`` and inline ``prompt`` (contradictory)."""
-        if self.ref is not None and self.prompt is not None:
+        """Reject a member declared more than one way — exactly one of ref / prompt / a2a."""
+        ways = sum(x is not None for x in (self.ref, self.prompt, self.a2a))
+        if ways > 1:
             raise SpecError(
-                f"member {self.name!r} sets both ref: {self.ref!r} and an inline prompt — a "
-                f"referenced sub-agent already brings its own prompt. Use one or the other."
+                f"member {self.name!r} must be declared exactly one way — a referenced ref, an "
+                f"inline prompt, or a networked a2a block — but sets more than one. Choose one."
             )
         return self
 
@@ -165,6 +231,10 @@ class AgentSpec(BaseModel):
     #: to the resolved model. ``None`` means the model keeps all its own defaults.
     params: ModelParams | None = None
     members: list[MemberSpec] | None = None
+    #: Optional A2A exposure block. Absent (default) ⇒ the agent is never served on the network;
+    #: ``a2a.expose: true`` publishes its Agent Card and mounts the A2A endpoint (P05 · C4). Layer 0
+    #: agents omit it entirely and never accidentally reach the wire.
+    a2a: A2aExposeSpec | None = None
     #: When true the agent asks to stream tokens; the capability gate rejects this
     #: at build time on an engine that does not declare streaming.
     streaming: bool = False
