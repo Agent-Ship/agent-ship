@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from .capture import replay_attributes, request_hash
 from .observer import NoOpObserver, Observer, Span
+from .phi import hashed_user_id
 from .recorder import RecordingObserver
 from .trace_view import SpanNode, TraceView
 from .types import SpanKind, Usage
@@ -29,6 +30,7 @@ __all__ = [
     "SpanNode",
     "TraceView",
     "Usage",
+    "hashed_user_id",
     "replay_attributes",
     "request_hash",
 ]

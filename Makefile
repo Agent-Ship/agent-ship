@@ -14,10 +14,11 @@ venv:
 	$(MAKE) install
 	$(PIP) install 'pytest>=8' 'pytest-asyncio>=0.23' 'pytest-recording>=0.13' 'ruff>=0.6'
 
-# Install every package editable (core + langgraph engine + service + CLI).
+# Install every package editable (core + langgraph engine + service + CLI + observability).
 install:
 	$(PIP) install -e packages/agentship-core -e packages/agentship-langgraph \
-		-e packages/agentship-service -e packages/agentship-cli
+		-e packages/agentship-service -e packages/agentship-cli \
+		-e packages/agentship-observability
 
 # Run the full offline test suite across every package + the conformance matrix.
 test:

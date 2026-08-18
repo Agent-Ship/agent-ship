@@ -74,6 +74,8 @@ AS_TENANT_ID = "agentship.tenant.id"
 AS_SESSION_ID = "agentship.session.id"
 AS_RUN_ID = "agentship.run.id"
 AS_AGENT_NAME = "agentship.agent.name"
+#: Caller id on the root span — always the salted hash, never the raw id (PHI gate, §4.6).
+AS_USER_ID = "agentship.user.id"
 AS_TOOL_IDEMPOTENT = "agentship.tool.idempotent"
 AS_TOOL_MCP_SERVER = "agentship.tool.mcp_server"
 #: Record/replay cassette key: sha256 of the canonicalized request (§4.10). P12 keys replays here.

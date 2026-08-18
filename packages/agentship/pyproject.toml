@@ -38,14 +38,25 @@ langgraph = [
 # extra name is stable from day one and `pip install agentship[<pillar>]` never
 # warns "extra not provided". Fill with the sibling dist as the phase lands.
 mcp = []            # phase 03 — MCP tools (client) + agent-as-MCP-server  → agentship-mcp
-service = []        # phase 04 — the REST/SSE agent gateway                → agentship-service
-observability = []  # phase 05 — OpenTelemetry + Langfuse/Phoenix          → agentship-observability
 memory = []         # phase 08 — long-term, cross-session memory           → agentship-memory
+
+# The REST/SSE agent gateway — auth, tenant isolation, SSE, WS live (phase 04).
+service = [
+    "agentship-service",
+]
+# OpenTelemetry span tree + exporters (console/Phoenix/Langfuse/LangSmith) and the
+# LiteLLM cost/token callback (phase 07). The kernel's vendor-free tracing contract
+# lives in agentship-core; this extra pulls the OTel pipeline that fulfils it.
+observability = [
+    "agentship-observability",
+]
 
 # Everything real above, aggregated. Grows as the placeholders gain deps.
 all = [
     "agentship-langgraph",
     "agentship-cli",
+    "agentship-service",
+    "agentship-observability",
 ]
 
 # Meta-package: no modules of its own, just dependencies.

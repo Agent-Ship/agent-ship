@@ -19,6 +19,7 @@ from .context import Caller, RunContext, RunMode, current_run
 from .engines.base import ENGINES, Event, Result, assert_spec_supported
 from .errors import EngineNotFoundError, SpecError
 from .observability import NoOpObserver, Observer, SpanKind, semconv
+from .observability.phi import hashed_user_id
 from .primitives.model_router import stamp_routed_model
 from .spec import AgentSpec, load_spec, resolve_code
 
@@ -97,14 +98,16 @@ class RunnableAgent:
     def _root_attrs(self, ctx: RunContext) -> dict[str, Any]:
         """Build the opening attributes of the root ``agent`` span from the turn's context.
 
-        These are the frozen identity keys (agent/session/run/tenant + mode) every root span
-        carries, so a trace is attributable to a caller and a turn without reading the payload.
+        These are the frozen identity keys (agent/session/run/tenant/user + mode) every root span
+        carries, so a trace is attributable to a caller and a turn without reading the payload. The
+        user id is stamped only as a salted hash (PHI gate, §4.6) — the raw id never reaches a span.
         """
         return {
             semconv.AS_AGENT_NAME: ctx.agent_name,
             semconv.AS_SESSION_ID: ctx.session_id,
             semconv.AS_RUN_ID: ctx.run_id,
             semconv.AS_TENANT_ID: ctx.tenant_id,
+            semconv.AS_USER_ID: hashed_user_id(ctx.user_id),
             semconv.AS_RUN_MODE: ctx.mode.value,
         }
 
