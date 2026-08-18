@@ -17,6 +17,9 @@ dependencies = [
     "opentelemetry-api>=1.27",
     "opentelemetry-sdk>=1.27",
     "opentelemetry-exporter-otlp-proto-http>=1.27",
+    # The one success callback that turns each model call into span usage runs off
+    # LiteLLM's CustomLogger; every model call in AgentShip already routes through it.
+    "litellm>=1.74",
 ]
 
 [project.optional-dependencies]
