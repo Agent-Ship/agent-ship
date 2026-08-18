@@ -37,5 +37,14 @@ echo = "agentship.engines.echo:EchoEngine"
 [project.entry-points."agentship.model_routers"]
 default = "agentship.primitives.model_router:DefaultModelRouter"
 
+# The built-in auth-provider factories register here; a project or vendor ships a
+# custom provider under the same group (selected by name in service config) with no
+# core edit. Each value is a factory: (config mapping) -> AuthProvider.
+[project.entry-points."agentship.auth_providers"]
+forwarded = "agentship.auth.registry:forwarded_from_config"
+api_key = "agentship.auth.registry:api_key_from_config"
+jwt = "agentship.auth.registry:jwt_from_config"
+composite = "agentship.auth.registry:composite_from_config"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/agentship"]
