@@ -14,6 +14,7 @@ capture used by offline verifiers and by the runtime tests.
 
 from __future__ import annotations
 
+from .capture import replay_attributes, request_hash
 from .observer import NoOpObserver, Observer, Span
 from .recorder import RecordingObserver
 from .trace_view import SpanNode, TraceView
@@ -28,4 +29,6 @@ __all__ = [
     "SpanNode",
     "TraceView",
     "Usage",
+    "replay_attributes",
+    "request_hash",
 ]

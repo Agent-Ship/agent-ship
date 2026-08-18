@@ -150,6 +150,14 @@ class RecordingObserver(Observer):
         if usage.response_model is not None:
             current.attrs[GEN_AI_RESPONSE_MODEL] = usage.response_model
 
+    def annotate_model(self, attrs: Mapping[str, Any]) -> None:
+        """Stamp extra attributes onto the current model span; warn and no-op otherwise."""
+        current = self._current.get()
+        if current is None or current.kind is not SpanKind.LLM:
+            _log.warning("annotate_model called with no active model span; attributes dropped")
+            return
+        current.attrs.update(attrs)
+
     def current_trace_id(self) -> str | None:
         """Return the trace id minted when the first root span opened (``None`` before that)."""
         return self._trace_id

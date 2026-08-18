@@ -19,7 +19,7 @@ from datetime import datetime
 from typing import Any
 
 import litellm
-from agentship.observability import Observer, Usage
+from agentship.observability import Observer, Usage, replay_attributes
 from litellm.integrations.custom_logger import CustomLogger
 
 _log = logging.getLogger("agentship.observability")
@@ -97,11 +97,21 @@ class AgentShipLiteLLMLogger(CustomLogger):
         self._observer = observer
 
     def _emit(self, kwargs: Any, response_obj: Any, start_time: Any, end_time: Any) -> None:
-        """Convert one success payload to :class:`Usage` and stamp it; swallow any failure."""
+        """Stamp usage and the replay-capture attributes onto the model span; swallow any failure.
+
+        Usage (tokens/cost/latency) always lands; the record/replay attributes (request hash, and
+        the request/response payload only when the observer's ``capture_content`` is set) let P12
+        rebuild a deterministic cassette (§4.10). Both go on the same active model span.
+        """
         try:
-            usage = usage_from_litellm(kwargs or {}, response_obj, start_time, end_time)
+            kwargs = kwargs or {}
+            usage = usage_from_litellm(kwargs, response_obj, start_time, end_time)
             if usage is not None:
                 self._observer.on_model(usage)
+            capture_content = bool(getattr(self._observer, "capture_content", False))
+            self._observer.annotate_model(
+                replay_attributes(kwargs, response_obj, capture_content=capture_content)
+            )
         except Exception:  # noqa: BLE001 - a callback must never break the model call
             _log.warning("observability.litellm_logger.failed (usage dropped)", exc_info=True)
 

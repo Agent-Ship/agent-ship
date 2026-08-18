@@ -74,6 +74,15 @@ class Observer(ABC):
         active span is not a model span, so a stray call never corrupts an unrelated span (§4.3).
         """
 
+    def annotate_model(self, attrs: Mapping[str, Any]) -> None:  # noqa: B027 - opt-in default no-op
+        """Stamp extra attributes onto the active ``model`` span; no-op off one (fail-open).
+
+        Used by the record/replay capture hook (§4.10) to write the request hash and the gated
+        request/response payload onto the finished model span, next to the usage roll-up. Defaults
+        to a no-op so a tracing-off or annotation-unaware observer simply ignores it; observers that
+        track a current span override this to write the attributes.
+        """
+
     @abstractmethod
     def current_trace_id(self) -> str | None:
         """Return the active trace id (hex) so the runtime can stamp ``RunContext.trace_id``.

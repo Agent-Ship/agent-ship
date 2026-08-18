@@ -174,6 +174,21 @@ class OTelObserver(Observer):
         except Exception:  # noqa: BLE001 - tracing must never break the run
             _log.warning("observability.on_model.failed (usage dropped)", exc_info=True)
 
+    def annotate_model(self, attrs: Mapping[str, Any]) -> None:
+        """Stamp extra attributes (replay hash + gated payload) onto the active model span.
+
+        A no-op (with a warning) off a model span, mirroring :meth:`on_model`. Fail-open — any
+        error is swallowed so the capture hook can never break the model call (§4.7).
+        """
+        try:
+            span = trace.get_current_span()
+            if not span.is_recording() or not self._is_model_span(span):
+                _log.warning("annotate_model called off a model span; attributes dropped")
+                return
+            span.set_attributes(_clean_attrs(attrs))
+        except Exception:  # noqa: BLE001 - tracing must never break the run
+            _log.warning("observability.annotate_model.failed (attributes dropped)", exc_info=True)
+
     def current_trace_id(self) -> str | None:
         """Return the active trace id as 32-hex, or ``None`` when no valid span is active."""
         ctx = trace.get_current_span().get_span_context()
