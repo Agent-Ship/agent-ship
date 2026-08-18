@@ -117,6 +117,9 @@ class RecordingObserver(Observer):
         token = self._current.set(record)
         try:
             yield _RecordingSpan(record)
+        except GeneratorExit:
+            # A consumer abandoning a stream is cleanup, not a failure — leave the span "ok".
+            raise
         except BaseException as exc:
             record.status = "error"
             _RecordingSpan(record).record_exception(exc)

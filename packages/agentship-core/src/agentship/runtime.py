@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 from .context import Caller, RunContext, RunMode, current_run
 from .engines.base import ENGINES, Event, Result, assert_spec_supported
 from .errors import EngineNotFoundError, SpecError
+from .observability import NoOpObserver, Observer, SpanKind, semconv
 from .primitives.model_router import stamp_routed_model
 from .spec import AgentSpec, load_spec, resolve_code
 
@@ -77,12 +78,35 @@ class RunnableAgent:
         engine: Engine,
         compiled: Any,
         middlewares: Sequence[Middleware] = (),
+        observer: Observer | None = None,
     ) -> None:
-        """Bind a validated spec, its engine, the compiled agent, and any middleware."""
+        """Bind a validated spec, its engine, the compiled agent, any middleware, and an observer.
+
+        ``observer`` is the tracing seam: every turn opens a root ``agent`` span through it that
+        wraps the whole middleware pipeline and the engine call, so the span tree is owned here (not
+        by any single engine) and is identical whichever engine runs. It defaults to
+        :class:`~agentship.observability.NoOpObserver`, so an agent built without tracing behaves
+        exactly as before — no ``if observer:`` guards anywhere.
+        """
         self.spec = spec
         self.engine = engine
         self.compiled = compiled
         self.middlewares: tuple[Middleware, ...] = tuple(middlewares)
+        self.observer: Observer = observer if observer is not None else NoOpObserver()
+
+    def _root_attrs(self, ctx: RunContext) -> dict[str, Any]:
+        """Build the opening attributes of the root ``agent`` span from the turn's context.
+
+        These are the frozen identity keys (agent/session/run/tenant + mode) every root span
+        carries, so a trace is attributable to a caller and a turn without reading the payload.
+        """
+        return {
+            semconv.AS_AGENT_NAME: ctx.agent_name,
+            semconv.AS_SESSION_ID: ctx.session_id,
+            semconv.AS_RUN_ID: ctx.run_id,
+            semconv.AS_TENANT_ID: ctx.tenant_id,
+            semconv.AS_RUN_MODE: ctx.mode.value,
+        }
 
     def _make_context(
         self, text: str, *, caller: Caller, session_id: str | None, mode: RunMode
@@ -137,17 +161,28 @@ class RunnableAgent:
             # The ``route`` step: stamp the chosen model id on the context before the
             # engine runs, so the adapter reads it and never routes itself (§13.5).
             stamp_routed_model(self.spec, ctx)
-            for mw in pipeline:
-                await mw.on_request(ctx)
-            result = await self.engine.run(self.compiled, ctx.input_text, ctx)
-            for mw in reversed(pipeline):
-                result = await mw.on_response(ctx, result)
-            return result
-        except BaseException as exc:
-            # Catch BaseException (not just Exception) so cancellation/timeout is
-            # observable by on_error; it is then re-raised below, never swallowed.
-            await _run_error_hooks(pipeline, ctx, exc)
-            raise
+            # Open the root ``agent`` span around the whole pipeline so every guard/
+            # memory/engine span nests under it, and stamp the trace id on the context
+            # so middleware, the engine, and the service (X-Trace-Id) can read it.
+            with self.observer.span(
+                semconv.SPAN_AGENT, SpanKind.AGENT, self._root_attrs(ctx)
+            ) as root:
+                ctx.trace_id = self.observer.current_trace_id()
+                try:
+                    for mw in pipeline:
+                        await mw.on_request(ctx)
+                    result = await self.engine.run(self.compiled, ctx.input_text, ctx)
+                    for mw in reversed(pipeline):
+                        result = await mw.on_response(ctx, result)
+                except BaseException as exc:
+                    # Catch BaseException (not just Exception) so cancellation/timeout is
+                    # observable by on_error; it is re-raised (through the span, which marks
+                    # it errored) below, never swallowed.
+                    root.set_attribute(semconv.AS_STATUS, "error")
+                    await _run_error_hooks(pipeline, ctx, exc)
+                    raise
+                root.set_attribute(semconv.AS_STATUS, "ok")
+                return result
         finally:
             # ``run``'s set/reset share a frame, so reset is valid here; guard it
             # anyway so teardown can never mask the exception in flight.
@@ -181,17 +216,26 @@ class RunnableAgent:
         current_run.set(ctx)
         try:
             stamp_routed_model(self.spec, ctx)
-            for mw in self.middlewares:
-                await mw.on_request(ctx)
-            async for event in self.engine.stream(self.compiled, ctx.input_text, ctx):
-                yield event
-        except GeneratorExit:
-            # The caller stopped early (disconnect / break / GC). Not a failure, so
-            # on_error is intentionally not fired; the finally still restores context.
-            raise
-        except BaseException as exc:
-            await _run_error_hooks(self.middlewares, ctx, exc)
-            raise
+            # The root span spans the whole generator — opened here, ended when the
+            # ``with`` exits (clean finish, mid-stream error, or early disconnect).
+            with self.observer.span(
+                semconv.SPAN_AGENT, SpanKind.AGENT, self._root_attrs(ctx)
+            ) as root:
+                ctx.trace_id = self.observer.current_trace_id()
+                try:
+                    for mw in self.middlewares:
+                        await mw.on_request(ctx)
+                    async for event in self.engine.stream(self.compiled, ctx.input_text, ctx):
+                        yield event
+                except GeneratorExit:
+                    # The caller stopped early (disconnect / break / GC). Not a failure, so
+                    # on_error is not fired and the span stays "ok"; context is still restored.
+                    raise
+                except BaseException as exc:
+                    root.set_attribute(semconv.AS_STATUS, "error")
+                    await _run_error_hooks(self.middlewares, ctx, exc)
+                    raise
+                root.set_attribute(semconv.AS_STATUS, "ok")
         finally:
             current_run.set(previous)  # put the caller's previous run back; never raises
 
@@ -235,7 +279,12 @@ def _resolve_code_spec(spec: AgentSpec) -> tuple[AgentSpec, Any]:
     return effective, authored
 
 
-def build_agent(spec: AgentSpec | str, *, middlewares: Sequence[Middleware] = ()) -> RunnableAgent:
+def build_agent(
+    spec: AgentSpec | str,
+    *,
+    middlewares: Sequence[Middleware] = (),
+    observer: Observer | None = None,
+) -> RunnableAgent:
     """Build a :class:`RunnableAgent` from an :class:`AgentSpec` or a YAML path.
 
     When the spec sets ``code: "module:function"``, the agent is authored in Python:
@@ -270,4 +319,4 @@ def build_agent(spec: AgentSpec | str, *, middlewares: Sequence[Middleware] = ()
     # an engine that never implements custom authoring keeps the plain, two-arg
     # ``build(spec)`` contract and needs no change to opt out of the seam.
     compiled = engine.build(spec, authored) if authored is not None else engine.build(spec)
-    return RunnableAgent(spec, engine, compiled, middlewares=middlewares)
+    return RunnableAgent(spec, engine, compiled, middlewares=middlewares, observer=observer)

@@ -69,6 +69,7 @@ OI_TOKEN_COUNT_TOTAL = "llm.token_count.total"
 AS_COST_USD = "agentship.cost.usd"
 AS_LATENCY_MS = "agentship.latency.ms"
 AS_STATUS = "agentship.status"  # "ok" | "error" on the root agent span
+AS_RUN_MODE = "agentship.run.mode"  # "invoke" | "stream" on the root agent span
 AS_TENANT_ID = "agentship.tenant.id"
 AS_SESSION_ID = "agentship.session.id"
 AS_RUN_ID = "agentship.run.id"
