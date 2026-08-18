@@ -9,11 +9,16 @@ It reads credentials off an incoming request (:class:`RequestLike`) and returns 
 Once a caller is known, :func:`authorize` checks whether its granted ``scopes`` allow
 a given action on a given agent, raising :class:`~agentship.errors.AuthError` on denial.
 
-This module is deliberately dependency-light: it imports only ``Caller`` and
-``AuthError``, never an engine, so the service can authenticate and authorize a request
-without pulling the agent runtime in. Concrete adapters (API key, JWT, composite) and
-their registry land in the following Phase-04 tasks; this file fixes the contract they
-implement plus the scope grammar they grant against.
+This package is deliberately dependency-light: the contract imports only ``Caller`` and
+``AuthError``, never an engine or a web framework, so the service can authenticate and
+authorize a request without pulling the agent runtime in. The concrete adapters live in
+sibling modules and are re-exported here:
+
+- :class:`~agentship.auth.forwarded.ForwardedHeaderAuthProvider` — the **production**
+  path, trusting identity headers a gateway already verified (guarded by an allow-list).
+- :class:`~agentship.auth.api_key.ApiKeyAuthProvider` — the gateway-free dev/CI path.
+- :class:`~agentship.auth.jwt.JwtAuthProvider` — an **optional** gateway-free OIDC hedge.
+- :class:`~agentship.auth.composite.CompositeAuthProvider` — dispatches across the above.
 """
 
 from __future__ import annotations
@@ -22,8 +27,8 @@ from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from typing import Protocol, runtime_checkable
 
-from .context import Caller
-from .errors import AuthError
+from ..context import Caller
+from ..errors import AuthError
 
 
 @runtime_checkable
@@ -99,4 +104,16 @@ def authorize(caller: Caller, *, agent: str, verb: str) -> None:
     raise AuthError("forbidden", f"caller lacks the required scope {required!r}")
 
 
-__all__ = ["AuthProvider", "RequestLike", "Caller", "authorize"]
+# Concrete adapters live in sibling modules; re-exported so callers keep importing them
+# from ``agentship.auth`` regardless of which file they live in. Imported at the bottom
+# to avoid a cycle (each adapter imports the contract defined above). Adapters are added
+# here as their Phase-04 tasks land.
+from .forwarded import ForwardedHeaderAuthProvider  # noqa: E402
+
+__all__ = [
+    "AuthProvider",
+    "RequestLike",
+    "Caller",
+    "authorize",
+    "ForwardedHeaderAuthProvider",
+]
