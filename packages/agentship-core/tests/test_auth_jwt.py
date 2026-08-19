@@ -16,7 +16,7 @@ import time
 import jwt
 import pytest
 from agentship.auth import AuthProvider
-from agentship.auth.jwt import JwksCache, JwtAuthProvider
+from agentship.auth.jwt import JwtAuthProvider
 from agentship.errors import AuthError
 from cryptography.hazmat.primitives.asymmetric import rsa
 
@@ -146,83 +146,49 @@ async def test_bad_signature_is_invalid_token() -> None:
     assert excinfo.value.code == "invalid_token"
 
 
-# ---- JWKS cache (unit tier: a mocked fetcher, no network) --------------------------
+# ---- JWKS mode (delegated to PyJWT's PyJWKClient; fetch stubbed, no network) --------
+#
+# Key-set caching, kid resolution, and rotation-refresh are PyJWKClient's job, not ours —
+# so these tests cover only *our* integration seam: that the provider resolves the signing
+# key via the client and maps its outcomes (valid key, unknown kid) to the right result.
 
 
-async def test_jwks_mode_validates_via_fetched_key() -> None:
-    """In JWKS mode the provider resolves the signing key from the fetched key set."""
-    calls = {"n": 0}
+def _jwks_client(monkeypatch, *, kid: str = "k1"):
+    """A real :class:`jwt.PyJWKClient` whose network fetch is stubbed to our test key set."""
+    client = jwt.PyJWKClient("https://issuer.example/jwks", cache_keys=True)
+    monkeypatch.setattr(client, "fetch_data", lambda: {"keys": [_jwk(_PUBLIC, kid)]})
+    return client
 
-    async def fetch() -> dict:
-        calls["n"] += 1
-        return {"keys": [_jwk(_PUBLIC, "k1")]}
 
+async def test_jwks_mode_validates_via_fetched_key(monkeypatch) -> None:
+    """In JWKS mode the provider resolves the signing key via PyJWKClient and validates."""
     provider = JwtAuthProvider(
         issuer=_ISSUER,
         audience=_AUDIENCE,
-        jwks_url="https://issuer.example/jwks",
-        jwks_fetcher=fetch,
+        jwks_client=_jwks_client(monkeypatch, kid="k1"),
         scopes_claim="scope",
     )
     token = _token({"scope": "x:y:z"}, kid="k1")
     caller = await provider.authenticate(_request({"authorization": f"Bearer {token}"}))
     assert caller.scopes == frozenset({"x:y:z"})
-    assert calls["n"] == 1
 
 
-async def test_jwks_cache_serves_within_ttl_and_refetches_after() -> None:
-    """Keys are cached within the TTL and re-fetched only once it has elapsed."""
-    clock = {"t": 1000.0}
-    calls = {"n": 0}
-
-    async def fetch() -> dict:
-        calls["n"] += 1
-        return {"keys": [_jwk(_PUBLIC, "k1")]}
-
-    cache = JwksCache(
-        "https://issuer.example/jwks",
-        ttl_seconds=60,
-        fetcher=fetch,
-        now=lambda: clock["t"],
+def test_jwks_url_mode_constructs_a_client() -> None:
+    """Supplying only ``jwks_url`` builds a PyJWKClient — the production path."""
+    provider = JwtAuthProvider(
+        issuer=_ISSUER, audience=_AUDIENCE, jwks_url="https://issuer.example/jwks"
     )
-    await cache.public_key_for("k1")
-    await cache.public_key_for("k1")
-    assert calls["n"] == 1  # second lookup served from cache
-
-    clock["t"] += 61  # TTL elapsed
-    await cache.public_key_for("k1")
-    assert calls["n"] == 2  # refetched
+    assert isinstance(provider._jwks_client, jwt.PyJWKClient)
 
 
-async def test_jwks_cache_refetches_on_unknown_kid() -> None:
-    """An unknown key id triggers a refetch (key rotation) rather than failing blind."""
-    keys = {"current": "k1"}
-    calls = {"n": 0}
-
-    async def fetch() -> dict:
-        calls["n"] += 1
-        return {"keys": [_jwk(_PUBLIC, keys["current"])]}
-
-    cache = JwksCache(
-        "https://issuer.example/jwks", ttl_seconds=3600, fetcher=fetch, now=lambda: 0.0
+async def test_jwks_unknown_kid_is_invalid_token(monkeypatch) -> None:
+    """A token whose kid is absent from the fetched key set is a hard ``invalid_token``."""
+    provider = JwtAuthProvider(
+        issuer=_ISSUER,
+        audience=_AUDIENCE,
+        jwks_client=_jwks_client(monkeypatch, kid="k1"),
     )
-    await cache.public_key_for("k1")
-    assert calls["n"] == 1
-
-    keys["current"] = "k2"  # issuer rotated its signing key
-    await cache.public_key_for("k2")  # unknown kid → refetch even though TTL is fresh
-    assert calls["n"] == 2
-
-
-async def test_jwks_cache_unknown_kid_after_refetch_is_invalid_token() -> None:
-    """A kid still absent after a refetch is a hard ``invalid_token``."""
-
-    async def fetch() -> dict:
-        return {"keys": [_jwk(_PUBLIC, "k1")]}
-
-    cache = JwksCache(
-        "https://issuer.example/jwks", ttl_seconds=3600, fetcher=fetch, now=lambda: 0.0
-    )
+    token = _token({}, kid="does-not-exist")
     with pytest.raises(AuthError) as excinfo:
-        await cache.public_key_for("nope")
+        await provider.authenticate(_request({"authorization": f"Bearer {token}"}))
     assert excinfo.value.code == "invalid_token"

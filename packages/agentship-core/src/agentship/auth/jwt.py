@@ -8,9 +8,9 @@ not-before) and maps configurable claims to a :class:`~agentship.context.Caller`
 Two key modes:
 
 * **static key** — an RSA/EC public key (or HMAC secret) supplied directly; and
-* **JWKS URL** — the provider fetches the issuer's key set and caches it by key id with a
-  TTL (:class:`JwksCache`), refreshing on an unknown ``kid`` so key rotation is handled
-  without a per-request network call.
+* **JWKS URL** — PyJWT's :class:`jwt.PyJWKClient` fetches the issuer's key set and caches
+  it, resolving the signing key for a token's ``kid`` and refreshing on rotation. We do
+  not reimplement JWKS caching — the client is the integration point.
 
 This module imports PyJWT lazily inside its constructors, so ``from agentship.auth.jwt
 import JwtAuthProvider`` works in a base install; constructing a provider without the
@@ -19,14 +19,11 @@ import JwtAuthProvider`` works in a base install; constructing a provider withou
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+import asyncio
 
 from ..context import Caller
 from ..errors import AuthError
 from . import AuthProvider, RequestLike
-
-#: A JWKS fetcher: an async callable returning the parsed JWKS document (``{"keys": [...]}``).
-JwksFetcher = Callable[[], Awaitable[dict]]
 
 
 def _require_pyjwt():
@@ -42,77 +39,13 @@ def _require_pyjwt():
         ) from exc
 
 
-class JwksCache:
-    """Fetch and cache an issuer's JWKS, resolving a signing key by its ``kid``.
-
-    Keys are cached until the TTL elapses; a lookup for an unknown ``kid`` forces one
-    refresh (handling issuer key rotation) before giving up. The network fetch and the
-    clock are both injectable so the cache is unit-testable without touching the network.
-    """
-
-    def __init__(
-        self,
-        jwks_url: str,
-        *,
-        ttl_seconds: float = 3600.0,
-        fetcher: JwksFetcher | None = None,
-        now: Callable[[], float] | None = None,
-    ) -> None:
-        """Configure the JWKS URL, cache TTL, and (optionally) the fetcher and clock."""
-        self._url = jwks_url
-        self._ttl = ttl_seconds
-        self._fetch = fetcher or self._default_fetcher
-        self._now = now or _monotonic
-        self._keys: dict[str, object] = {}
-        self._fetched_at: float | None = None
-
-    async def public_key_for(self, kid: str) -> object:
-        """Return the public key for ``kid``, refreshing the cache if stale or on a miss.
-
-        Raises :class:`~agentship.errors.AuthError` (``invalid_token``) if the key id is
-        still unknown after a refresh — a token referencing a key the issuer does not
-        publish cannot be trusted.
-        """
-        if self._is_stale() or kid not in self._keys:
-            await self._refresh()
-        key = self._keys.get(kid)
-        if key is None:
-            raise AuthError("invalid_token", f"token references unknown signing key id {kid!r}")
-        return key
-
-    def _is_stale(self) -> bool:
-        """Whether the cache has never been filled or its TTL has elapsed."""
-        return self._fetched_at is None or (self._now() - self._fetched_at) >= self._ttl
-
-    async def _refresh(self) -> None:
-        """Re-fetch the JWKS and rebuild the ``kid`` → public-key map."""
-        jwt = _require_pyjwt()
-        document = await self._fetch()
-        keys: dict[str, object] = {}
-        for jwk in document.get("keys", []):
-            kid = jwk.get("kid")
-            if kid is None:
-                continue
-            keys[kid] = jwt.PyJWK(jwk).key
-        self._keys = keys
-        self._fetched_at = self._now()
-
-    async def _default_fetcher(self) -> dict:  # pragma: no cover - real network, integration only
-        """Fetch the JWKS document over HTTP (used when no fetcher is injected)."""
-        import httpx
-
-        async with httpx.AsyncClient() as client:
-            response = await client.get(self._url, timeout=5.0)
-            response.raise_for_status()
-            return response.json()
-
-
 class JwtAuthProvider(AuthProvider):
     """Authenticate a request by validating its bearer JWT.
 
     Configure exactly one key source: a static ``public_key`` (PEM string, key object, or
-    HMAC secret) **or** a ``jwks_url``. Claims are mapped by name: ``user_claim`` (default
-    ``sub``), ``tenant_claim``, and ``scopes_claim`` (a space-delimited string or a list).
+    HMAC secret) **or** a ``jwks_url`` (backed by PyJWT's :class:`jwt.PyJWKClient`). Claims
+    are mapped by name: ``user_claim`` (default ``sub``), ``tenant_claim``, and
+    ``scopes_claim`` (a space-delimited string or a list).
     """
 
     def __init__(
@@ -122,17 +55,24 @@ class JwtAuthProvider(AuthProvider):
         audience: str,
         public_key: object | None = None,
         jwks_url: str | None = None,
-        jwks_fetcher: JwksFetcher | None = None,
         jwks_ttl_seconds: float = 3600.0,
-        jwks_now: Callable[[], float] | None = None,
+        jwks_client: object | None = None,
         algorithms: tuple[str, ...] = ("RS256",),
         user_claim: str = "sub",
         tenant_claim: str = "tenant",
         scopes_claim: str = "scope",
     ) -> None:
-        """Validate the configuration and set up the chosen key source (static or JWKS)."""
-        _require_pyjwt()  # fail fast now if the extra is missing, not on first request
-        if (public_key is None) == (jwks_url is None):
+        """Validate the configuration and set up the chosen key source (static or JWKS).
+
+        ``jwks_client`` is an injection seam for tests: pass a pre-built
+        :class:`jwt.PyJWKClient` (or any object exposing ``get_signing_key_from_jwt``) to
+        avoid a live network fetch. In production only ``jwks_url`` is supplied and the
+        client is constructed here.
+        """
+        jwt = _require_pyjwt()  # fail fast now if the extra is missing, not on first request
+        has_static = public_key is not None
+        has_jwks = jwks_url is not None or jwks_client is not None
+        if has_static == has_jwks:
             raise ValueError(
                 "JwtAuthProvider needs exactly one key source: pass either public_key "
                 "(static key) or jwks_url (fetched key set), not both or neither"
@@ -144,13 +84,16 @@ class JwtAuthProvider(AuthProvider):
         self._user_claim = user_claim
         self._tenant_claim = tenant_claim
         self._scopes_claim = scopes_claim
-        self._jwks = (
-            JwksCache(
-                jwks_url, ttl_seconds=jwks_ttl_seconds, fetcher=jwks_fetcher, now=jwks_now
+        if jwks_client is not None:
+            self._jwks_client = jwks_client
+        elif jwks_url is not None:
+            # PyJWKClient owns the fetch, kid→key resolution, and TTL cache. lifespan is
+            # its cache TTL in seconds; cache_keys keeps resolved keys across requests.
+            self._jwks_client = jwt.PyJWKClient(
+                jwks_url, cache_keys=True, lifespan=int(jwks_ttl_seconds)
             )
-            if jwks_url is not None
-            else None
-        )
+        else:
+            self._jwks_client = None
 
     async def authenticate(self, request: RequestLike) -> Caller:
         """Validate the bearer JWT and map its claims to a :class:`Caller`."""
@@ -179,17 +122,24 @@ class JwtAuthProvider(AuthProvider):
         return self._caller_from(payload)
 
     async def _resolve_key(self, jwt, token: str) -> object:
-        """Return the verification key: the static key, or the JWKS key for the token's kid."""
+        """Return the verification key: the static key, or the JWKS key for the token's kid.
+
+        The synchronous :class:`jwt.PyJWKClient` (urllib under the hood, plus its own cache)
+        is run in a worker thread so a cache-miss fetch never blocks the event loop. It
+        reads the token's ``kid`` and resolves the matching signing key itself.
+        """
         if self._public_key is not None:
             return self._public_key
-        assert self._jwks is not None  # guaranteed by the constructor's xor check
+        assert self._jwks_client is not None  # guaranteed by the constructor's xor check
         try:
-            kid = jwt.get_unverified_header(token).get("kid")
-        except jwt.InvalidTokenError as exc:
-            raise AuthError("invalid_token", "malformed JWT header") from exc
-        if kid is None:
-            raise AuthError("invalid_token", "JWKS mode requires a 'kid' in the JWT header")
-        return await self._jwks.public_key_for(kid)
+            signing_key = await asyncio.to_thread(
+                self._jwks_client.get_signing_key_from_jwt, token
+            )
+        except jwt.PyJWTError as exc:
+            # Unknown kid, unreachable/invalid JWKS, or a malformed token header — none of
+            # these yield a trustworthy key, so surface them under the one invalid_token code.
+            raise AuthError("invalid_token", f"could not resolve JWT signing key: {exc}") from exc
+        return signing_key.key
 
     def _caller_from(self, payload: dict) -> Caller:
         """Map a validated JWT payload to a :class:`Caller` using the configured claims."""
@@ -223,10 +173,3 @@ def _parse_scopes(raw: object) -> frozenset[str]:
     if isinstance(raw, (list, tuple)):
         return frozenset(str(part) for part in raw)
     return frozenset()
-
-
-def _monotonic() -> float:
-    """Default clock for the JWKS cache TTL (monotonic so it is immune to clock steps)."""
-    import time
-
-    return time.monotonic()
