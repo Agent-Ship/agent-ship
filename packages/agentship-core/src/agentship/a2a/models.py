@@ -9,13 +9,22 @@ Two families live here, both transport-agnostic (no ``httpx``/FastAPI), so they 
   :class:`JsonRpcRequest`/:class:`JsonRpcResponse` envelope. These mirror the A2A spec's JSON
   shapes (camelCase on the wire via field aliases) so our server and client speak the protocol
   without pulling in the ``a2a-sdk`` dependency; the models are deliberately a faithful subset of
-  what we implement (``message/send``, ``message/stream``, the Agent Card), and sit behind the
-  same seam so ``a2a-sdk`` types can replace them later without touching callers.
+  what we implement (``message/send``, ``message/stream``, the Agent Card).
+
+We keep these thin models rather than adopting ``a2a-sdk``'s types directly, by design:
+a2a-sdk 1.x is protobuf-first (``a2a.types`` is compiled protobuf), and its only Pydantic/JSON
+representation is the legacy ``a2a.compat.v0_3`` shim — adopting either would force grpc/protobuf
+lock-in and protobuf-JSON semantics into this clean Pydantic/JSON service. Instead of importing
+their models we *validate against* them: ``agentship-service[a2a]``'s drift guard
+(``tests/test_a2a_conformance.py``) parses every shape we emit with a2a-sdk's own schema, so we
+cannot drift from the spec. That is what "integrate, don't reinvent" means here — conform to the
+standard's schema, without taking a dependency that fits this service poorly.
 """
 
 from __future__ import annotations
 
 from typing import Any, Literal
+from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -132,6 +141,10 @@ class SecurityScheme(_A2AModel):
 
     type: str
     description: str | None = None
+    # apiKey schemes must declare WHERE the key travels so a client knows how to authenticate
+    # (A2A/OpenAPI APIKeySecurityScheme requires both). ``location`` serialises as ``in``.
+    name: str | None = None
+    location: str | None = Field(default=None, alias="in")
 
 
 class AgentCard(_A2AModel):
@@ -174,7 +187,9 @@ class Message(_A2AModel):
 
     role: Literal["user", "agent"] = "user"
     parts: list[TextPart] = Field(default_factory=list)
-    message_id: str | None = Field(default=None, alias="messageId")
+    # The A2A spec requires every Message to carry a stable id; generate one so our outbound
+    # messages are spec-conformant (verified by the schema drift guard in test_a2a_conformance).
+    message_id: str = Field(default_factory=lambda: uuid4().hex, alias="messageId")
 
     @classmethod
     def user(cls, text: str) -> Message:

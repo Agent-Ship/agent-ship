@@ -42,17 +42,20 @@ def result_message(output: Any) -> dict[str, Any]:
 
 
 def status_update(
-    task_id: str, *, state: str, text: str = "", final: bool = False
+    task_id: str, context_id: str, *, state: str, text: str = "", final: bool = False
 ) -> dict[str, Any]:
     """Build an A2A ``TaskStatusUpdate`` result for one streamed step.
 
-    ``state`` is the A2A task state (``working`` while tokens flow, ``completed``/``failed`` at the
-    end); ``text`` carries the incremental agent text for this step; ``final`` marks the last frame
-    so a client knows the stream is done. This is the streamed analogue of :func:`result_message`.
+    ``task_id`` identifies this task and ``context_id`` the conversation it belongs to — the A2A
+    spec requires both on every status update. ``state`` is the A2A task state (``working`` while
+    tokens flow, ``completed``/``failed`` at the end); ``text`` carries the incremental agent text
+    for this step; ``final`` marks the last frame so a client knows the stream is done. This is the
+    streamed analogue of :func:`result_message`.
     """
     update: dict[str, Any] = {
         "kind": "status-update",
         "taskId": task_id,
+        "contextId": context_id,
         "status": {"state": state},
         "final": final,
     }

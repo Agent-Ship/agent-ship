@@ -63,16 +63,18 @@ async def stream_rpc(
     a final frame, mirroring the ``/v1`` stream contract).
     """
     task_id = uuid.uuid4().hex
+    # The context id groups every update of this turn under one A2A conversation; one per stream.
+    context_id = uuid.uuid4().hex
     text = message_text(req.params)
     try:
         async for event in agent.stream(text, caller=caller, session_id=task_id):
             chunk = _event_text(event)
             if chunk:
-                yield _sse(req.id, status_update(task_id, state="working", text=chunk))
-        yield _sse(req.id, status_update(task_id, state="completed", final=True))
+                yield _sse(req.id, status_update(task_id, context_id, state="working", text=chunk))
+        yield _sse(req.id, status_update(task_id, context_id, state="completed", final=True))
     except Exception as exc:  # noqa: BLE001 — a mid-stream failure becomes a terminal failed frame
         yield _sse(
-            req.id, status_update(task_id, state="failed", text=str(exc), final=True)
+            req.id, status_update(task_id, context_id, state="failed", text=str(exc), final=True)
         )
 
 

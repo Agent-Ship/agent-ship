@@ -22,6 +22,12 @@ dependencies = [
 # documented `pip install "agentship-service[serve]"` gives the one-command server.
 [project.optional-dependencies]
 serve = ["uvicorn[standard]>=0.30"]
+# a2a-sdk is NOT a runtime dep — we speak A2A with our own thin vendor-free wire models
+# (a2a-sdk 1.x is protobuf-first; only its legacy compat.v0_3 layer is Pydantic/JSON). This
+# extra installs it for the schema drift guard (tests/test_a2a_conformance.py), which validates
+# every AgentCard/Message/status frame we emit against a2a-sdk's own schema so we cannot drift
+# from the A2A spec. Heavy (grpc/protobuf), hence opt-in and test-only.
+a2a = ["a2a-sdk>=1.1,<2"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/agentship_service"]

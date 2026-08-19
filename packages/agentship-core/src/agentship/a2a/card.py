@@ -22,6 +22,22 @@ _SECURITY_SCHEME_DESCRIPTIONS = {
 }
 
 
+def _security_scheme(name: str) -> SecurityScheme:
+    """Build the advertised :class:`SecurityScheme` for one scheme name.
+
+    The ``apiKey`` scheme additionally declares *where* the key travels (``in: header``,
+    ``name: X-API-Key``) — the A2A/OpenAPI ``APIKeySecurityScheme`` requires both so a client
+    knows how to authenticate. (Full ``oauth2`` flow URLs and the ``mutualTLS`` shape are a
+    tracked follow-up; today those advertise type + description only.)
+    """
+    description = _SECURITY_SCHEME_DESCRIPTIONS.get(name)
+    if name == "apiKey":
+        return SecurityScheme(
+            type="apiKey", name="X-API-Key", location="header", description=description
+        )
+    return SecurityScheme(type=name, description=description)
+
+
 def build_agent_card(
     spec: AgentSpec,
     capabilities: EngineCapabilities,
@@ -39,12 +55,7 @@ def build_agent_card(
     ``security`` requirement so the card advertises precisely what the inbound router checks.
     """
     root = base_url.rstrip("/")
-    schemes = {
-        name: SecurityScheme(
-            type=name, description=_SECURITY_SCHEME_DESCRIPTIONS.get(name)
-        )
-        for name in (security or [])
-    }
+    schemes = {name: _security_scheme(name) for name in (security or [])}
     return AgentCard(
         name=spec.name,
         description=spec.prompt,
