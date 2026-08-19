@@ -15,7 +15,7 @@ from agentship.context import Caller
 from agentship.engines.base import Result
 from agentship.errors import CapabilityError
 from fastapi import APIRouter, Depends
-from fastapi.responses import StreamingResponse
+from sse_starlette.sse import EventSourceResponse
 
 from ..context import current_trace_id
 from ..middleware import get_caller, require_scope
@@ -71,7 +71,7 @@ async def stream(
     caller: Caller = Depends(require_scope("invoke")),
     agents: AgentRegistry = Depends(get_agents),
     _limit: None = Depends(enforce_body_limit),
-) -> StreamingResponse:
+) -> EventSourceResponse:
     """Stream a turn of agent ``name`` as Server-Sent typed :class:`StreamEvent` frames.
 
     The first frame is a ``session`` frame carrying the ids; each engine event follows with
@@ -98,7 +98,7 @@ async def stream(
         except Exception as exc:  # noqa: BLE001 — a mid-stream failure becomes an error frame
             yield sse(StreamEvent(type="error", seq=seq, data={"detail": str(exc)}))
 
-    return StreamingResponse(frames(), media_type="text/event-stream")
+    return EventSourceResponse(frames())
 
 
 @router.get("", response_model=list[AgentCard])

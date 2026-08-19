@@ -12,6 +12,9 @@ license = "Apache-2.0"
 dependencies = [
     "agentship-core",
     "fastapi>=0.115",
+    # SSE framing for :stream and A2A message/stream — owns the event:/data: wire encoding,
+    # keepalive comments, and client-disconnect cancellation so we do not hand-frame it.
+    "sse-starlette>=2.1",
 ]
 
 # `agentship serve` launches the app under uvicorn. Kept as an extra so importing the

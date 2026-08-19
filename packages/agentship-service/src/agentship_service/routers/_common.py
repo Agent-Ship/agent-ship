@@ -91,6 +91,12 @@ def frame_type(event_type: str) -> str:
     return event_type if event_type in _ALLOWED_EVENT_TYPES else "content"
 
 
-def sse(event: StreamEvent) -> str:
-    """Serialise a :class:`StreamEvent` as one SSE frame (``event:`` + ``data:`` + blank line)."""
-    return f"event: {event.type}\ndata: {json.dumps(event.model_dump())}\n\n"
+def sse(event: StreamEvent) -> dict:
+    """Shape a :class:`StreamEvent` as ``sse-starlette`` ``ServerSentEvent`` fields.
+
+    The ``event`` name and JSON ``data`` payload are returned as a dict for
+    :class:`~sse_starlette.sse.EventSourceResponse` to frame. sse-starlette owns the wire
+    encoding (``event:``/``data:`` lines and the blank-line terminator), the periodic
+    keepalive comment, and client-disconnect cancellation — we no longer hand-frame it.
+    """
+    return {"event": event.type, "data": json.dumps(event.model_dump())}

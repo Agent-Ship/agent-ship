@@ -19,7 +19,8 @@ from agentship.a2a.models import JsonRpcRequest
 from agentship.context import Caller
 from agentship.runtime import RunnableAgent
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
+from sse_starlette.sse import EventSourceResponse
 
 from ..a2a import handle_rpc, stream_rpc
 from ..middleware import require_scope
@@ -90,8 +91,8 @@ async def rpc(
     agent = _exposed_or_404(agents, name)
     req = JsonRpcRequest.model_validate(await request.json())
     if req.method == "message/stream":
-        return StreamingResponse(
-            stream_rpc(agent, caller, req), media_type="text/event-stream"
+        return EventSourceResponse(
+            stream_rpc(agent, caller, req)
         )
     response = await handle_rpc(agent, caller, req)
     return JSONResponse(response.model_dump(mode="json", by_alias=True))

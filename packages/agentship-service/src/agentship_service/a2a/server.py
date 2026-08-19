@@ -54,7 +54,7 @@ async def handle_rpc(agent: RunnableAgent, caller: Caller, req: JsonRpcRequest) 
 
 async def stream_rpc(
     agent: RunnableAgent, caller: Caller, req: JsonRpcRequest
-) -> AsyncIterator[str]:
+) -> AsyncIterator[dict]:
     """Stream an A2A ``message/stream`` turn as SSE JSON-RPC frames of task status updates.
 
     Each engine event with text becomes a ``working`` status update carrying that text; the stream
@@ -84,7 +84,11 @@ def _event_text(event) -> str:
     return ""
 
 
-def _sse(req_id, result: dict) -> str:
-    """Serialise one JSON-RPC response as an SSE ``data:`` frame (A2A streams over SSE)."""
+def _sse(req_id, result: dict) -> dict:
+    """Shape one JSON-RPC response as ``sse-starlette`` ``ServerSentEvent`` fields.
+
+    A2A streams JSON-RPC responses over SSE with only a ``data:`` payload; sse-starlette
+    frames it (and adds keepalive comments / disconnect handling) via EventSourceResponse.
+    """
     body = JsonRpcResponse.ok(req_id, result).model_dump(by_alias=True)
-    return f"data: {json.dumps(body)}\n\n"
+    return {"data": json.dumps(body)}
