@@ -4,6 +4,13 @@ Phoenix is self-hosted and open-source, reads the GenAI + OpenInference attribut
 stamps, and needs no API key — just a running collector. The endpoint comes from
 ``PHOENIX_COLLECTOR_ENDPOINT`` (default the local dev collector), so pointing at a shared Phoenix is
 an env-var change, not a code change.
+
+We deliberately reach Phoenix over the **standard OTLP/HTTP exporter**, not ``arize-phoenix-otel``'s
+``register()`` convenience. ``register()`` installs a *global* tracer provider; our observer
+composes this processor into its own provider (multiple exporters, one pipeline), so that global
+grab would fight our factory. Using plain OTLP keeps us vendor-neutral with zero Phoenix-SDK
+lock-in — Phoenix
+is just an OTLP endpoint here — which is exactly the integrate-don't-reinvent contract.
 """
 
 from __future__ import annotations
