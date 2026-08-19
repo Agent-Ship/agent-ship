@@ -22,3 +22,19 @@ This package holds only the **pipeline**:
 
 Everything a price table, trace store, or UI would provide is **consumed** (Phoenix/Langfuse/
 LangSmith + LangGraph Studio); we build only the composition.
+
+## Conformance guards (we keep thin, but prove it conforms)
+
+Two pieces are deliberately vendor-free — the semantic-convention key constants and the
+`RecordingObserver` — because the kernel cannot import OpenTelemetry (design §4.6) and the base
+install ships without a collector. To keep them from silently drifting from the real thing, each is
+continuously proven against upstream:
+
+- `tests/test_semconv_upstream.py` asserts every `gen_ai.*` / `llm.*` key equals the OTel-GenAI /
+  OpenInference string it claims to speak.
+- `tests/test_observer_parity.py` runs one interaction through both the in-memory `RecordingObserver`
+  and the real `OTelObserver`, and asserts the two produce the same span tree and model-span
+  attributes.
+
+See [`docs/decisions/0001-integrate-not-invent.md`](../../docs/decisions/0001-integrate-not-invent.md)
+for the full rationale.

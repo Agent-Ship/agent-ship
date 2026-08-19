@@ -27,8 +27,10 @@ agentship serve team.yaml      # REST + SSE on :7001
 
 ## Status
 Rebuilt from the ground up. Foundation-first, one thin working slice per phase.
-See [`.spec-dev/architecture.md`](.spec-dev/architecture.md) for the design and the
-phase ladder, and [`.spec-dev/tasks.md`](.spec-dev/tasks.md) for live progress.
+See [`.spec-dev/DESIGN.md`](.spec-dev/DESIGN.md) for the design, [`.spec-dev/PHASES.md`](.spec-dev/PHASES.md)
+for the phase ladder and live progress, and [`docs/decisions/`](docs/decisions/) for the
+architecture decision records (e.g. how we integrate best-of-breed libraries and guard against
+drifting from their specs).
 
 ## Develop
 Every change follows [`.spec-dev/operating-model.md`](.spec-dev/operating-model.md):
