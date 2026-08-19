@@ -9,6 +9,11 @@ strings, so they must not drift silently. The machine-readable constants live in
 `agentship-observability` uninstalled). This file and that module must stay in lock-step — the
 `CONF-OBS-3` / `CONF-OBS-6` conformance cells enforce it.
 
+The `gen_ai.*` keys are **OpenTelemetry's** GenAI semantic conventions and the `llm.token_count.*`
+keys are **OpenInference's** — we adopt the standards, we do not invent them. A drift guard
+(`agentship-observability/tests/test_semconv_upstream.py`) imports the real upstream constants and
+fails CI if any value diverges. Only the `agentship.*` (`AS_*`) keys and the `SPAN_*` names are ours.
+
 Bump `SEMCONV_VERSION` only with a documented change here.
 
 ## 1. Span tree (§4.1)

@@ -10,9 +10,16 @@ Grouping:
 
 - ``SPAN_*`` — the canonical span-tree names (§4.1). ``NODE_PREFIX``/``TOOL_PREFIX`` are prefixes; a
   concrete span is ``node.<node_name>`` / ``tool.<tool_name>``.
-- ``GEN_AI_*`` — OpenTelemetry GenAI semantic-convention attribute keys (§4.2).
-- ``OI_*`` — the OpenInference mirror keys Phoenix's cost panel reads.
+- ``GEN_AI_*`` — OpenTelemetry GenAI semantic-convention attribute keys (§4.2). We **adopt**
+  these standard keys, we do not invent them; they are restated here as plain strings only
+  because the vendor-free kernel cannot import ``opentelemetry.semconv``.
+- ``OI_*`` — the OpenInference mirror keys Phoenix's cost panel reads (adopted, not invented).
 - ``AS_*`` — AgentShip-owned attribute keys (cost, latency, tenant, replay hash, …).
+
+The ``GEN_AI_*`` / ``OI_*`` values are held to their upstream standards by a drift guard,
+``agentship-observability/tests/test_semconv_upstream.py``: it imports the real OpenTelemetry
+GenAI and OpenInference constants and fails CI if any value here diverges. Upstream is the
+single source of truth; this file only restates it where OTel is not on the import path.
 """
 
 from __future__ import annotations
