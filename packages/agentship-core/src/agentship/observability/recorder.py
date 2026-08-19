@@ -8,6 +8,14 @@ runtime wiring — asserting on the tree an observer *should* have built, withou
 
 Nesting is tracked per task with a :class:`~contextvars.ContextVar` stack, so concurrent turns and
 concurrent nodes each parent their spans correctly (the same guarantee OTel's own context gives).
+
+This is deliberately *not* OTel's ``InMemorySpanExporter``: core is vendor-free by contract (it
+cannot import OpenTelemetry), the base install ships without OTel, and offline verifiers consume our
+own ``SpanNode``/``TraceView`` tree, not OTel's flat ``ReadableSpan`` list. It is the in-memory
+implementation of our own Observer port. To keep this double honest, a parity guard in
+``agentship-observability`` (``tests/test_observer_parity.py``) runs the same interaction through
+both this recorder and the real OTel observer and asserts the trees agree, so the vendor-free
+capture cannot silently drift from the production pipeline.
 """
 
 from __future__ import annotations
