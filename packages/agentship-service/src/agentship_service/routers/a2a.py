@@ -71,6 +71,7 @@ async def agent_card(
         agent.engine.capabilities,
         base_url=_base_url(request),
         security=agent.spec.a2a.security,
+        oauth2=agent.spec.a2a.oauth2,
     )
     return JSONResponse(card.model_dump(mode="json", by_alias=True))
 

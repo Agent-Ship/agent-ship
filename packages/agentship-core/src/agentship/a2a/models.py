@@ -132,11 +132,38 @@ class AgentSkill(_A2AModel):
     tags: list[str] = Field(default_factory=list)
 
 
+class ClientCredentialsFlow(_A2AModel):
+    """The OAuth2 client-credentials flow on the card (A2A ``ClientCredentialsOAuthFlow``).
+
+    Advertised so a service-to-service caller can obtain a token on its own.
+    ``token_url`` is where a client exchanges its client id/secret for a bearer token; ``scopes``
+    maps each scope name the service accepts to a human description. A2A requires both on the flow.
+    """
+
+    token_url: str = Field(alias="tokenUrl")
+    scopes: dict[str, str] = Field(default_factory=dict)
+
+
+class OAuthFlows(_A2AModel):
+    """The set of OAuth2 flows an ``oauth2`` scheme offers (A2A ``OAuthFlows``).
+
+    We advertise only the client-credentials flow (service-to-service, which is how agents call each
+    other over A2A); the other flow slots stay unset. An empty ``OAuthFlows`` is spec-valid and is
+    what we emit when the author names ``oauth2`` without declaring a token endpoint.
+    """
+
+    client_credentials: ClientCredentialsFlow | None = Field(
+        default=None, alias="clientCredentials"
+    )
+
+
 class SecurityScheme(_A2AModel):
     """A single accepted auth scheme on the card (A2A ``securitySchemes`` value).
 
     We advertise exactly the schemes the service enforces (they are generated from one config so
-    the card and the inbound check can never drift — §C6).
+    the card and the inbound check can never drift — §C6). Only the fields a given ``type`` needs
+    are set; A2A ignores the unused ``None`` fields, and the drift guard proves each variant
+    validates against ``a2a-sdk``'s discriminated ``SecurityScheme`` union.
     """
 
     type: str
@@ -145,6 +172,8 @@ class SecurityScheme(_A2AModel):
     # (A2A/OpenAPI APIKeySecurityScheme requires both). ``location`` serialises as ``in``.
     name: str | None = None
     location: str | None = Field(default=None, alias="in")
+    # oauth2 schemes carry the flows a client can use to obtain a token; unset for apiKey/mutualTLS.
+    flows: OAuthFlows | None = None
 
 
 class AgentCard(_A2AModel):

@@ -9,9 +9,10 @@ we *validate against* them: every AgentCard / Message / status-update / result J
 parsed by a2a-sdk's own schema here, so if we ever drift from the A2A spec this fails CI.
 
 Runs only under the ``agentship-service[a2a]`` extra (a2a-sdk is a heavy grpc/protobuf dep, not
-a hard requirement); the base install skips it. This guard already caught three real spec gaps
+a hard requirement); the base install skips it. This guard already caught four real spec gaps
 (``Message.messageId`` and ``TaskStatusUpdateEvent.contextId`` being required; the ``apiKey``
-scheme needing ``in``/``name``), which the models now emit correctly.
+scheme needing ``in``/``name``; the ``oauth2`` scheme needing ``flows``; the ``mtls`` scheme's
+type being spelled ``mutualTLS``), which the models now emit correctly.
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ a2a_types = pytest.importorskip(
 from agentship.a2a.card import build_agent_card  # noqa: E402
 from agentship.a2a.models import Message  # noqa: E402
 from agentship.engines.base import EngineCapabilities  # noqa: E402
-from agentship.spec import AgentSpec  # noqa: E402
+from agentship.spec import A2aOAuth2Spec, AgentSpec  # noqa: E402
 from agentship_service.a2a.mapping import result_message, status_update  # noqa: E402
 
 _SPEC = AgentSpec(name="demo", prompt="You are a demo agent.")
@@ -69,8 +70,27 @@ def test_status_update_matches_a2a_schema() -> None:
     a2a_types.TaskStatusUpdateEvent.model_validate(done)
 
 
-@pytest.mark.xfail(reason="oauth2/mtls card schemes not yet fully spec-conformant — task #26")
 def test_oauth2_card_security_matches_a2a_schema() -> None:
-    """oauth2 needs OAuth2SecurityScheme flows we don't model yet (tracked follow-up)."""
+    """A bare oauth2 scheme validates: we emit type=oauth2 with (spec-valid) empty flows."""
     card = build_agent_card(_SPEC, _CAPS, base_url="https://host", security=["oauth2"])
-    a2a_types.AgentCard.model_validate(_wire(card))
+    parsed = a2a_types.AgentCard.model_validate(_wire(card))
+    assert parsed.security_schemes["oauth2"].root.type == "oauth2"
+
+
+def test_oauth2_card_with_token_url_advertises_client_credentials_flow() -> None:
+    """When the author declares a token endpoint, the card carries the client-credentials flow."""
+    oauth2 = A2aOAuth2Spec(token_url="https://issuer/oauth/token", scopes={"a2a:invoke": "Invoke."})
+    card = build_agent_card(
+        _SPEC, _CAPS, base_url="https://host", security=["oauth2"], oauth2=oauth2
+    )
+    parsed = a2a_types.AgentCard.model_validate(_wire(card))
+    flow = parsed.security_schemes["oauth2"].root.flows.client_credentials
+    assert flow.token_url == "https://issuer/oauth/token"
+    assert flow.scopes == {"a2a:invoke": "Invoke."}
+
+
+def test_mtls_card_security_matches_a2a_schema() -> None:
+    """The mtls scheme's A2A type is spelled ``mutualTLS`` and validates as such."""
+    card = build_agent_card(_SPEC, _CAPS, base_url="https://host", security=["mtls"])
+    parsed = a2a_types.AgentCard.model_validate(_wire(card))
+    assert parsed.security_schemes["mtls"].root.type == "mutualTLS"

@@ -35,10 +35,12 @@ implementation **and** prove it conforms to the upstream standard.
 | **A2A wire models** (`a2a/models.py`) | `a2a-sdk` 1.x is protobuf-first; its only Pydantic/JSON layer is the legacy `compat.v0_3` shim. Adopting either forces grpc/protobuf lock-in and protobuf-JSON semantics into a clean Pydantic/FastAPI JSON service. | `test_a2a_conformance.py` (extra `agentship-service[a2a]`) validates every AgentCard / Message / status frame against `a2a-sdk`'s own schema. |
 | **RecordingObserver** (`observability/recorder.py`) | Core is vendor-free and the base install ships without OTel; offline verifiers read our own `SpanNode`/`TraceView` tree, not OTel's flat `ReadableSpan`. It is the in-memory impl of our own Observer port, not OTel's `InMemorySpanExporter`. | `test_observer_parity.py` runs one interaction through both this recorder and the real OTel observer and asserts the trees agree. |
 
-The A2A guard immediately earned its keep — it caught three real spec violations, now fixed:
-`Message.messageId` and `TaskStatusUpdateEvent.contextId` are required (we emitted neither), and the
-advertised `apiKey` security scheme must declare `in`/`name`. (`oauth2`/`mtls` full-scheme
-conformance is a tracked follow-up; the guard xfails that case rather than pretend.)
+The A2A guard immediately earned its keep — it caught four real spec violations, now fixed:
+`Message.messageId` and `TaskStatusUpdateEvent.contextId` are required (we emitted neither); the
+advertised `apiKey` security scheme must declare `in`/`name`; the `oauth2` scheme must carry an
+`OAuthFlows` object; and the `mtls` scheme's A2A `type` is spelled `mutualTLS`. The card now emits
+each scheme in its conformant shape — `oauth2` advertises the client-credentials flow (token URL +
+scopes) when the author declares one, or spec-valid empty flows otherwise.
 
 ### Deliberately *not* changed
 

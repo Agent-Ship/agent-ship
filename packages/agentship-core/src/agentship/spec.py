@@ -57,6 +57,21 @@ class A2aRemoteSpec(BaseModel):
     timeout_seconds: int = 60
 
 
+class A2aOAuth2Spec(BaseModel):
+    """OAuth2 client-credentials details to advertise when ``oauth2`` is an exposed scheme (§C4).
+
+    Optional. When present, the Agent Card's ``oauth2`` scheme advertises this ``token_url`` (where
+    a caller obtains a bearer token) and ``scopes`` (each accepted scope name → its description), so
+    a client can self-serve credentials. Absent, the card still advertises ``oauth2`` with empty
+    flows (spec-valid) — conformant but with no token endpoint for the client to discover.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    token_url: str
+    scopes: dict[str, str] = Field(default_factory=dict)
+
+
 class A2aExposeSpec(BaseModel):
     """The ``a2a`` block on an :class:`AgentSpec`: whether/how to serve the agent over A2A (§C4).
 
@@ -70,6 +85,7 @@ class A2aExposeSpec(BaseModel):
 
     expose: bool = False
     security: list[str] = Field(default_factory=list)
+    oauth2: A2aOAuth2Spec | None = None
 
     @model_validator(mode="after")
     def _require_security_when_exposed(self) -> A2aExposeSpec:
