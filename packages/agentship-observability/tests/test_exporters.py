@@ -13,6 +13,7 @@ import pytest
 from agentship.errors import CapabilityError
 from agentship_observability.config import ObservabilityConfig
 from agentship_observability.exporters import build_processor
+from agentship_observability.exporters import opik as opik_mod
 from agentship_observability.exporters import phoenix as phoenix_mod
 
 
@@ -57,6 +58,30 @@ def test_langsmith_builds_endpoint_and_api_key_header(monkeypatch) -> None:
     exporter = _exporter(build_processor("langsmith", ObservabilityConfig()))
     assert exporter._endpoint.endswith("/otel/v1/traces")
     assert exporter._headers["x-api-key"] == "ls-key"
+
+
+def test_opik_defaults_to_local_and_needs_no_auth(monkeypatch) -> None:
+    """Self-hosted Opik targets the local server with no auth headers — the keyless default."""
+    for name in ("OPIK_OTEL_ENDPOINT", "OPIK_API_KEY", "OPIK_WORKSPACE", "OPIK_PROJECT_NAME"):
+        monkeypatch.delenv(name, raising=False)
+    exporter = _exporter(build_processor("opik", ObservabilityConfig()))
+    assert exporter._endpoint == opik_mod.DEFAULT_ENDPOINT
+    assert "Authorization" not in exporter._headers
+
+
+def test_opik_cloud_sends_auth_and_workspace_headers(monkeypatch) -> None:
+    """With cloud env set, Opik carries the API key, workspace and project headers Comet expects."""
+    monkeypatch.setenv(
+        "OPIK_OTEL_ENDPOINT", "https://www.comet.com/opik/api/v1/private/otel/v1/traces"
+    )
+    monkeypatch.setenv("OPIK_API_KEY", "opik-key")
+    monkeypatch.setenv("OPIK_WORKSPACE", "my-workspace")
+    monkeypatch.setenv("OPIK_PROJECT_NAME", "agentship")
+    exporter = _exporter(build_processor("opik", ObservabilityConfig()))
+    assert exporter._endpoint.endswith("/otel/v1/traces")
+    assert exporter._headers["Authorization"] == "opik-key"
+    assert exporter._headers["Comet-Workspace"] == "my-workspace"
+    assert exporter._headers["projectName"] == "agentship"
 
 
 def test_unknown_exporter_raises_capability_error() -> None:

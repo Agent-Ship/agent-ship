@@ -15,7 +15,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 #: The exporter names the factory knows how to build. Extend here + in ``exporters/factory.py``.
-ExporterName = Literal["console", "phoenix", "langfuse", "langsmith"]
+ExporterName = Literal["console", "phoenix", "langfuse", "langsmith", "opik"]
 
 
 class ObservabilityConfig(BaseModel):

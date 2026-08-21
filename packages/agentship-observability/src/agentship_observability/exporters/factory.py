@@ -13,7 +13,7 @@ from agentship.errors import CapabilityError
 from opentelemetry.sdk.trace.export import SpanProcessor
 
 from ..config import ObservabilityConfig
-from . import console, langfuse, langsmith, phoenix
+from . import console, langfuse, langsmith, opik, phoenix
 
 #: Exporter name → builder. Keys must match ``config.ExporterName``.
 _BUILDERS: dict[str, Callable[[ObservabilityConfig], SpanProcessor]] = {
@@ -21,6 +21,7 @@ _BUILDERS: dict[str, Callable[[ObservabilityConfig], SpanProcessor]] = {
     "phoenix": phoenix.build,
     "langfuse": langfuse.build,
     "langsmith": langsmith.build,
+    "opik": opik.build,
 }
 
 
