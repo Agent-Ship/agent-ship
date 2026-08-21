@@ -28,19 +28,8 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any
 
+from .attributes import usage_attributes
 from .observer import Observer, Span
-from .semconv import (
-    AS_COST_USD,
-    AS_LATENCY_MS,
-    GEN_AI_RESPONSE_FINISH_REASONS,
-    GEN_AI_RESPONSE_MODEL,
-    GEN_AI_SYSTEM,
-    GEN_AI_USAGE_INPUT_TOKENS,
-    GEN_AI_USAGE_OUTPUT_TOKENS,
-    OI_TOKEN_COUNT_COMPLETION,
-    OI_TOKEN_COUNT_PROMPT,
-    OI_TOKEN_COUNT_TOTAL,
-)
 from .trace_view import SpanNode, TraceView
 from .types import SpanKind, Usage
 
@@ -94,6 +83,9 @@ class _RecordingSpan:
         if exc is not None:
             self.record_exception(exc)
 
+    def end(self) -> None:
+        """No-op — a recording is finalized when the tree is frozen for reading, not on end."""
+
 
 class RecordingObserver(Observer):
     """Record spans into an in-memory tree and expose it as a :class:`TraceView`.
@@ -135,28 +127,43 @@ class RecordingObserver(Observer):
         finally:
             self._current.reset(token)
 
+    def start_span(
+        self,
+        name: str,
+        kind: SpanKind,
+        attrs: Mapping[str, Any] | None = None,
+        *,
+        parent: Span | None = None,
+    ) -> Span:
+        """Open a span without a ``with`` block, nesting under ``parent`` (or the current span).
+
+        The manual counterpart to :meth:`span` for callback-driven tracing. When ``parent`` is a
+        span this recorder handed out, the new span nests directly under it — this is how the
+        LangChain callback rebuilds the model→tool tree from ``run_id``/``parent_run_id`` even when
+        the events fire as unrelated calls. With ``parent=None`` it falls back to the task's current
+        span (so the first callback span lands under the open root ``agent`` span). Unlike ``span``
+        it does not push onto the current-span stack — nesting for these spans is explicit.
+        """
+        record = _Recording(name=name, kind=kind, attrs=dict(attrs or {}))
+        if isinstance(parent, _RecordingSpan):
+            parent_record = parent._record
+        else:
+            parent_record = self._current.get()
+        if parent_record is None:
+            self._roots.append(record)
+            if self._trace_id is None:
+                self._trace_id = uuid.uuid4().hex
+        else:
+            parent_record.children.append(record)
+        return _RecordingSpan(record)
+
     def on_model(self, usage: Usage) -> None:
         """Stamp usage onto the current span if it is a model span; warn and no-op otherwise."""
         current = self._current.get()
         if current is None or current.kind is not SpanKind.LLM:
             _log.warning("on_model called with no active model span; usage dropped")
             return
-        current.attrs.update(
-            {
-                GEN_AI_SYSTEM: usage.provider,
-                GEN_AI_USAGE_INPUT_TOKENS: usage.input_tokens,
-                GEN_AI_USAGE_OUTPUT_TOKENS: usage.output_tokens,
-                GEN_AI_RESPONSE_FINISH_REASONS: list(usage.finish_reasons),
-                OI_TOKEN_COUNT_PROMPT: usage.input_tokens,
-                OI_TOKEN_COUNT_COMPLETION: usage.output_tokens,
-                OI_TOKEN_COUNT_TOTAL: usage.input_tokens + usage.output_tokens,
-                AS_LATENCY_MS: usage.latency_ms,
-            }
-        )
-        if usage.cost_usd is not None:
-            current.attrs[AS_COST_USD] = usage.cost_usd
-        if usage.response_model is not None:
-            current.attrs[GEN_AI_RESPONSE_MODEL] = usage.response_model
+        current.attrs.update(usage_attributes(usage))
 
     def annotate_model(self, attrs: Mapping[str, Any]) -> None:
         """Stamp extra attributes onto the current model span; warn and no-op otherwise."""

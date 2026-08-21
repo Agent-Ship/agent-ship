@@ -17,7 +17,7 @@ from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from typing import Any
 
-from agentship.observability import Observer, Span, SpanKind, Usage, semconv
+from agentship.observability import Observer, Span, SpanKind, Usage, semconv, usage_attributes
 from opentelemetry import trace
 from opentelemetry.trace import Span as OTelSpanType
 from opentelemetry.trace import SpanKind as OTelSpanKind
@@ -78,6 +78,10 @@ class _OTelSpan:
             self._span.record_exception(exc)
         self._span.set_status(Status(StatusCode.ERROR))
 
+    def end(self) -> None:
+        """End the underlying OTel span, fixing its end time (for :meth:`Observer.start_span`)."""
+        self._span.end()
+
 
 class _NoOpSpan:
     """Handed out only when opening a real span itself failed — keeps the caller's block running."""
@@ -93,6 +97,9 @@ class _NoOpSpan:
 
     def set_error(self, exc: BaseException | None = None) -> None:
         """Ignore."""
+
+    def end(self) -> None:
+        """Ignore — a no-op span has nothing to close."""
 
 
 class OTelObserver(Observer):
@@ -135,6 +142,39 @@ class OTelObserver(Observer):
         with cm as otel_span:
             yield _OTelSpan(otel_span)
 
+    def start_span(
+        self,
+        name: str,
+        kind: SpanKind,
+        attrs: Mapping[str, Any] | None = None,
+        *,
+        parent: Span | None = None,
+    ) -> Span:
+        """Open an OTel span without entering it as current; the caller must :meth:`Span.end` it.
+
+        The manual counterpart to :meth:`span`, for the callback-driven tracer. ``parent`` nests the
+        span explicitly: a :class:`_OTelSpan` from an earlier ``start_span`` becomes the parent via
+        its OTel context, so the model→tool tree is rebuilt from ``run_id``/``parent_run_id`` even
+        though the events fire as separate calls. With ``parent=None`` the ambient context is used,
+        so the first callback span lands under the open root ``agent`` span. Fail-open: if opening
+        fails, a no-op handle is returned so the run continues untraced (§4.7).
+        """
+        try:
+            context = None
+            if isinstance(parent, _OTelSpan):
+                context = trace.set_span_in_context(parent._span)
+            otel_span = self._tracer.start_span(
+                name,
+                context=context,
+                kind=to_otel_kind(kind),
+                attributes=_clean_attrs(attrs),
+            )
+            return _OTelSpan(otel_span)
+        except Exception:  # noqa: BLE001 - tracing must never break the run
+            _log.warning("observability.start_span.failed name=%s (tracing skipped)", name,
+                         exc_info=True)
+            return _NoOpSpan()
+
     def _is_model_span(self, span: OTelSpanType) -> bool:
         """Return whether ``span`` is the ``model`` span usage should land on.
 
@@ -156,21 +196,7 @@ class OTelObserver(Observer):
             if not span.is_recording() or not self._is_model_span(span):
                 _log.warning("on_model called off a model span; usage dropped")
                 return
-            attrs: dict[str, Any] = {
-                semconv.GEN_AI_SYSTEM: usage.provider,
-                semconv.GEN_AI_USAGE_INPUT_TOKENS: usage.input_tokens,
-                semconv.GEN_AI_USAGE_OUTPUT_TOKENS: usage.output_tokens,
-                semconv.GEN_AI_RESPONSE_FINISH_REASONS: list(usage.finish_reasons),
-                semconv.OI_TOKEN_COUNT_PROMPT: usage.input_tokens,
-                semconv.OI_TOKEN_COUNT_COMPLETION: usage.output_tokens,
-                semconv.OI_TOKEN_COUNT_TOTAL: usage.input_tokens + usage.output_tokens,
-                semconv.AS_LATENCY_MS: usage.latency_ms,
-            }
-            if usage.cost_usd is not None:
-                attrs[semconv.AS_COST_USD] = usage.cost_usd
-            if usage.response_model is not None:
-                attrs[semconv.GEN_AI_RESPONSE_MODEL] = usage.response_model
-            span.set_attributes(_clean_attrs(attrs))
+            span.set_attributes(_clean_attrs(usage_attributes(usage)))
         except Exception:  # noqa: BLE001 - tracing must never break the run
             _log.warning("observability.on_model.failed (usage dropped)", exc_info=True)
 

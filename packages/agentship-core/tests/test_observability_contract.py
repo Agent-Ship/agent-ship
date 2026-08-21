@@ -19,6 +19,18 @@ from agentship.observability import (
     TraceView,
     Usage,
     semconv,
+    usage_attributes,
+)
+
+_USAGE = Usage(
+    model="openai/gpt-4o-mini",
+    provider="openai",
+    input_tokens=12,
+    output_tokens=7,
+    cost_usd=0.0003,
+    latency_ms=421.0,
+    finish_reasons=["stop"],
+    response_model="gpt-4o-mini-2024-07-18",
 )
 
 
@@ -157,3 +169,64 @@ def test_trace_view_is_constructible_from_a_bare_node() -> None:
     view = TraceView(obs.roots[0])
     assert view.root.name == "agent"
     assert len(list(view.model_spans())) == 1
+
+
+def test_usage_attributes_maps_every_model_span_key() -> None:
+    """The shared helper emits the GenAI + OpenInference + AgentShip keys a model span carries."""
+    attrs = usage_attributes(_USAGE)
+    assert attrs[semconv.GEN_AI_SYSTEM] == "openai"
+    assert attrs[semconv.GEN_AI_USAGE_INPUT_TOKENS] == 12
+    assert attrs[semconv.GEN_AI_USAGE_OUTPUT_TOKENS] == 7
+    assert attrs[semconv.OI_TOKEN_COUNT_TOTAL] == 19
+    assert attrs[semconv.GEN_AI_RESPONSE_FINISH_REASONS] == ["stop"]
+    assert attrs[semconv.AS_LATENCY_MS] == 421.0
+    assert attrs[semconv.AS_COST_USD] == 0.0003
+    assert attrs[semconv.GEN_AI_RESPONSE_MODEL] == "gpt-4o-mini-2024-07-18"
+
+
+def test_usage_attributes_omits_absent_cost_and_response_model() -> None:
+    """A local model reports no price/echoed id — those keys stay off rather than write ``None``."""
+    attrs = usage_attributes(
+        Usage(model="ollama/llama3", provider="ollama", input_tokens=2, output_tokens=3,
+              cost_usd=None, latency_ms=9.0, finish_reasons=[])
+    )
+    assert semconv.AS_COST_USD not in attrs
+    assert semconv.GEN_AI_RESPONSE_MODEL not in attrs
+    assert attrs[semconv.OI_TOKEN_COUNT_TOTAL] == 5
+
+
+def test_start_span_nests_under_explicit_parent_across_call_boundaries() -> None:
+    """``start_span`` rebuilds a tree from explicit parents — the callback-driven nesting path."""
+    obs = RecordingObserver()
+    root = obs.start_span("agent", SpanKind.AGENT)
+    node = obs.start_span("node.agent", SpanKind.INTERNAL, parent=root)
+    model = obs.start_span("model", SpanKind.LLM, parent=node)
+    model.set_attributes(usage_attributes(_USAGE))
+    model.end()
+    node.end()
+    root.end()
+
+    view = TraceView(obs.roots[0])
+    assert view.root.name == "agent"
+    assert [c.name for c in view.root.children] == ["node.agent"]
+    assert [c.name for c in view.root.children[0].children] == ["model"]
+    model_node = next(iter(view.model_spans()))
+    assert model_node.attrs[semconv.GEN_AI_USAGE_INPUT_TOKENS] == 12
+    assert model_node.attrs[semconv.AS_COST_USD] == 0.0003
+
+
+def test_start_span_without_parent_nests_under_the_current_span() -> None:
+    """With no explicit parent, ``start_span`` lands under the task's open span (the root agent)."""
+    obs = RecordingObserver()
+    with obs.span("agent", SpanKind.AGENT):
+        child = obs.start_span("node.agent", SpanKind.INTERNAL)
+        child.end()
+    assert [c.name for c in obs.roots[0].children] == ["node.agent"]
+
+
+def test_noop_start_span_returns_a_usable_span() -> None:
+    """The no-op observer's ``start_span`` yields a span whose methods are safe to call."""
+    span = NoOpObserver().start_span("model", SpanKind.LLM)
+    span.set_attribute("k", "v")
+    span.set_error(RuntimeError("x"))
+    span.end()  # must not raise

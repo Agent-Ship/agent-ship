@@ -44,6 +44,16 @@ class Span(Protocol):
         """Mark the span's status as error, optionally recording ``exc``."""
         ...
 
+    def end(self) -> None:
+        """Close the span, fixing its end time.
+
+        Only spans opened with :meth:`Observer.start_span` need an explicit ``end`` — a ``with
+        observer.span(...)`` block closes its span automatically on exit. The manual pair exists for
+        callback-driven tracing (the LangChain handler), where a span is opened on a *start* event
+        and closed on the matching *end* event, so the two never share one ``with`` block.
+        """
+        ...
+
 
 class Observer(ABC):
     """The tracing port: a span factory plus a per-model-call usage sink.
@@ -64,6 +74,27 @@ class Observer(ABC):
         Used as ``with observer.span("model", SpanKind.LLM, {...}) as span:``. The span nests under
         whatever span is active on the current task, so the tree shape (§4.1) is owned here, not by
         the engine. On a raise inside the block the implementation sets error status and re-raises.
+        """
+
+    @abstractmethod
+    def start_span(
+        self,
+        name: str,
+        kind: SpanKind,
+        attrs: Mapping[str, Any] | None = None,
+        *,
+        parent: Span | None = None,
+    ) -> Span:
+        """Open a span and return it *without* a ``with`` block; the caller must :meth:`Span.end`.
+
+        This is the manual counterpart to :meth:`span`, for callback-driven tracing: a span is
+        opened on one event and closed on a later one (the LangChain handler opens a ``model`` span
+        on ``on_chat_model_start`` and ends it on ``on_llm_end``). ``parent`` sets the span's parent
+        explicitly — passing a :class:`Span` returned by an earlier ``start_span`` nests under it,
+        wherever on the call stack the events fire; ``None`` nests under whatever span is active on
+        the current task (so the first callback span lands under the runtime's root ``agent`` span).
+        The span is not entered into the ambient context, so its error status must be set via
+        :meth:`Span.set_error` rather than by a raising ``with`` block.
         """
 
     @abstractmethod
@@ -107,6 +138,9 @@ class _NoOpSpan:
     def set_error(self, exc: BaseException | None = None) -> None:
         """Ignore the error status."""
 
+    def end(self) -> None:
+        """Ignore — a no-op span has nothing to close."""
+
 
 class NoOpObserver(Observer):
     """The default observer: every method is a no-op, so a run works with tracing disabled.
@@ -122,6 +156,17 @@ class NoOpObserver(Observer):
     ) -> Iterator[Span]:
         """Yield a throwaway span; still propagate any exception from the block."""
         yield _NoOpSpan()
+
+    def start_span(
+        self,
+        name: str,
+        kind: SpanKind,
+        attrs: Mapping[str, Any] | None = None,
+        *,
+        parent: Span | None = None,
+    ) -> Span:
+        """Return a throwaway span — tracing is off, so nothing is recorded."""
+        return _NoOpSpan()
 
     def on_model(self, usage: Usage) -> None:
         """Drop the usage — nothing is recorded when tracing is off."""

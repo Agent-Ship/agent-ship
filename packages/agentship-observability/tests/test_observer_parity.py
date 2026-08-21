@@ -53,6 +53,25 @@ def _run(observer) -> None:
                 observer.on_model(_USAGE)
 
 
+def _run_via_start_span(observer) -> None:
+    """Drive the same tree through the manual ``start_span`` path the LangChain callback uses.
+
+    The callback never holds a ``with`` block: it opens each span on a *start* event, links it to
+    its parent explicitly, and closes it on the matching *end* event. This mirrors that ordering
+    (parent still open while children run, closed last) so the guard proves both observers nest the
+    callback-built tree identically — the exact path P07 traces run through in production.
+    """
+    from agentship.observability import usage_attributes
+
+    agent = observer.start_span("agent", SpanKind.AGENT)
+    node = observer.start_span("node.chat", SpanKind.INTERNAL, parent=agent)
+    model = observer.start_span("model", SpanKind.LLM, parent=node)
+    model.set_attributes(usage_attributes(_USAGE))
+    model.end()
+    node.end()
+    agent.end()
+
+
 def _recording_edges(root: SpanNode) -> list[tuple[str, str]]:
     """Flatten a captured tree into sorted (parent_name, name) edges (root parent = '')."""
 
@@ -84,6 +103,37 @@ def test_span_tree_structure_matches() -> None:
     _run(OTelObserver(provider))
 
     assert _recording_edges(recording.trace_view().root) == _otel_edges(exporter)
+
+
+def test_start_span_tree_structure_matches() -> None:
+    """The manual ``start_span`` path (the LangChain callback's) nests identically on both."""
+    recording = RecordingObserver()
+    _run_via_start_span(recording)
+
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    _run_via_start_span(OTelObserver(provider))
+
+    assert _recording_edges(recording.trace_view().root) == _otel_edges(exporter)
+
+
+def test_start_span_model_attributes_match() -> None:
+    """The callback stamps ``usage_attributes`` directly on the span; both observers agree."""
+    recording = RecordingObserver()
+    _run_via_start_span(recording)
+    rec_model = next(iter(recording.trace_view().model_spans()))
+
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    _run_via_start_span(OTelObserver(provider))
+    otel_model = next(s for s in exporter.get_finished_spans() if s.name == "model")
+
+    for key in _MODEL_ATTR_KEYS:
+        assert key in rec_model.attrs, f"RecordingObserver dropped {key}"
+        assert key in otel_model.attributes, f"OTelObserver dropped {key}"
+        assert list(_as_list(rec_model.attrs[key])) == list(_as_list(otel_model.attributes[key]))
 
 
 def test_model_span_attributes_match() -> None:

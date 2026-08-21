@@ -14,6 +14,7 @@ capture used by offline verifiers and by the runtime tests.
 
 from __future__ import annotations
 
+from .attributes import usage_attributes
 from .capture import replay_attributes, request_hash
 from .observer import NoOpObserver, Observer, Span
 from .phi import hashed_user_id
@@ -32,5 +33,6 @@ __all__ = [
     "Usage",
     "hashed_user_id",
     "replay_attributes",
+    "usage_attributes",
     "request_hash",
 ]
