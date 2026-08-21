@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from agentship.engines.base import Engine, EngineCapabilities, Event, Result, ResumeToken
 from agentship.errors import CapabilityError, ResumeError
+from agentship.observability import NoOpObserver, get_observer
 from agentship.thread_lock import resolve_thread_lock
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
@@ -38,12 +39,31 @@ from .agent import LangGraphAgent
 from .durability import open_checkpointer
 from .templates import resolve_template
 from .tools import ToolCallLogger
+from .tracing import ObservabilityCallback
 
 _engine_logger = logging.getLogger("agentship.engine")
 
 #: A process-wide singleton attached to every run's config. Silent when the ``agentship.tools``
 #: logger is at WARNING (the default); enabled by ``--verbose`` so tool calls appear on stderr.
 _TOOL_CALL_LOGGER = ToolCallLogger()
+
+
+def _run_callbacks() -> list:
+    """Build the LangChain callback list for one run: the tool logger plus the span tracer.
+
+    The tool logger is always present (its output is gated by log level). When the runtime has a
+    live observer active for the turn — read via :func:`get_observer`, set while the root ``agent``
+    span is open — a fresh :class:`ObservabilityCallback` is added so the model/tool/MCP/node inside
+    LangGraph become spans nested under that root. With no observer, or the no-op one, only the tool
+    logger runs, so tracing adds nothing when it is off. A new callback per run keeps per-turn span
+    state (the ``run_id`` → span map) isolated across concurrent turns.
+    """
+    callbacks: list = [_TOOL_CALL_LOGGER]
+    observer = get_observer()
+    if observer is not None and not isinstance(observer, NoOpObserver):
+        capture = bool(getattr(observer, "capture_content", False))
+        callbacks.append(ObservabilityCallback(observer, capture_content=capture))
+    return callbacks
 
 if TYPE_CHECKING:
     from agentship.context import RunContext
@@ -316,7 +336,7 @@ class LangGraphEngine(Engine):
         try:
             state = await compiled.graph.ainvoke(
                 {"messages": compiled.initial_messages(text)},
-                config={"callbacks": [_TOOL_CALL_LOGGER]},
+                config={"callbacks": _run_callbacks()},
             )
         except Exception as exc:
             raise models.map_model_error(compiled.model_id, exc) from exc
@@ -337,10 +357,11 @@ class LangGraphEngine(Engine):
     def _thread_config(thread_id: str) -> dict:
         """The LangGraph ``configurable`` config that binds a run to its checkpoint thread.
 
-        Always carries :data:`_TOOL_CALL_LOGGER` so tool calls log to ``agentship.tools`` on
-        every durable run — silent at WARNING (the default), visible with ``--verbose``.
+        Carries the run's callbacks (:func:`_run_callbacks`): the tool logger — silent at WARNING,
+        visible with ``--verbose`` — plus the span tracer when an observer is active, so durable and
+        resumed runs are traced on the same footing as a plain ``run``.
         """
-        return {"configurable": {"thread_id": thread_id}, "callbacks": [_TOOL_CALL_LOGGER]}
+        return {"configurable": {"thread_id": thread_id}, "callbacks": _run_callbacks()}
 
     def _mint_token(self, thread_id: str, snapshot: Any, *, interrupted: bool) -> ResumeToken:
         """Mint a ``ResumeToken`` from a state snapshot — all LangGraph fields live in ``blob``.
@@ -501,7 +522,7 @@ class LangGraphEngine(Engine):
         stream = compiled.graph.astream(
             {"messages": compiled.initial_messages(text)},
             stream_mode="messages",
-            config={"callbacks": [_TOOL_CALL_LOGGER]},
+            config={"callbacks": _run_callbacks()},
         )
         streamed_content = False
         last_full_content: Any = None

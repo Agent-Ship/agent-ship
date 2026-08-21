@@ -13,6 +13,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Any, Protocol, runtime_checkable
 
 from .types import SpanKind, Usage
@@ -174,3 +175,21 @@ class NoOpObserver(Observer):
     def current_trace_id(self) -> str | None:
         """No trace is active, so there is no id to stamp."""
         return None
+
+
+#: The :class:`Observer` active for the current turn, or unset outside a turn. The runtime sets this
+#: to the agent's observer while the root ``agent`` span is open, so an engine can reach the *same*
+#: observer instance to attach its span-emitting callback — the mirror of ``current_run`` for
+#: identity. It is deliberately not a :class:`RunContext` field: the observer is a tracing seam, not
+#: an identity key, and the run context's field set is kept identity-only.
+current_observer: ContextVar[Observer | None] = ContextVar("current_observer", default=None)
+
+
+def get_observer() -> Observer | None:
+    """Return the :class:`Observer` active for the current turn, or ``None`` outside a turn.
+
+    How an engine reaches the turn's observer without importing the contextvar directly, mirroring
+    :func:`~agentship.context.get_run_context`. ``None`` when no turn is active or the runtime wired
+    no observer, so a caller degrades to untraced rather than crashing.
+    """
+    return current_observer.get()

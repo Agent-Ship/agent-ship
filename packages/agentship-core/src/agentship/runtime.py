@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any
 from .context import Caller, RunContext, RunMode, current_run
 from .engines.base import ENGINES, Event, Result, assert_spec_supported
 from .errors import EngineNotFoundError, SpecError
-from .observability import NoOpObserver, Observer, SpanKind, semconv
+from .observability import NoOpObserver, Observer, SpanKind, current_observer, semconv
 from .observability.phi import hashed_user_id
 from .primitives.model_router import stamp_routed_model
 from .spec import AgentSpec, load_spec, resolve_code
@@ -160,6 +160,9 @@ class RunnableAgent:
         )
         pipeline = (*self.middlewares, *middlewares)
         token = current_run.set(ctx)
+        # Expose this agent's observer to the engine so it can attach its span-emitting callback to
+        # the same observer whose root ``agent`` span is open — the inner tree then nests under it.
+        observer_token = current_observer.set(self.observer)
         try:
             # The ``route`` step: stamp the chosen model id on the context before the
             # engine runs, so the adapter reads it and never routes itself (§13.5).
@@ -193,6 +196,10 @@ class RunnableAgent:
                 current_run.reset(token)
             except ValueError:  # pragma: no cover - defensive; set/reset share a frame
                 current_run.set(None)  # type: ignore[arg-type]
+            try:
+                current_observer.reset(observer_token)
+            except ValueError:  # pragma: no cover - defensive; set/reset share a frame
+                current_observer.set(None)
 
     async def stream(
         self,
@@ -217,6 +224,8 @@ class RunnableAgent:
         )
         previous = current_run.get(None)  # whatever run (if any) was active before this
         current_run.set(ctx)
+        previous_observer = current_observer.get()  # restore, not reset — stream teardown is loose
+        current_observer.set(self.observer)
         try:
             stamp_routed_model(self.spec, ctx)
             # The root span spans the whole generator — opened here, ended when the
@@ -241,6 +250,7 @@ class RunnableAgent:
                 root.set_attribute(semconv.AS_STATUS, "ok")
         finally:
             current_run.set(previous)  # put the caller's previous run back; never raises
+            current_observer.set(previous_observer)
 
 
 def _resolve_code_spec(spec: AgentSpec) -> tuple[AgentSpec, Any]:
