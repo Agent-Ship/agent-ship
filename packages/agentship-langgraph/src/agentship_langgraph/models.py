@@ -58,6 +58,13 @@ def resolve_model(model: str, **params: Any) -> BaseChatModel:
     against a real provider. Enabling it here is what makes ``--stream`` deliver
     real token-by-token output; the non-streaming ``run`` path (``ainvoke``) is
     unaffected — it still returns the full concatenated answer.
+
+    ``stream_options={"include_usage": True}`` is set so a streamed turn still
+    reports token usage in its final chunk (OpenAI-family omits usage while
+    streaming unless asked; LiteLLM normalises this across providers). Without it a
+    streamed model span would carry no tokens or cost — observability (P07) must see
+    the same usage whether a turn is invoked or streamed. Providers that do not
+    support the flag ignore it, so this is safe to set unconditionally.
     """
     if not model or not model.strip():
         raise SpecError(
@@ -72,6 +79,9 @@ def resolve_model(model: str, **params: Any) -> BaseChatModel:
         field = _PARAM_TO_FIELD.get(name, name)
         kwargs[field] = value
 
+    # Ask the provider to report usage in the final stream chunk unless the caller overrode it,
+    # so a streamed model span carries the same tokens/cost a non-streamed one does (P07).
+    kwargs.setdefault("stream_options", {"include_usage": True})
     return ChatLiteLLM(model=model, streaming=True, **kwargs)
 
 

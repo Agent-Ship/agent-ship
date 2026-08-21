@@ -110,6 +110,55 @@ async def test_real_run_emits_model_tool_and_node_spans_under_the_root(tool_call
     assert node_names, "the LangGraph node boundary should be traced as a node.* span"
 
 
+class _StreamingAnswerModel(BaseChatModel):
+    """A fake that answers in one turn with usage — the shape of a streamed model call."""
+
+    model: str = "openai/gpt-4o-mini"
+
+    @property
+    def _llm_type(self) -> str:
+        """LangChain model-type tag."""
+        return "fake-streaming-answer"
+
+    @property
+    def _identifying_params(self) -> dict[str, str]:
+        """Surface the model id so the callback can price the streamed call."""
+        return {"model": self.model}
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
+        """Return a single answer carrying token usage, as a real final stream chunk would."""
+        message = AIMessage(
+            content="Hello there",
+            usage_metadata={"input_tokens": 4, "output_tokens": 2, "total_tokens": 6},
+        )
+        return ChatResult(generations=[ChatGeneration(message=message)])
+
+
+async def test_streamed_run_records_tokens_and_cost_on_the_model_span(monkeypatch):
+    """A streamed turn stamps the same tokens/cost a plain run would — usage is not lost.
+
+    LangGraph streams with ``stream_mode="messages"``; the callback still gets a single
+    ``on_llm_end`` carrying the aggregated usage, so streaming and invoking record identical model
+    attributes. This guards the streamed path against silently dropping token/cost capture.
+    """
+    monkeypatch.setattr(models_module, "resolve_model", lambda *a, **k: _StreamingAnswerModel())
+    observer = RecordingObserver()
+    agent = build_agent(
+        AgentSpec(
+            name="a", engine="langgraph", template="single", model="openai/gpt-4o-mini", prompt="p"
+        ),
+        observer=observer,
+    )
+
+    events = [event async for event in agent.stream("hi")]
+    assert any(event.type == "content" for event in events)
+
+    model = next(iter(observer.trace_view().model_spans()))
+    assert model.attrs[semconv.GEN_AI_USAGE_INPUT_TOKENS] == 4
+    assert model.attrs[semconv.GEN_AI_USAGE_OUTPUT_TOKENS] == 2
+    assert model.attrs[semconv.AS_COST_USD] > 0
+
+
 async def test_content_is_not_captured_by_default(tool_calling_model):
     """With the PHI gate off (default), no model span carries prompt/response text."""
     observer = RecordingObserver()
