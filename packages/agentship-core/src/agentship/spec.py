@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from .errors import SpecError
 
@@ -196,6 +196,42 @@ class ModelParams(BaseModel):
     timeout: float | None = None
 
 
+class ObservabilitySpec(BaseModel):
+    """The ``observability`` block on an :class:`AgentSpec`: whether and how to trace the agent.
+
+    Declarative and vendor-neutral — the kernel owns this authoring surface and never imports the
+    OpenTelemetry adapter. ``provider: none`` (or an absent block) leaves the agent untraced (the
+    no-op observer); ``provider: otel`` builds the OpenTelemetry observer that fans the span tree
+    out to every backend named in ``exporters``. Secrets (API keys, endpoints) never live here —
+    they come from the environment — so this block is safe to commit.
+
+    The exporter *names* are validated by the observability adapter (which knows which backends it
+    can build), not here, so the kernel stays ignorant of specific vendors.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: Observer implementation: ``otel`` (default) builds the OpenTelemetry observer; ``none`` is
+    #: the explicit off switch — a present block that still leaves the agent untraced.
+    provider: Literal["otel", "none"] = "otel"
+    #: Backends the span tree fans out to. Default ``console`` needs no running collector.
+    exporters: list[str] = Field(default_factory=lambda: ["console"])
+    #: PHI gate — when false (default), prompt/response content is never put on a span.
+    capture_content: bool = False
+    #: Fraction of traces kept, 0.0–1.0. A root's keep/drop decision is inherited by its children.
+    sample_ratio: float = 1.0
+    #: Opt-in for exporters that ship spans off-box (e.g. LangSmith); false blocks that egress.
+    allow_saas_exporter: bool = False
+
+    @field_validator("sample_ratio")
+    @classmethod
+    def _ratio_in_range(cls, value: float) -> float:
+        """Reject a ratio outside 0.0–1.0 — a typo that would silently lose or flood traces."""
+        if not 0.0 <= value <= 1.0:
+            raise ValueError(f"sample_ratio must be 0.0–1.0, got {value}")
+        return value
+
+
 class AgentSpec(BaseModel):
     """The declarative definition of an agent (the authoring/control layer).
 
@@ -262,6 +298,9 @@ class AgentSpec(BaseModel):
     #: Requested durable-execution mode. ``"none"`` (default) needs nothing; the
     #: gate rejects ``"checkpoint"``/``"workflow"`` on an engine that declares
     #: ``durability="none"`` so a crash-recovery promise is never silently dropped.
+    #: How (and whether) to trace this agent. Absent → untraced (no-op observer); see
+    #: :class:`ObservabilitySpec`. Secrets stay in the environment, so this block is safe to commit.
+    observability: ObservabilitySpec | None = None
     durability: Literal["none", "checkpoint", "workflow"] = "none"
     # NOTE: the *runtime checkpoint-flush mode* (LangGraph's ``ainvoke(durability=…)``:
     # sync/async/exit) is deliberately NOT a spec field. It is an engine implementation

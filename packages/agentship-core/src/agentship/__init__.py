@@ -22,12 +22,13 @@ from .primitives.model_router import (
     resolve_model_router,
 )
 from .runtime import RunnableAgent, build_agent
-from .spec import AgentSpec, MemberSpec, ModelParams, load_spec, resolve_code
+from .spec import AgentSpec, MemberSpec, ModelParams, ObservabilitySpec, load_spec, resolve_code
 
 __all__ = [
     "AgentSpec",
     "MemberSpec",
     "ModelParams",
+    "ObservabilitySpec",
     "load_spec",
     "resolve_code",
     "Caller",

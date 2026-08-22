@@ -93,6 +93,76 @@ def test_http_mcp_server_requires_a_url():
         McpServerSpec(transport="streamable_http")
 
 
+def test_observability_block_loads_from_yaml(tmp_path):
+    """An ``observability:`` block declares the provider, exporters, and capture policy."""
+    f = tmp_path / "traced.yaml"
+    f.write_text(
+        textwrap.dedent(
+            """
+            name: traced
+            engine: langgraph
+            model: openai/gpt-4o-mini
+            observability:
+              provider: otel
+              exporters: [opik, langfuse]
+              capture_content: true
+              sample_ratio: 0.5
+              allow_saas_exporter: true
+            """
+        )
+    )
+    spec = load_spec(f)
+    assert spec.observability is not None
+    assert spec.observability.provider == "otel"
+    assert spec.observability.exporters == ["opik", "langfuse"]
+    assert spec.observability.capture_content is True
+    assert spec.observability.sample_ratio == 0.5
+    assert spec.observability.allow_saas_exporter is True
+
+
+def test_observability_is_absent_by_default():
+    """A spec with no ``observability`` block leaves it None — the agent runs untraced (no-op)."""
+    spec = AgentSpec(name="a", engine="langgraph", model="openai/gpt-4o-mini")
+    assert spec.observability is None
+
+
+def test_observability_defaults_are_safe():
+    """A bare ``observability`` block defaults to console-only, content off, full sampling."""
+    from agentship.spec import ObservabilitySpec
+
+    obs = ObservabilitySpec()
+    assert obs.provider == "otel"
+    assert obs.exporters == ["console"]
+    assert obs.capture_content is False
+    assert obs.sample_ratio == 1.0
+    assert obs.allow_saas_exporter is False
+
+
+def test_observability_provider_none_is_valid():
+    """``provider: none`` is the explicit off switch — a present block that disables tracing."""
+    from agentship.spec import ObservabilitySpec
+
+    assert ObservabilitySpec(provider="none").provider == "none"
+
+
+def test_observability_rejects_sample_ratio_out_of_range():
+    """A sample_ratio outside 0.0–1.0 is a typo that would flood or lose traces — reject it."""
+    from agentship.spec import ObservabilitySpec
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        ObservabilitySpec(sample_ratio=1.5)
+
+
+def test_observability_rejects_unknown_key():
+    """An unknown key in the block fails loudly (extra=forbid), never a silent typo."""
+    from agentship.spec import ObservabilitySpec
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        ObservabilitySpec(exporter=["opik"])  # typo: singular
+
+
 def test_load_spec_parses_yaml(tmp_path):
     """A well-formed YAML file loads into an AgentSpec with its fields populated."""
     f = tmp_path / "a.yaml"
