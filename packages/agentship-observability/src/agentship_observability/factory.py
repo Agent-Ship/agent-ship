@@ -17,6 +17,7 @@ import os
 
 from agentship.errors import CapabilityError
 from agentship.observability import NoOpObserver, Observer
+from agentship.spec import ObservabilitySpec
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.sampling import ParentBased, TraceIdRatioBased
@@ -79,13 +80,31 @@ def build_tracer_provider(config: ObservabilityConfig) -> TracerProvider:
     return provider
 
 
-def build_otel_observer(config: ObservabilityConfig | None = None) -> OTelObserver:
+def _as_config(config: ObservabilityConfig | ObservabilitySpec | None) -> ObservabilityConfig:
+    """Coerce the declarative :class:`ObservabilitySpec` (or ``None``) into an adapter config.
+
+    The kernel's ``observability:`` block is an :class:`~agentship.spec.ObservabilitySpec` — a
+    vendor-neutral authoring surface. This maps its fields onto the adapter's
+    :class:`ObservabilityConfig`, which is where exporter names are actually validated (against the
+    backends this package can build) and env-driven endpoints/keys are resolved. A pass-through
+    ``ObservabilityConfig`` is returned as-is, and ``None`` yields the console-only default.
+    """
+    if isinstance(config, ObservabilitySpec):
+        return ObservabilityConfig(**config.model_dump())
+    return config or ObservabilityConfig()
+
+
+def build_otel_observer(
+    config: ObservabilityConfig | ObservabilitySpec | None = None,
+) -> OTelObserver:
     """Build an :class:`OTelObserver` over the process-global provider for ``config``.
 
-    Called by the ``agentship.observers`` entry point (``otel``). Defaults to a default config so a
-    bare call still yields a working console-exporting observer.
+    Called by the ``agentship.observers`` entry point (``otel``) with an agent's
+    :class:`~agentship.spec.ObservabilitySpec`, and by tests with an :class:`ObservabilityConfig`
+    directly. Either is coerced by :func:`_as_config`; a bare call still yields a working
+    console-exporting observer.
     """
-    config = config or ObservabilityConfig()
+    config = _as_config(config)
     provider = build_tracer_provider(config)
     return OTelObserver(provider, capture_content=config.capture_content)
 

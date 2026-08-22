@@ -10,6 +10,7 @@ from __future__ import annotations
 import pytest
 from agentship.errors import CapabilityError
 from agentship.observability import NoOpObserver
+from agentship.spec import ObservabilitySpec
 from agentship_observability import OTelObserver
 from agentship_observability.config import ObservabilityConfig
 from agentship_observability.factory import (
@@ -69,3 +70,23 @@ def test_build_otel_observer_carries_capture_flag() -> None:
     """The observer inherits the config's PHI content-capture flag."""
     assert build_otel_observer(ObservabilityConfig()).capture_content is False
     assert build_otel_observer(ObservabilityConfig(capture_content=True)).capture_content is True
+
+
+def test_build_otel_observer_accepts_the_kernel_spec() -> None:
+    """The ``agentship.observers`` entry point maps a kernel ObservabilitySpec onto its config.
+
+    This is the real seam ``resolve_observer`` drives: the declarative block is coerced to an
+    adapter config and its PHI/capture policy is honoured.
+    """
+    spec = ObservabilitySpec(provider="otel", exporters=["console"], capture_content=True)
+    observer = build_otel_observer(spec)
+    assert isinstance(observer, OTelObserver)
+    assert observer.capture_content is True
+
+
+def test_build_otel_observer_validates_exporter_names_from_the_spec() -> None:
+    """An unknown exporter in the spec fails at build — the adapter owns name validation."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        build_otel_observer(ObservabilitySpec(exporters=["splunk"]))
