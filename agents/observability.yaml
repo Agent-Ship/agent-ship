@@ -1,0 +1,31 @@
+# Phase 07 demo: an agent that EMITS A FULL TRACE. Zero author code.
+#
+# It's the calculator agent (a tool-calling turn, so the trace has real nesting:
+# agent → node → model → tool), plus an `observability:` block. That block is all it
+# takes to turn tracing on — the runtime resolves it to a real OpenTelemetry observer
+# and every turn now exports a nested span tree with tokens, cost, and latency.
+#
+#   # keyless: spans print to STDERR (stdout stays the clean answer)
+#   agentship run agents/observability.yaml --input "What is 21 * 2?"
+#
+# To ship the same trace to a hosted backend instead of the console, add its exporter
+# and set the backend's keys in the environment (see tests/test_observability.py and
+# .env.example). LangSmith ships spans off-box, so it also needs `allow_saas_exporter`.
+#
+#   observability:
+#     exporters: [console, opik, langfuse, langsmith]
+#     allow_saas_exporter: true   # required for the SaaS (LangSmith) exporter
+name: observability-agent
+engine: langgraph
+template: single
+model: openai/gpt-4o-mini
+tools:
+  - calculator
+prompt: >-
+  You are a precise assistant. When a question involves arithmetic, use the calculator
+  tool rather than doing the math yourself, then state the result in one short sentence.
+observability:
+  provider: otel
+  exporters:
+    - console
+  capture_content: true

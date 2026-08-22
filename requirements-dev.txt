@@ -13,9 +13,17 @@
 -e ../agentship/packages/agentship-core
 -e ../agentship/packages/agentship-langgraph
 -e ../agentship/packages/agentship-cli
+# Phase 07 observability slice: the OTel span-tree + exporters (console/Opik/LangFuse/LangSmith).
+# The pinned form is `agentship[starter,observability]`; editable-local it's this sibling package.
+-e ../agentship/packages/agentship-observability
 
 pytest>=8
 pytest-asyncio>=0.24
+
+# Read-back for the live observability slice: query each hosted backend's API to confirm the
+# trace landed. httpx (Opik/LangFuse REST) is already a framework transitive dep; langsmith is
+# the LangSmith SDK the read-back uses.
+langsmith>=0.1
 
 # The generic chat UI (demos/chat_ui.py, `make ui`) — a browser chat to drive any agent,
 # including the deep-research agent's pause→resume, without a per-demo script.

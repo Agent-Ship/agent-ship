@@ -28,6 +28,7 @@ from pathlib import Path
 import litellm
 from agentship import build_agent
 from agentship.context import Caller, RunContext, RunMode
+from agentship.observability import NoOpObserver
 from agentship.primitives.model_router import DefaultModelRouter
 from agentship.spec import AgentSpec
 from agentship_langgraph.engine import LangGraphEngine
@@ -245,6 +246,30 @@ async def slice_panel() -> None:
     assert result.output.strip() != ""
 
 
+async def slice_observability() -> None:
+    """9. Observability — one YAML block turns on a full OTel trace of a live tool-calling turn (P07)."""
+    _banner(
+        9,
+        "observability (agents/observability.yaml — an observability: block)",
+        "LIVE · the block resolves to a real OTel observer · spans (agent→node→model→tool) print to stderr",
+    )
+    cwd = os.getcwd()
+    os.chdir(REPO_ROOT)
+    try:
+        agent = build_agent(str(AGENTS / "observability.yaml"))
+        traced = not isinstance(agent.observer, NoOpObserver)
+        print(f"  observability: block resolved -> tracing is {'ON' if traced else 'OFF'}")
+        print("  run  agents/observability.yaml --input 'What is 21 * 2? Use the calculator.'")
+        print("  (the full span tree prints to stderr; ship it to Opik/LangFuse/LangSmith by")
+        print("   editing the YAML's exporters: and setting that backend's keys)")
+        result = await agent.run("What is 21 * 2? Use the calculator.")
+    finally:
+        os.chdir(cwd)
+    print(f"  -> {result.output.strip()}")
+    assert traced, "the observability: block should resolve to a real (non-no-op) observer"
+    assert "42" in result.output
+
+
 async def main() -> int:
     """Run every live slice in order; return 0 if all pass, 1 if any raises."""
     if not os.environ.get("OPENAI_API_KEY"):
@@ -262,6 +287,7 @@ async def main() -> int:
         ("triage", slice_triage()),
         ("panel", slice_panel()),
         ("tools", slice_tools()),
+        ("observability", slice_observability()),
     ]
     for name, step in steps:
         try:

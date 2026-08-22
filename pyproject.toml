@@ -33,7 +33,9 @@ license = "Apache-2.0"
 # `make install` (or `pip install -r requirements-dev.txt`), which points at the
 # sibling monorepo checkout at ../agentship/packages/*.
 dependencies = [
-    "agentship[starter]==0.0.1",
+    # [starter] is the default stack; [observability] adds the OTel span-tree + exporters that
+    # the Phase 07 slice (agents/observability.yaml) exports to Opik / LangFuse / LangSmith.
+    "agentship[starter,observability]==0.0.1",
 ]
 
 [project.optional-dependencies]
@@ -41,6 +43,10 @@ dependencies = [
 test = [
     "pytest>=8",
     "pytest-asyncio>=0.24",
+    # Read-back for the observability slice: query each hosted backend to confirm the trace
+    # landed. httpx (Opik/LangFuse REST) rides in as a framework transitive dep; langsmith is
+    # the LangSmith SDK.
+    "langsmith>=0.1",
 ]
 
 [tool.hatch.build.targets.wheel]

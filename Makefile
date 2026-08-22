@@ -13,7 +13,7 @@ VENV := .venv
 PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
 
-.PHONY: install test demo demo-multiagent ask run ui clean
+.PHONY: install test demo demo-multiagent demo-observability ask run ui clean
 
 ## install: create .venv and install the framework editable-local + test tooling
 install:
@@ -38,6 +38,13 @@ demo:
 demo-multiagent:
 	$(VENV)/bin/pytest tests/test_triage.py::test_triage_panel_fans_out_to_multiple_sub_agents_in_parallel \
 		-q -s -p no:cacheprovider --log-cli-level=INFO --log-cli-format="  | %(message)s"
+
+## demo-observability: SEE a full OTel trace fall out of one YAML block. Runs the traced
+##   calculator agent for a live turn; the span tree (agent→node→model→tool) prints to stderr.
+##   Needs a real OPENAI_API_KEY. Ship it to Opik/LangFuse/LangSmith by editing the YAML's
+##   exporters: and setting that backend's keys (see tests/test_observability.py, .env.example).
+demo-observability:
+	$(PY) demos/observability.py
 
 ## ask: give the multi-agent panel YOUR OWN task; watch each sub-agent get called live
 ##   and see the final merged response. Needs a real OPENAI_API_KEY.

@@ -56,6 +56,7 @@ top to bottom.
 | 6 | P02 | **Durable multi-agent supervisor** — 1 supervisor + 3 real sub-agents; classify → route to **one** sub-agent → resolve; then a **fresh engine resumes from the checkpoint and produces byte-identical output** (the kill-9 guarantee, actually proven). The classify → route → dispatch → resolve trace prints inline so the routing is visible. | `agents/triage/triage.yaml` | `pytest tests/test_triage.py -q` |
 | 7 | P02 | **Multi-agent fan-out** — one question dispatched to **all 3 sub-agents concurrently** (`strategy: parallel`), then the `ConflictResolver` merges their competing answers by priority. You watch several real sub-agents run at once and get reconciled. | `agents/triage/panel.yaml` | `pytest tests/test_triage.py -q` |
 | 8 | P02 | **Quick vs deep research (the many-speed ecosystem)** — a fast single-turn **quick-search** agent (seconds, `durability: none`) and a real **model-driven deep-research** agent (`template: single` ReAct, `durability: checkpoint`, `tools: [web_search, scrape_url]`): say "hi" and it just greets you (no search, no pause); ask a substantive question and it runs several `web_search` calls from different angles, `scrape_url`s the best sources to read their full content, cross-checks, and writes a cited answer. Because it's durable and the chat reuses one `session_id`, it remembers the conversation and a long run survives a crash/wait and resumes. Drive both from the **browser chat** (`make ui`). | `agents/quick_search.yaml` · `agents/deep_research.yaml` · `demos/chat_ui.py` | `pytest tests/test_deep_research.py tests/test_chat_ui.py -q` |
+| 9 | P07 | **Observability — a full trace from one YAML block** — add an `observability:` block and the runtime resolves it to a real OpenTelemetry observer, so a live tool-calling turn exports a nested span tree (**agent → node → model → tool**) carrying tokens, cost, and latency. The default `console` exporter prints the tree to **stderr** (stdout stays the clean answer); switch `exporters:` to **Opik / LangFuse / LangSmith** and the same trace ships to that hosted backend. The test reads the trace **back** from each backend's own API to prove it landed — skipping any backend whose keys aren't set. | `agents/observability.yaml` · `demos/observability.py` | `pytest tests/test_observability.py -q` |
 
 > **Prerequisite for tests:** source your `.env` first so `OPENAI_API_KEY` is set.
 > Without a key the live tests skip cleanly — they never fake-pass and never hard-error.
@@ -334,6 +335,46 @@ The **durable pause/resume** guarantee is showcased by the **note-taker HITL** a
 |---|---|
 | `tests/test_deep_research.py` | **Live** (skips without `OPENAI_API_KEY`): deep-research answers "hi" with a normal reply and runs **no web search** — the old force-pause bug, encoded as a regression guard |
 | `tests/test_chat_ui.py` | **Offline** (fake chat model): every picker agent builds; yes/no maps to `{"approved": bool}` for a confirm-write and other text passes through; the write-approval prompt renders; a real agent answers with a stable `session_id` across turns; the UI holds a resume token then resumes a paused run; a build failure is shown in chat not crashed |
+
+### 9 — Observability: a full trace from one YAML block (Phase 07)
+
+`agents/observability.yaml` is the calculator agent with one thing added — an `observability:`
+block:
+
+```yaml
+observability:
+  provider: otel
+  exporters: [console]     # swap in: opik, langfuse, langsmith
+  capture_content: true
+```
+
+That block is the whole feature. The runtime resolves it to a real OpenTelemetry observer (via the
+`agentship.observers` entry point), so every turn now exports a **nested span tree** —
+`agent → node → model → tool` — with **tokens, cost, and latency** on the model spans. No author
+code, no client wiring.
+
+```bash
+set -a; source .env; set +a          # OPENAI_API_KEY (+ any backend keys, below)
+make demo-observability              # or: python demos/observability.py
+```
+
+With the default `console` exporter the tree prints to **stderr** — stdout stays the clean answer,
+so a piped run is never polluted by trace output. Point it at a hosted backend by changing
+`exporters:` and setting that backend's keys:
+
+| Backend | Env vars | Notes |
+|---|---|---|
+| **Opik** | `OPIK_API_KEY`, `OPIK_WORKSPACE`, `OPIK_PROJECT_NAME`, (`OPIK_OTEL_ENDPOINT` for self-host) | OTLP/HTTP endpoint |
+| **LangFuse** | `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, (`LANGFUSE_HOST`) | OTLP/HTTP, HTTP Basic auth |
+| **LangSmith** | `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT` | ships spans off-box → needs `allow_saas_exporter: true` |
+
+All three are **hosted** (API keys, nothing to self-deploy). Keys live in `.env` (never in code or
+YAML); the exporters read them from the environment at build time.
+
+| Test | What it proves |
+|---|---|
+| `tests/test_observability.py::test_declarative_block_gives_a_live_traced_turn` | **Live** (skips without `OPENAI_API_KEY`): building straight from the YAML yields a real (non-no-op) observer and a live tool-calling turn answers correctly — the published, zero-code declarative path |
+| `::test_full_trace_exports_to_{opik,langfuse,langsmith}` | **Live read-back** (skips unless that backend's keys are set): exports the same turn over real OTLP, then queries the backend's **own API** and asserts the full `agent → node → model → tool` tree landed — not a fake pass, the trace is confirmed on the backend |
 
 ---
 
