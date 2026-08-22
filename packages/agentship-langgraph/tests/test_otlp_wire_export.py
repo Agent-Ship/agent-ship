@@ -9,8 +9,9 @@ model so no network/key), then decodes the captured protobuf and asserts the byt
 agent → node → {model×2, tool.calculator}, with tokens and a priced cost on the model spans.
 
 This is the keyless half of the live-backend proof: it needs no credentials yet exercises the same
-serialization a real backend receives, so the hosted read-back (scripts/live_trace_proof.py) only
-has to confirm ingestion, not re-litigate that the exporter carries everything.
+serialization a real backend receives, so the hosted read-back (the P07 slice in ``agentship-demo``,
+which owns the API keys) only has to confirm ingestion, not re-litigate that the exporter carries
+everything.
 """
 
 from __future__ import annotations
