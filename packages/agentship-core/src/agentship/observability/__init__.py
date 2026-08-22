@@ -20,13 +20,17 @@ from .observer import NoOpObserver, Observer, Span, current_observer, get_observ
 from .phi import hashed_user_id
 from .recorder import RecordingObserver
 from .redaction import redact_pii
+from .registry import OBSERVERS, ObserverFactory, resolve_observer
 from .trace_view import SpanNode, TraceView
 from .types import SpanKind, Usage
 
 __all__ = [
     "NoOpObserver",
+    "OBSERVERS",
     "Observer",
+    "ObserverFactory",
     "RecordingObserver",
+    "resolve_observer",
     "Span",
     "SpanKind",
     "SpanNode",

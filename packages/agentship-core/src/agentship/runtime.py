@@ -18,7 +18,14 @@ from typing import TYPE_CHECKING, Any
 from .context import Caller, RunContext, RunMode, current_run
 from .engines.base import ENGINES, Event, Result, assert_spec_supported
 from .errors import EngineNotFoundError, SpecError
-from .observability import NoOpObserver, Observer, SpanKind, current_observer, semconv
+from .observability import (
+    NoOpObserver,
+    Observer,
+    SpanKind,
+    current_observer,
+    resolve_observer,
+    semconv,
+)
 from .observability.phi import hashed_user_id
 from .primitives.model_router import stamp_routed_model
 from .spec import AgentSpec, load_spec, resolve_code
@@ -310,6 +317,12 @@ def build_agent(
     the engine is resolved by name, the spec is capability-validated against it
     (failing fast on an unsupported request), and the agent is compiled.
 
+    When ``observer`` is not passed, it is resolved from the effective spec's
+    ``observability`` block (:func:`~agentship.observability.resolve_observer`), so a
+    declarative ``observability:`` block actually attaches a tracer to the run. An
+    explicit ``observer`` always wins — tests and bespoke callers keep full control —
+    and a spec with no block stays on the no-op observer.
+
     Raises :class:`~agentship.errors.SpecError` when a ``code:`` builder does not
     return an :class:`AgentSpec`, :class:`~agentship.errors.EngineNotFoundError` when
     the engine is unknown, or :class:`~agentship.errors.CapabilityError` when the spec
@@ -332,4 +345,7 @@ def build_agent(
     # an engine that never implements custom authoring keeps the plain, two-arg
     # ``build(spec)`` contract and needs no change to opt out of the seam.
     compiled = engine.build(spec, authored) if authored is not None else engine.build(spec)
+    # An explicit observer wins; otherwise honour the spec's declarative observability block.
+    if observer is None:
+        observer = resolve_observer(spec.observability)
     return RunnableAgent(spec, engine, compiled, middlewares=middlewares, observer=observer)
