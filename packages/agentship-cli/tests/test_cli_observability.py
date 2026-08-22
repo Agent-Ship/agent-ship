@@ -8,9 +8,14 @@ observer when it is absent, and either way the turn still prints its answer.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import agentship_cli.main as cli_main
 from agentship.observability import NoOpObserver
 from click.testing import CliRunner
+
+#: The committed keyless example: echo engine + an observability block (see examples/README).
+_EXAMPLE = Path(__file__).resolve().parents[3] / "examples" / "observability.yaml"
 
 _TRACED_YAML = """\
 name: traced
@@ -57,3 +62,23 @@ def test_run_without_observability_block_stays_untraced(tmp_path, monkeypatch) -
     result, observer = _run_and_capture_observer(tmp_path, monkeypatch, _PLAIN_YAML)
     assert result.exit_code == 0, result.output
     assert isinstance(observer, NoOpObserver)
+
+
+def test_committed_example_runs_traced_and_keyless(monkeypatch) -> None:
+    """The documented ``examples/observability.yaml`` runs keyless (echo) and is traced.
+
+    Backs the examples/README entry: no API key, no backend — the block alone turns tracing on.
+    """
+    captured = {}
+    real_build_agent = cli_main.build_agent
+
+    def spy(source, *args, **kwargs):
+        agent = real_build_agent(source, *args, **kwargs)
+        captured["observer"] = agent.observer
+        return agent
+
+    monkeypatch.setattr(cli_main, "build_agent", spy)
+    result = CliRunner().invoke(cli_main.main, ["run", str(_EXAMPLE), "--input", "hi"])
+    assert result.exit_code == 0, result.output
+    assert "echo: hi" in result.output
+    assert not isinstance(captured["observer"], NoOpObserver)

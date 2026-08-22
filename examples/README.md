@@ -398,4 +398,40 @@ the live node without `-k openai` and you'll see them reported as `SKIPPED`.
    ```
    CI now replays the new provider with no key.
 
+## `observability.yaml` — turn on tracing with one block (Phase 07)
+
+Add an `observability:` block and the runtime resolves it to a real OpenTelemetry
+observer (via the `agentship.observers` entry point), so every turn exports a span
+tree. On the zero-dependency `echo` engine that tree is just the root `agent` span —
+enough to *see* tracing switch on with **no key and no backend**. The default
+`console` exporter prints spans to **stderr**, so stdout stays the clean answer.
+
+```yaml
+name: observability-example
+engine: echo
+observability:
+  provider: otel
+  exporters: [console]   # swap in: opik, langfuse, langsmith
+```
+
+```bash
+pip install 'agentship[observability]'   # the OTel pipeline + exporters
+agentship run examples/observability.yaml --input "hi"
+# stdout: echo: hi        (the span prints to stderr)
+```
+
+Swap the engine for `langgraph` with a `model:` and `tools:` and the same block
+yields the full `agent → node → model → tool` tree with tokens/cost/latency; point
+`exporters:` at a hosted backend to ship it there. That end-to-end path — exported to
+**Opik / LangFuse / LangSmith** and read back from each backend's own API — is the
+live Phase 07 slice in `agentship-demo` (`agents/observability.yaml`,
+`tests/test_observability.py`).
+
+**Test it (no key):**
+
+```bash
+env -u OPENAI_API_KEY python -m pytest \
+  packages/agentship-cli/tests/test_cli_observability.py::test_committed_example_runs_traced_and_keyless -q
+```
+
 Each later phase adds a runnable example here for the capability it ships.

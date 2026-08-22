@@ -48,8 +48,9 @@ def resolve_observer(observability: ObservabilitySpec | None) -> Observer | None
     factory = OBSERVERS.get(observability.provider)
     if factory is None:
         raise CapabilityError(
-            f"observability provider {observability.provider!r} is not installed — available: "
-            f"{OBSERVERS.names()} (install the adapter, e.g. `pip install agentship[observability]`)"  # noqa: E501
+            f"observability provider {observability.provider!r} is not installed — "
+            f"available: {OBSERVERS.names()} "
+            "(install the adapter, e.g. `pip install agentship[observability]`)"
         )
     return factory(observability)
 

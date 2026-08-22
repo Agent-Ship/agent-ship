@@ -1,0 +1,19 @@
+# Turn on tracing with one block — no code, no key, no backend.
+#
+# The `observability:` block makes the runtime resolve a real OpenTelemetry observer, so every
+# turn exports a span tree. On the zero-dependency `echo` engine that tree is just the root
+# `agent` span (echo calls no model or tool), which is enough to SEE tracing switch on offline.
+# The default `console` exporter prints spans to STDERR, so stdout stays the clean answer.
+#
+#   agentship run examples/observability.yaml --input "hi"
+#   # stdout: echo: hi        (the span prints to stderr)
+#
+# Swap the engine for `langgraph` with a model + tools and the same block yields the full
+# agent -> node -> model -> tool tree with tokens/cost; point `exporters:` at opik/langfuse/
+# langsmith to ship it to a hosted backend. See agentship-demo's Phase 07 slice for that.
+name: observability-example
+engine: echo
+observability:
+  provider: otel
+  exporters:
+    - console
