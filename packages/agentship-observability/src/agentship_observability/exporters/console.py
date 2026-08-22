@@ -7,11 +7,18 @@ export) because console output is cheap and immediate feedback beats batching he
 
 from __future__ import annotations
 
+import sys
+
 from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor, SpanProcessor
 
 from ..config import ObservabilityConfig
 
 
 def build(config: ObservabilityConfig) -> SpanProcessor:
-    """Build a synchronous processor that prints each finished span to stderr."""
-    return SimpleSpanProcessor(ConsoleSpanExporter())
+    """Build a synchronous processor that prints each finished span to stderr.
+
+    Spans go to **stderr**, not stdout: the CLI reserves stdout for the agent's answer so a piped
+    run is never polluted by trace output. ``ConsoleSpanExporter`` defaults to stdout, so the target
+    stream is set explicitly here.
+    """
+    return SimpleSpanProcessor(ConsoleSpanExporter(out=sys.stderr))
