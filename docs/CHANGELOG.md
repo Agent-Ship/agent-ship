@@ -6,11 +6,12 @@ All notable, user-facing changes to AgentShip, grouped by delivery phase. This f
 `.spec-dev/STATUS.md` (the authoritative board).
 
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com). This project has not
-yet cut a tagged release; entries are grouped by phase until v0.1 ships (P00–P07).
+yet cut a tagged release; entries are grouped by phase until v0.1 ships (phases 00–10).
 
-<!-- BACKFILLED 2026-08-23: entries for the seven already-shipped phases (P00,P01,P02,P03,P04,P05,P07)
-     were reconstructed from code+tests during the status-reconciliation pass, not written at ship
-     time. From the P08+ phases onward, entries land WITH the phase as a DoD gate. -->
+<!-- BACKFILLED 2026-08-23 from code+tests during the status-reconciliation pass, not written at
+     ship time. Headings were migrated to the post-renumber phase numbers as each phase's docs were
+     finished (P02/P03/P04/P11 done 2026-08-28). From here on, an entry lands WITH its phase as a
+     DoD gate. See the phase-number note at the bottom. -->
 
 ## [Unreleased]
 
@@ -30,7 +31,7 @@ yet cut a tagged release; entries are grouped by phase until v0.1 ships (P00–P
 - Fixed stale phase numbers in the conformance surface.
 - Offline baseline: **687 passed / 14 skipped / 2 xfailed**.
 
-### P07 — Observability (delivered 2026-08-18, `feat/phase-07-observability`)
+### P05 — Observability (delivered 2026-08-18, `feat/phase-07-observability`)
 - OpenTelemetry-based tracing behind a vendor-free `Observer` seam; the kernel never imports OTel.
 - Full trace tree: AGENT root span with model / tool / MCP / graph-node child spans (in-flight — see
   STATUS.md for the remaining real-MCP-server full-trace-tree test).
@@ -39,23 +40,35 @@ yet cut a tagged release; entries are grouped by phase until v0.1 ships (P00–P
 - Vendor-free semantic-convention keys guarded against OTel-GenAI / OpenInference upstream
   (`test_semconv_upstream.py`).
 
-### P05 — Agent gateway / A2A (in-flight, 15/24 reconciled)
+### P18–P19 — Agent gateway / A2A (in-flight, 15/24 reconciled)
 - Agent-to-Agent (A2A) wire models and AgentCard emission, conformance-guarded against `a2a-sdk`
-  (`test_a2a_conformance.py`). Core A2A path done (39 tests). Task-bridge + push blocked on P11's
+  (`test_a2a_conformance.py`). Core A2A path done (39 tests). Task-bridge + push blocked on P12's
   `on_state_change` hook — see STATUS.md.
 
-### P04 — Service & security (in-flight, 40/44 reconciled)
+### P06–P09 — Service & security (in-flight, 40/44 aggregate)
 - FastAPI service exposing agents over REST + SSE streaming (`sse-starlette`) + WebSocket.
 - `AuthProvider` seam with ForwardedHeader / ApiKey / JWT (PyJWT `PyJWKClient`) adapters; scope-based
   `authorize()`. Per-tenant isolation with `TenantViolation` on cross-tenant access.
 - HTTP security posture: CORS, security headers, optional rate-limit (off by default, no Redis
   required). Open: `agentship deploy` CLI, Postman collection verify, dev-ingress lockdown cell.
 
-### P03 — Tools & MCP (in-flight, 26/28 reconciled)
-- Native tool calling on agents; MCP integration via `langchain-mcp-adapters`
-  (`MultiServerMCPClient`) for local + remote servers — not hand-rolled.
-- deepagents-style autonomous tool use. Open: graceful tool-error handling test; combined
-  native-skill + MCP-tool demo.
+### P04 — Tools & MCP (in-flight, 26/28 reconciled)
+- Vendor-free `Tool` type (name + description + Pydantic `args_schema` + callable) in the kernel,
+  plus four built-ins: `calculator`, `http_request`, `web_search`, `scrape_url`. A `tools:` entry
+  is a registered name or a `module:function`.
+- MCP via `langchain-mcp-adapters`' `MultiServerMCPClient` — local `stdio` and remote
+  `streamable_http` servers in one `mcp:` block. **Not hand-rolled**: protocol, transports, and
+  OAuth come from the library on the official `mcp` SDK
+  ([ADR 0004](decisions/0004-consume-langchain-mcp-adapters.md)). Pinned `mcp>=1.28,<2`, guarded
+  by `agentship doctor`; optional and lazily imported, so a bare install carries no MCP dependency.
+- MCP tools are bound as the same `Tool` type as native ones — the model cannot tell them apart.
+- `skills:` (a `SKILL.md` folder teaching the model *how* to use a tool) and `allowed_tools:`
+  (an allow-list over native + MCP tools, the guard against many servers flooding the model).
+- deepagents-backed `template: autonomous` for planner-executor tool loops with zero author code.
+- Capability page: [tools-and-mcp.md](capabilities/tools-and-mcp.md).
+- Open (both proof gaps, not missing features): a graceful tool-error test — a raising tool should
+  degrade into an error the model can recover from, not a crashed run; and a demo of one agent
+  using a native tool **and** an MCP tool in the same turn.
 
 ### P02 — Multi-agent supervisors (in-flight, 18/19 reconciled)
 - Supervisor orchestration over plain LangGraph `StateGraph`:

@@ -40,3 +40,4 @@ below are the current ones.
 | [0001](decisions/0001-integrate-not-invent.md) | Integrate, don't reinvent — and guard conformance |
 | [0002](decisions/0002-plain-stategraph-supervisor.md) | Build the supervisor on plain `StateGraph`, not `langgraph-supervisor` |
 | [0003](decisions/0003-langgraph-checkpointer-as-the-durability-substrate.md) | LangGraph's checkpointer is the durability substrate; `durability:` stays vendor-free |
+| [0004](decisions/0004-consume-langchain-mcp-adapters.md) | Consume `langchain-mcp-adapters` for MCP; never hand-roll a client |
