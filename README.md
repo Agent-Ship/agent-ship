@@ -24,6 +24,7 @@ Credentials are redacted on write, so a committed cassette leaks nothing.
 | `make test-live` | Same tests, real API calls. Catches provider drift. | Yes |
 | `make record` | Re-records the cassettes after a behaviour change. | Yes |
 | `make demo` | The live showcase — real calls, printed results. | Yes |
+| `make demo-service` | Boots the real `agentship serve` and calls all three transports. | No |
 
 A test whose cassette is missing **fails loudly** rather than silently reaching for the
 network, so the keyless tier can never quietly degrade into a live one. Three tests remain
@@ -71,6 +72,7 @@ top to bottom.
 | 7 | P02 | **Multi-agent fan-out** — one question dispatched to **all 3 sub-agents concurrently** (`strategy: parallel`), then the `ConflictResolver` merges their competing answers by priority. You watch several real sub-agents run at once and get reconciled. | `agents/triage/panel.yaml` | `pytest tests/test_triage.py -q` |
 | 8 | P02 | **Quick vs deep research (the many-speed ecosystem)** — a fast single-turn **quick-search** agent (seconds, `durability: none`) and a real **model-driven deep-research** agent (`template: single` ReAct, `durability: checkpoint`, `tools: [web_search, scrape_url]`): say "hi" and it just greets you (no search, no pause); ask a substantive question and it runs several `web_search` calls from different angles, `scrape_url`s the best sources to read their full content, cross-checks, and writes a cited answer. Because it's durable and the chat reuses one `session_id`, it remembers the conversation and a long run survives a crash/wait and resumes. Drive both from the **browser chat** (`make ui`). | `agents/quick_search.yaml` · `agents/deep_research.yaml` · `demos/chat_ui.py` | `pytest tests/test_deep_research.py tests/test_chat_ui.py -q` |
 | 9 | P07 | **Observability — a full trace from one YAML block** — add an `observability:` block and the runtime resolves it to a real OpenTelemetry observer, so a live tool-calling turn exports a nested span tree (**agent → node → model → tool**) carrying tokens, cost, and latency. The default `console` exporter prints the tree to **stderr** (stdout stays the clean answer); switch `exporters:` to **Opik / LangFuse / LangSmith** and the same trace ships to that hosted backend. The test reads the trace **back** from each backend's own API to prove it landed — skipping any backend whose keys aren't set. | `agents/observability.yaml` · `demos/observability.py` | `pytest tests/test_observability.py -q` |
+| 10 | P06-P09 | **The served `/v1` surface** — the same agent answered three ways over a **real booted server** (not `TestClient`): `POST :invoke` returns JSON, `POST :stream` delivers **more than one** SSE frame, and the `/live` WebSocket streams a turn back. Around those calls, the security envelope: **one route, three callers, three outcomes** (no credential → 401, valid key → 200, valid key without the scope → **403**); **tenant B gets 404, not 403**, on tenant A's row, so existence is never leaked; security headers on every response, a disallowed CORS origin refused, and a malformed request rendered as an RFC-9457 `application/problem+json` document. The served agent runs on the `echo` engine, so the whole slice is **keyless and offline** — what is under test is the envelope, not the model. | `agents/service/support.yaml` · `demos/serve_and_call.py` | `pytest tests/test_service_endpoints.py tests/test_auth_demo.py tests/test_tenant_isolation_demo.py tests/test_posture_demo.py -q` |
 
 > **Prerequisite for tests:** source your `.env` first so `OPENAI_API_KEY` is set.
 > Without a key the live tests skip cleanly — they never fake-pass and never hard-error.
@@ -389,6 +391,47 @@ YAML); the exporters read them from the environment at build time.
 |---|---|
 | `tests/test_observability.py::test_declarative_block_gives_a_live_traced_turn` | **Live** (skips without `OPENAI_API_KEY`): building straight from the YAML yields a real (non-no-op) observer and a live tool-calling turn answers correctly — the published, zero-code declarative path |
 | `::test_full_trace_exports_to_{opik,langfuse,langsmith}` | **Live read-back** (skips unless that backend's keys are set): exports the same turn over real OTLP, then queries the backend's **own API** and asserts the full `agent → node → model → tool` tree landed — not a fake pass, the trace is confirmed on the backend |
+
+### 10 — The served `/v1` surface: transports, auth, tenants, posture (Phases 06-09)
+
+This slice needs **no key**. The served agent (`agents/service/support.yaml`) runs on the
+`echo` engine on purpose: what these four test files prove is the *envelope* around a turn —
+the transports, who may call, whose rows come back, and what a failure looks like — none of
+which depends on a model. That keeps the security tests a real CI gate.
+
+```bash
+python demos/serve_and_call.py     # or: make demo-service
+```
+
+It launches the shipped `agentship serve` as a real subprocess on a loopback port, calls all
+three transports, and prints the frames as they arrive:
+
+```
+--- 2. POST /v1/agents/support:stream — Server-Sent Events, frame by frame ---
+  seq=0  session  {'session_id': '5e34...', 'agent': 'support'}
+  seq=1  content  {'content': 'echo: hello'}
+  seq=2  done     {}
+
+--- 4. The envelope: who may call, and what a failure looks like ---
+  no credential            -> 401 no_credentials
+  valid key, wrong scope   -> 403 forbidden
+  malformed body           -> 422 invalid_request
+    content-type: application/problem+json
+```
+
+| Test | What it proves |
+|---|---|
+| `tests/test_service_endpoints.py` | Against a **real uvicorn server on a loopback socket** (not `TestClient`, which would stay green even if the app could not boot): `:invoke` returns JSON, `:stream` delivers **more than one** SSE frame with gap-free `seq`, the `/live` WebSocket round-trips a turn, and a malformed body is an RFC-9457 `application/problem+json` document with `type`/`title`/`status`/`detail` |
+| `tests/test_auth_demo.py` | **One route, three callers, three outcomes** — no credential → 401, `acme-key` → 200, `reader-key` (valid, unscoped) → **403**. The 401/403 split is the point: authentication and authorization are different questions, and the 403 proves `authorize()` really runs |
+| `tests/test_tenant_isolation_demo.py` | The guarantee no gateway can give: tenant B asking for tenant A's task id gets **404, not 403** — and gets the *same* 404 as for an id that never existed, so existence is never leaked. A cross-tenant cancel is 403 and leaves the row untouched; a client-supplied `tenant_id` in the body is refused outright |
+| `tests/test_posture_demo.py` | Safe by default: hardening headers on success **and** error responses, HSTS opt-in, a disallowed CORS origin refused at the preflight, and forwarded identity believed only from a trusted front door |
+
+> **Honest gap:** the phase spec describes a loopback-only `/api/*` dev router that should refuse
+> a non-loopback caller. This rebuild ships no such router, so `test_posture_demo.py` asserts that
+> **absence** (no route outside `/v1` and the public paths) plus `agentship serve`'s loopback-only
+> default host, rather than exercising a route that does not exist.
+
+---
 
 ---
 

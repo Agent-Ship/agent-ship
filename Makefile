@@ -13,7 +13,7 @@ VENV := .venv
 PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
 
-.PHONY: install test test-live record demo demo-multiagent demo-observability ask run ui clean
+.PHONY: install test test-live record demo demo-multiagent demo-observability demo-service ask run ui clean
 
 ## install: create .venv and install the framework editable-local + test tooling
 install:
@@ -55,6 +55,13 @@ demo-multiagent:
 ##   exporters: and setting that backend's keys (see tests/test_observability.py, .env.example).
 demo-observability:
 	$(PY) demos/observability.py
+
+## demo-service: SEE the served /v1 surface answer over all three transports. Boots the real
+##   `agentship serve` on a loopback port, then calls invoke (JSON), stream (SSE, frame by
+##   frame) and the /live WebSocket, and shows the 401 / 403 / RFC-9457 error envelope.
+##   Needs NO key — the served agent runs on the echo engine.
+demo-service:
+	$(PY) demos/serve_and_call.py
 
 ## ask: give the multi-agent panel YOUR OWN task; watch each sub-agent get called live
 ##   and see the final merged response. Needs a real OPENAI_API_KEY.

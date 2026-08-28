@@ -37,6 +37,9 @@ _SPECIALIST_FILES = {
     "faq_specialist": _SPECIALISTS_DIR / "faq.yaml",
 }
 
+# `classify.model` is the model the supervisor labels the request with, and it is independent of
+# the specialists' models — set it to a small cheap model and let the specialists answer on a
+# stronger one. Both are gpt-4o-mini here only because this demo keeps its live cost low.
 _CONFIG = {
     "classify": {"model": _MODEL, "intents": ["billing", "clinical", "general"]},
     "routing": {

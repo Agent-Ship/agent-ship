@@ -1,0 +1,16 @@
+# The agent the Phase 06-09 service slices serve over /v1.
+#
+# It runs on the `echo` engine on purpose. Those slices are about the *envelope* around
+# a turn — the REST/SSE/WS transports, the RFC-9457 error model, who is allowed to call,
+# and which tenant's rows come back — none of which depend on a model. Echo makes the
+# whole surface provable with no key, no network and no cassette, so the security tests
+# stay a real CI gate. The model-backed agents live one directory up.
+#
+# It lives in its own directory so `agentship serve --agents-dir agents/service` boots
+# keylessly; pointing serve at `agents/` would also load the OpenAI-backed specs.
+name: support
+engine: echo
+streaming: true
+prompt: >-
+  A stand-in support agent. It echoes the request back so the service surface can be
+  exercised without a provider key.
