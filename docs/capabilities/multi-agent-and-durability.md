@@ -4,8 +4,10 @@ Fan a turn out to several specialist agents, reconcile their answers determinist
 
 ## What it is
 
-- **Deterministic supervisor routing over a plain LangGraph `StateGraph`.** The `graph` template builds a `SupervisorAgent` whose graph is `classify → lookup_route → dispatch → resolve → (confirm_write?) → safety_gate`. Routing is a pure lookup, not an LLM guess — so the same input always takes the same path. We use native `StateGraph` nodes; `langgraph-supervisor` was deliberately not adopted.
-- **Conflict resolution.** `ConflictResolver` merges competing specialist outputs by a config-driven priority list with an explicit tie-break (`first_by_priority` or `highest_confidence`). It is pure — no LLM, no I/O — which is what makes an identical-resume replay byte-identical.
+> **Supervisors moved.** Deterministic routing, member resolution, and `ConflictResolver` now have
+> their own page: **[multi-agent.md](multi-agent.md)**. This page covers durability only —
+> checkpointing, HITL, resume, and idempotency.
+
 - **Checkpoint durability.** A spec declaring `durability: checkpoint` runs under LangGraph per-node checkpointing (in-memory in dev, `AsyncPostgresSaver` when `AGENT_SESSION_STORE_URI` is set), so a crashed run can continue from its last durable step.
 - **Resume.** A durable run mints a `ResumeToken` (`{engine, blob}`); `engine.resume(token)` re-hydrates state and continues the frontier — completed nodes are not re-run.
 - **Idempotency.** `call_once` + the canonical `idem_key(thread_id, node_id, tool_name, args)` ensure a replayed or reclaimed run fires a side effect **exactly once** (a write-ahead `pending` ledger entry closes the crash-between-effect-and-record window).

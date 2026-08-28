@@ -14,6 +14,22 @@ yet cut a tagged release; entries are grouped by phase until v0.1 ships (P00–P
 
 ## [Unreleased]
 
+### Testing & verification tooling (2026-08-25)
+- Promoted the conformance capability catalogue into the shipped, vendor-free `agentship.conformance`
+  module (importable from `agentship-core`, no longer test-only): `CAPABILITIES`, `Capability`,
+  `run_capability_grid`, `CellResult`, and `DEFERRED_CAPABILITIES`. Imports only `agentship.*` /
+  `pydantic` / stdlib — never langchain/langgraph/litellm.
+- Moved the LangGraph offline harness into `agentship_langgraph.testing` (the `offline` model-seam
+  provider + `build_hitl_agent` factory), passed *into* the grid so the catalogue stays engine-neutral.
+- Added the `hitl` conformance cell; `langgraph` now declares `hitl="interrupt"` and proves it by
+  surfacing a real interrupt pause rather than running straight through.
+- Added the `agentship verify [--agents-dir DIR] [--live/--offline]` CLI — the user-facing "verifiable
+  agents" honesty report over the same grid, plus spec-validation, observability, service-contract, and
+  A2A-interop sections that report SKIPPED (with a reason) when their optional dependency or target is
+  absent. Runs fully offline; no provider keys.
+- Fixed stale phase numbers in the conformance surface.
+- Offline baseline: **687 passed / 14 skipped / 2 xfailed**.
+
 ### P07 — Observability (delivered 2026-08-18, `feat/phase-07-observability`)
 - OpenTelemetry-based tracing behind a vendor-free `Observer` seam; the kernel never imports OTel.
 - Full trace tree: AGENT root span with model / tool / MCP / graph-node child spans (in-flight — see
@@ -41,17 +57,46 @@ yet cut a tagged release; entries are grouped by phase until v0.1 ships (P00–P
 - deepagents-style autonomous tool use. Open: graceful tool-error handling test; combined
   native-skill + MCP-tool demo.
 
-### P02 — Multi-agent & durability (in-flight, 40/42 reconciled)
-- Supervisor / multi-agent orchestration over plain LangGraph `StateGraph` (deterministic routing;
-  langgraph-supervisor deliberately not adopted). `ConflictResolver` for concurrent state writes.
-- Durability via LangGraph checkpointing (`durability=checkpoint`); `ResumeToken` + `engine.resume`
-  seam; idempotency ledger (`call_once` / `idem_key`); HITL `interrupt` seam.
-- Open (real remaining risk): no integrated test yet of supervisor + checkpoint + mid-run failure +
-  resume; idempotency-across-a-supervisor-dispatch unproven. Auto-resume trigger lives in P11.
+### P02 — Multi-agent supervisors (in-flight, 18/19 reconciled)
+- Supervisor orchestration over plain LangGraph `StateGraph`:
+  `classify → lookup_route → dispatch → resolve → confirm_write? → safety_gate`. Routing is a pure
+  lookup, not an LLM handoff, so the same input always takes the same path — the property P11's
+  identical-resume guarantee depends on. `langgraph-supervisor` deliberately not adopted:
+  [ADR 0002](decisions/0002-plain-stategraph-supervisor.md).
+- Three member shapes the supervisor treats identically: **inline**, **`ref:`** (another agent's
+  YAML), and **`a2a:`** (an agent on another host). Local → networked is a one-line change.
+- Fully declarative supervisors — `members:` with `ref:` and `description:`, **zero Python**.
+  A `code:` factory remains available when custom routing is wanted.
+- `ConflictResolver` merges competing specialist answers by priority list with an explicit
+  tie-break (`first_by_priority` / `highest_confidence`); pure — no model call, no I/O.
+- Capability page: [multi-agent.md](capabilities/multi-agent.md).
+- Open: `classify` does not yet stamp `TaskHint(model=…)`, so an easy branch cannot be routed to a
+  cheaper model.
+
+> **Durability moved out of P02.** Checkpointing/HITL is now P03 and crash-resume is P11 — see the
+> renumber note at the bottom of this file.
 
 ### P01 — Engine & LangGraph agent (delivered)
-- `LangGraphAgent` / `BaseAgent.build` engine seam with `run` / `stream` / `resume`.
+- `LangGraphAgent` behind the `Engine.build` seam (`build_agent(spec)` → `RunnableAgent`) with `run` / `stream` / `resume`.
 
 ### P00 — Foundation & contracts (delivered 2026-08-07, panel-scored 9.7/10)
-- Vendor-free kernel: core ports (`RunContext`, `Tool`, `MiddlewareEngine`), the agent/spec model,
+- Vendor-free kernel: core base classes (`RunContext`, `Tool`, the `Engine` ABC), the agent/spec model,
   and the registry. Everything above the kernel is a thin adapter behind these seams.
+
+---
+
+## Note on phase numbers (renumbered 2026-08-23)
+
+Phases were renumbered so that **one number = one feature**. Entries above are being migrated to the
+new numbering as each phase's docs are finished; a heading not yet migrated still carries its old
+number. The mapping for the headings in this file:
+
+| Old | Was | New |
+|---|---|---|
+| P02 | Multi-agent & durability | **02** Multi-Agent Supervisors · **03** Checkpointing & HITL · **11** Durable Resume |
+| P03 | Tools & MCP | **04** Tools & MCP |
+| P04 | Service & security | **06** Service Endpoints · **07** Auth · **08** Tenant Isolation · **09** HTTP Posture & Deploy |
+| P05 | Agent gateway | **18** A2A Core · **19** A2A Push |
+| P07 | Observability | **05** Observability |
+
+Full crosswalk and the authoritative board: [`.spec-dev/STATUS.md`](../../.spec-dev/STATUS.md).
