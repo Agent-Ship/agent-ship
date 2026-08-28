@@ -11,4 +11,11 @@ conformance/
 .spec-dev/
 *.egg-info/
 **/*.egg-info/
+.ruff_cache/
+docs/
+site/
+postman/
+scripts/
+
+# Never ship a real .env into the image — variables come from the platform.
 .env
