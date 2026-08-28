@@ -108,6 +108,17 @@ class InMemoryThreadLock:
 
     _held: ClassVar[set[int]] = set()
 
+    @classmethod
+    def release_dead_owner(cls, tenant_id: str, thread_id: str) -> None:
+        """Free a thread whose owner died without releasing it; a no-op if nobody holds it.
+
+        A worker killed mid-run never reaches ``__aexit__``, so its hold would stand forever and
+        no second worker could reclaim the thread. Postgres does this itself — a session-level
+        advisory lock dies with the session — so :class:`ThreadLock` needs no equivalent; the
+        in-process lock has no session to end, so the reclaim has to be asked for.
+        """
+        cls._held.discard(advisory_key(tenant_id, thread_id))
+
     def __init__(self, tenant_id: str, thread_id: str) -> None:
         """Bind the ``(tenant, thread)`` whose in-process lock this guards."""
         self._key = advisory_key(tenant_id, thread_id)

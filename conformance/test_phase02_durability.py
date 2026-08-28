@@ -8,12 +8,13 @@ Named cells that pin the phase's core promises against the LangGraph engine:
   inspection, the way P09 will re-hydrate it from JSONB) still drives a successful resume.
 * ``two_workers_one_thread`` — two concurrent acquires of one thread's lock: exactly one proceeds,
   the other gets ``ThreadBusyError``.
+* ``reclaim_mid_flight`` — a worker dies holding a thread mid-run; a second worker is refused
+  while the dead hold stands, then reclaims the thread and completes the run.
 * ``regression_single_agent`` — a plain non-durable agent is unchanged (mints no token).
 
 ``replay_idempotency`` now lands here (unblocked by P03 tool execution): a side-effecting tool is
 wrapped in ``call_once``, so a resumed invocation with the same args replays the recorded result
-instead of re-firing the effect. One cell stays deferred with cause: ``reclaim_mid_flight`` (needs a
-lock-lease-loss/connection-death simulation). ``hitl_reject`` is proven in the engine suite
+instead of re-firing the effect. ``hitl_reject`` is proven in the engine suite
 (``test_langgraph_hitl.py``).
 """
 
@@ -127,6 +128,46 @@ async def test_cell_replay_idempotency():
 
     assert len(fired) == 1, "side effect fired more than once across the replay"
     assert first == replay
+
+
+async def test_cell_reclaim_mid_flight(fake_model):
+    """Worker A dies holding a thread mid-run; worker B reclaims the thread and finishes the run.
+
+    A takes the thread's lock and runs until the HITL pause — a genuine mid-flight state: a
+    checkpoint is written, the run is not finished. A is then killed ``-9``: its ``__aexit__``
+    never runs, so the hold outlives the worker. While that dead hold stands B is refused
+    (``ThreadBusyError``), which is what keeps a second writer off the thread. Once the
+    environment reclaims the dead owner's hold — Postgres does this by itself when the owner's
+    session dies; the in-process lock needs ``release_dead_owner`` — B acquires the thread and
+    drives the paused run to completion from A's checkpoint.
+    """
+    hitl_spec = AgentSpec(
+        name="reclaim-cell", engine="langgraph", code="agentship_langgraph.testing:build_hitl_agent"
+    )
+    thread = "cell-reclaim"
+
+    worker_a_lock = InMemoryThreadLock("t", thread)
+    await worker_a_lock.__aenter__()
+    worker_a = build_agent(hitl_spec)
+    paused = await worker_a.engine.run(worker_a.compiled, "send it", _ctx(thread))
+    assert paused.output is None and paused.resume_token is not None, "A never reached mid-flight"
+
+    del worker_a_lock  # "kill -9": no unlock, no __aexit__ — the hold survives the worker
+
+    resumed_while_a_held: list[str] = []
+    with pytest.raises(ThreadBusyError):
+        async with InMemoryThreadLock("t", thread):
+            resumed_while_a_held.append("resumed")  # pragma: no cover - must not be reached
+    assert resumed_while_a_held == [], "B drove the thread while the dead owner's hold stood"
+
+    InMemoryThreadLock.release_dead_owner("t", thread)
+
+    async with InMemoryThreadLock("t", thread):
+        worker_b = build_agent(hitl_spec)
+        done = await worker_b.engine.resume(
+            worker_b.compiled, paused.resume_token, _ctx(thread), resume_value={"approved": True}
+        )
+    assert done.output == "email sent", "B did not complete the run A left mid-flight"
 
 
 async def test_cell_regression_single_agent(fake_model):

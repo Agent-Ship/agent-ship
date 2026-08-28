@@ -125,6 +125,25 @@ class TestInMemoryThreadLock:
             async with InMemoryThreadLock("t", "D"):
                 pass
 
+    async def test_hold_survives_an_owner_that_never_exits(self) -> None:
+        """A worker killed mid-hold (no ``__aexit__``) leaves the thread locked, not free."""
+        await InMemoryThreadLock("t", "F").__aenter__()  # the owner then "dies"
+        with pytest.raises(ThreadBusyError):
+            async with InMemoryThreadLock("t", "F"):
+                pass  # pragma: no cover - must not be reached
+        InMemoryThreadLock.release_dead_owner("t", "F")
+
+    async def test_release_dead_owner_frees_the_thread(self) -> None:
+        """Reclaiming a dead owner's hold lets the next worker take the thread."""
+        await InMemoryThreadLock("t", "G").__aenter__()
+        InMemoryThreadLock.release_dead_owner("t", "G")
+        async with InMemoryThreadLock("t", "G"):
+            pass  # would raise ThreadBusyError if the dead owner's hold had stood
+
+    def test_release_dead_owner_on_a_free_thread_is_harmless(self) -> None:
+        """Reclaiming a thread nobody holds is a no-op, so a reaper can run unconditionally."""
+        InMemoryThreadLock.release_dead_owner("t", "never-held")
+
     async def test_release_even_on_exception(self) -> None:
         """The lock is freed when the body raises, not just on clean exit."""
         with pytest.raises(ValueError):
