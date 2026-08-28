@@ -76,6 +76,33 @@ yet cut a tagged release; entries are grouped by phase until v0.1 ships (P00–P
 > **Durability moved out of P02.** Checkpointing/HITL is now P03 and crash-resume is P11 — see the
 > renumber note at the bottom of this file.
 
+### P03 — Checkpointing & HITL (in-flight, 8/9 reconciled)
+- `durability: none | checkpoint | workflow` on `AgentSpec`, enforced by the capability gate: an
+  engine declaring `durability="none"` fails at **build time** rather than silently downgrading a
+  crash-recovery promise to nothing.
+- Backend chosen from the environment, not the spec — `InMemorySaver` with no database,
+  `AsyncPostgresSaver` when `AGENT_SESSION_STORE_URI` is set. The same YAML runs both ways.
+  Schema DDL is opt-in (`agentship doctor` / first boot), never on process start.
+- LangGraph's checkpoint **flush mode** deliberately kept OUT of the spec: `durability: checkpoint`
+  means "I want crash safety", not a flush-timing knob, so the engine picks `sync` internally and
+  the vendor's vocabulary never reaches portable YAML.
+- `confirm_writes: true` — side-effecting tools pause via LangGraph `interrupt()` before running;
+  the turn returns a resume token with nothing written, and the write fires only on
+  `{"approved": true}`. Rejected at build time without `durability: checkpoint`, so a pause is
+  never non-durable by accident.
+- Capability page: [checkpointing-and-hitl.md](capabilities/checkpointing-and-hitl.md) ·
+  [ADR 0003](decisions/0003-langgraph-checkpointer-as-the-durability-substrate.md).
+- Open: the `reclaim_mid_flight` conformance cell (a worker dies holding a thread; a second worker
+  picks it up).
+
+### P11 — Durable resume (in-flight, 11/13 reconciled)
+- `ResumeToken` + `engine.resume` seam; idempotency ledger (`call_once` / `idem_key`) with a
+  write-ahead `pending` entry; `ThreadLock` for single ownership of `(tenant, thread)`.
+- Capability page: [durable-resume.md](capabilities/durable-resume.md).
+- **Open, and the project's most important missing proof:** no integrated test of supervisor +
+  checkpoint + mid-run failure + resume yielding identical output; `durable_resume_after_kill` is
+  xfail; exactly-once is proven for a single tool call, not across a supervisor dispatch.
+
 ### P01 — Engine & LangGraph agent (delivered)
 - `LangGraphAgent` behind the `Engine.build` seam (`build_agent(spec)` → `RunnableAgent`) with `run` / `stream` / `resume`.
 

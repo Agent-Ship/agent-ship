@@ -15,15 +15,28 @@ The authoritative delivery board is `.spec-dev/STATUS.md`.
 
 ## Capabilities
 
+One page per capability — and, since the 2026-08-23 renumber, **one page per phase**. Phase numbers
+below are the current ones.
+
 | Page | Phase | Status |
 |---|---|---|
-| [Foundation & contracts](capabilities/foundation-contracts.md) | P00 | ✅ delivered |
-| [Engine & agent](capabilities/engine-and-agent.md) | P01 | ✅ delivered |
-| [Multi-agent & durability](capabilities/multi-agent-and-durability.md) | P02 | 🟨 40/42 |
-| [Tools & MCP](capabilities/tools-and-mcp.md) | P03 | 🟨 26/28 |
-| [Service & security](capabilities/service-and-security.md) | P04 | 🟨 40/44 |
-| [Agent gateway / A2A](capabilities/agent-gateway-a2a.md) | P05 | 🟨 15/24 |
-| [Observability](capabilities/observability.md) | P07 | ✅ delivered |
+| [Foundation & base classes](capabilities/foundation.md) | 00 | ✅ delivered |
+| [Engine & agent](capabilities/engine-and-agent.md) | 01 | ✅ delivered |
+| [Multi-agent supervisors](capabilities/multi-agent.md) | 02 | 🟨 18/19 |
+| [Checkpointing & HITL](capabilities/checkpointing-and-hitl.md) | 03 | 🟨 8/9 |
+| [Tools & MCP](capabilities/tools-and-mcp.md) | 04 | 🟨 26/28 |
+| [Observability](capabilities/observability.md) | 05 | ✅ delivered |
+| [Service & security](capabilities/service-and-security.md) | 06–09 | 🟨 40/44 aggregate |
+| [Durable resume](capabilities/durable-resume.md) | 11 | 🟨 11/13 — headline proof missing |
+| [Agent gateway / A2A](capabilities/agent-gateway-a2a.md) | 18–19 | 🟨 15/24 |
+| [Verify & conformance](capabilities/verify-and-conformance.md) | cross-cutting | ✅ |
 
-Counts mirror `.spec-dev/STATUS.md` at the time of the 2026-08-23 backfill; that board is the source
-of truth if they ever disagree.
+`.spec-dev/STATUS.md` is the source of truth if these ever disagree.
+
+## Decisions
+
+| ADR | Decision |
+|---|---|
+| [0001](decisions/0001-integrate-not-invent.md) | Integrate, don't reinvent — and guard conformance |
+| [0002](decisions/0002-plain-stategraph-supervisor.md) | Build the supervisor on plain `StateGraph`, not `langgraph-supervisor` |
+| [0003](decisions/0003-langgraph-checkpointer-as-the-durability-substrate.md) | LangGraph's checkpointer is the durability substrate; `durability:` stays vendor-free |
