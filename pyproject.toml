@@ -39,10 +39,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Test tooling for the live test suite (every test calls the real API).
+# Test tooling. The suite replays committed cassettes by default (keyless, offline);
+# `--live` runs the same tests against the real API.
 test = [
     "pytest>=8",
     "pytest-asyncio>=0.24",
+    "pytest-recording>=0.13",
     # Read-back for the observability slice: query each hosted backend to confirm the trace
     # landed. httpx (Opik/LangFuse REST) rides in as a framework transitive dep; langsmith is
     # the LangSmith SDK.

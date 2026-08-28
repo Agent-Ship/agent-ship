@@ -33,7 +33,7 @@ from agentship_observability.factory import (
     build_tracer_provider,
 )
 from agentship_observability.otel import OTelObserver
-from conftest import requires_live_key
+from conftest import live_only
 from opentelemetry.sdk.trace import ReadableSpan, SpanProcessor
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -203,7 +203,7 @@ def _read_back_langsmith(outcome: RunOutcome) -> tuple[bool, str]:
     return True, f"{len(runs)} runs with types {sorted(run_types)}"
 
 
-@requires_live_key
+@pytest.mark.vcr
 async def test_declarative_block_gives_a_live_traced_turn() -> None:
     """The YAML's ``observability`` block alone makes a live turn traced — the published zero-code path.
 
@@ -217,7 +217,7 @@ async def test_declarative_block_gives_a_live_traced_turn() -> None:
     assert "42" in result.output
 
 
-@requires_live_key
+@live_only
 @_needs_opik
 async def test_full_trace_exports_to_opik() -> None:
     """A live turn's full span tree is exported to Opik and read back with agent/node/model/tool."""
@@ -230,7 +230,7 @@ async def test_full_trace_exports_to_opik() -> None:
     assert ok, detail
 
 
-@requires_live_key
+@live_only
 @_needs_langfuse
 async def test_full_trace_exports_to_langfuse() -> None:
     """A live turn's full span tree is exported to LangFuse and read back by its OTLP trace id."""
@@ -243,7 +243,7 @@ async def test_full_trace_exports_to_langfuse() -> None:
     assert ok, detail
 
 
-@requires_live_key
+@live_only
 @_needs_langsmith
 async def test_full_trace_exports_to_langsmith() -> None:
     """A live turn's full span tree is exported to LangSmith and read back as chain/llm/tool runs."""

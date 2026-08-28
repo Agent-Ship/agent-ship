@@ -20,6 +20,11 @@
 pytest>=8
 pytest-asyncio>=0.24
 
+# Cassette record/replay. The default `make test` replays committed recordings with no
+# key and no network; `make record` re-records them. Credentials are redacted on write
+# (see tests/conftest.py), so cassettes are safe to commit.
+pytest-recording>=0.13
+
 # Read-back for the live observability slice: query each hosted backend's API to confirm the
 # trace landed. httpx (Opik/LangFuse REST) is already a framework transitive dep; langsmith is
 # the LangSmith SDK the read-back uses.

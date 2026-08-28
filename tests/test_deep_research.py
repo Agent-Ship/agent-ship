@@ -15,11 +15,12 @@ pausing. Live: calls OpenAI. Skips without a key.
 
 from __future__ import annotations
 
+import pytest
+
 import logging
 from pathlib import Path
 
 from agentship import build_agent
-from conftest import requires_live_key
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 AGENT = str(REPO_ROOT / "agents" / "deep_research.yaml")
@@ -38,7 +39,7 @@ class _ToolCallCollector(logging.Handler):
         self.text += record.getMessage() + "\n"
 
 
-@requires_live_key
+@pytest.mark.vcr
 async def test_deep_research_chats_without_researching():
     """"hi" gets a normal reply and triggers NO web search — a real agent, not a forced pipeline."""
     agent = build_agent(AGENT)

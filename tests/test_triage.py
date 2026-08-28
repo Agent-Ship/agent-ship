@@ -21,6 +21,8 @@ Run (with a key set)::
 
 from __future__ import annotations
 
+import pytest
+
 import logging
 import os
 from pathlib import Path
@@ -28,7 +30,6 @@ from pathlib import Path
 from agentship import build_agent
 from agentship.context import Caller, RunContext, RunMode
 from agentship_langgraph.engine import LangGraphEngine
-from conftest import requires_live_key
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 AGENT = str(REPO_ROOT / "agents" / "triage" / "triage.yaml")
@@ -37,7 +38,7 @@ DECLARATIVE = str(REPO_ROOT / "agents" / "triage" / "triage_declarative.yaml")
 _QUESTION = "My invoice looks wrong and I was double charged — who handles payments?"
 
 
-@requires_live_key
+@pytest.mark.vcr
 async def test_triage_routes_and_answers_a_billing_question_live():
     """The triage supervisor classifies, routes to billing specialist, and answers — durably."""
     cwd = os.getcwd()
@@ -54,7 +55,7 @@ async def test_triage_routes_and_answers_a_billing_question_live():
     assert result.resume_token.engine == "langgraph"
 
 
-@requires_live_key
+@pytest.mark.vcr
 async def test_triage_resume_after_simulated_kill():
     """Kill-9 guarantee: a fresh engine resumes from the checkpoint → byte-identical output.
 
@@ -103,7 +104,7 @@ async def test_triage_resume_after_simulated_kill():
     )
 
 
-@requires_live_key
+@pytest.mark.vcr
 async def test_triage_panel_fans_out_to_multiple_sub_agents_in_parallel(caplog):
     """The panel dispatches to all three sub-agents concurrently, then merges their answers.
 
@@ -139,7 +140,7 @@ async def test_triage_panel_fans_out_to_multiple_sub_agents_in_parallel(caplog):
         assert sub_agent in considered, f"{sub_agent!r} not considered by resolver: {considered}"
 
 
-@requires_live_key
+@pytest.mark.vcr
 async def test_declarative_supervisor_routes_with_zero_python(caplog):
     """A YAML-only supervisor (members: -> sub-agent YAMLs) routes to a specialist and answers.
 

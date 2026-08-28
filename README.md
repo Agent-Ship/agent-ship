@@ -8,13 +8,27 @@ and watch it work: the multi-agent supervisors show their classify → route →
 path in a Trace panel, and the durable note-taker agent pauses to ask for write approval
 and resumes from its checkpoint, all in the conversation.
 
-**This demo is LIVE.** It needs a real API key and calls OpenAI for real, so it costs
-a little each time you run it. No fakes, no echo stand-ins, no saved recordings, no
-offline models — every slice makes a real call to the OpenAI API. The tests are live
-too, with one deliberate exception: the note-taker's durable pause/resume machinery
-(slice 6 HITL) is proven by **deterministic offline tests**, because "the run paused, then
-resumed after the human replied" is a control-flow guarantee, not model quality — a live
-model can't reproduce it reliably. It also ships a live end-to-end test on top.
+**The demos are LIVE; the tests replay recordings.** `make demo` needs a real API key and
+calls OpenAI for real — no fakes, no echo stand-ins, no offline models. That is the point
+of the demo scripts, and it hasn't changed.
+
+The **test suite** is a different tier on purpose. `make test` replays committed VCR
+cassettes: **no key, no network, no spend, ~3 seconds.** That's what a fresh clone gets and
+what CI gates on. The recordings are of real provider round-trips — the same test bodies
+that run live — so a green replay is real evidence, not a stub passing against itself.
+Credentials are redacted on write, so a committed cassette leaks nothing.
+
+| Command | What it does | Needs a key? |
+|---|---|---|
+| `make test` | Replays cassettes. The CI gate. | No |
+| `make test-live` | Same tests, real API calls. Catches provider drift. | Yes |
+| `make record` | Re-records the cassettes after a behaviour change. | Yes |
+| `make demo` | The live showcase — real calls, printed results. | Yes |
+
+A test whose cassette is missing **fails loudly** rather than silently reaching for the
+network, so the keyless tier can never quietly degrade into a live one. Three tests remain
+live-only and skip by default: the Opik / LangFuse / LangSmith trace read-backs, where the
+assertion is "the vendor's API now shows our span" and there is nothing local to record.
 
 New slices arrive one per phase as the framework ships each feature.
 

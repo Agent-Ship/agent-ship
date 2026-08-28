@@ -21,13 +21,14 @@ Without a key the live test skips cleanly.
 
 from __future__ import annotations
 
+import pytest
+
 from agentship import build_agent
 from agentship.primitives.model_router import (
     DefaultModelRouter,
     resolve_model_router,
 )
 from agentship.spec import AgentSpec
-from conftest import requires_live_key
 
 ROUTED_MODEL = "openai/gpt-4o-mini"
 
@@ -43,7 +44,7 @@ def test_default_router_picks_spec_model_deterministically():
     assert isinstance(resolve_model_router(), DefaultModelRouter)
 
 
-@requires_live_key
+@pytest.mark.vcr
 async def test_router_picks_then_a_real_turn_runs_through_it():
     """The router picks the model id, then a real turn through that model answers live.
 

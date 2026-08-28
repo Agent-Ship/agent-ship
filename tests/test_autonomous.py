@@ -18,7 +18,6 @@ from pathlib import Path
 
 import pytest
 from agentship import build_agent
-from conftest import requires_live_key
 
 pytest.importorskip("deepagents", reason="needs agentship-langgraph[autonomous]")
 
@@ -26,7 +25,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 AGENT = str(REPO_ROOT / "agents" / "autonomous.yaml")
 
 
-@requires_live_key
+@pytest.mark.vcr
 async def test_autonomous_agent_uses_a_tool():
     """The autonomous agent runs its loop and uses the calculator to answer (18*7)+(100/4) = 151."""
     agent = build_agent(AGENT)

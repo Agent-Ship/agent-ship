@@ -13,16 +13,17 @@ Run it (with a key set)::
 
 from __future__ import annotations
 
+import pytest
+
 from pathlib import Path
 
 from agentship import build_agent
-from conftest import requires_live_key
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 AGENT = str(REPO_ROOT / "agents" / "calculator.yaml")
 
 
-@requires_live_key
+@pytest.mark.vcr
 async def test_calculator_agent_uses_the_tool_and_answers():
     """The agent calls the calculator for `12 * 12 + 3` and reports 147."""
     agent = build_agent(AGENT)

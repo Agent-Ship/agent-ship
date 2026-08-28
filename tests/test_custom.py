@@ -19,17 +19,18 @@ Without a key the test skips cleanly.
 
 from __future__ import annotations
 
+import pytest
+
 import os
 from pathlib import Path
 
 from agentship import build_agent
-from conftest import requires_live_key
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 AGENT = str(REPO_ROOT / "agents" / "custom" / "custom.yaml")
 
 
-@requires_live_key
+@pytest.mark.vcr
 async def test_custom_build_graph_answers_via_the_authors_graph():
     """agents/custom/custom.yaml runs the author's native graph and answers live."""
     cwd = os.getcwd()

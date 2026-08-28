@@ -1,31 +1,31 @@
-"""Live slice: the `template: single` assistant answers for real.
+"""Demo slice: the `template: single` assistant answers a real question.
 
 This is the whole reason the demo repo exists. It loads the demo's own
 ``agents/assistant.yaml`` through the *installed* AgentShip framework (the public
-``build_agent`` entry point), runs one real turn against ``gpt-4o-mini``, and
-asserts a real, non-empty answer comes back. There is no recording and no fake
-model — this makes a live call to OpenAI.
+``build_agent`` entry point), runs one turn against ``gpt-4o-mini``, and asserts a
+real, non-empty answer comes back.
 
-Run it (with a key set):
+The turn is a genuine provider round-trip, recorded once into a committed cassette:
 
-    set -a; source ../agentship/.env; set +a
-    pytest tests/test_smoke.py -q
+    pytest tests/test_smoke.py          # replays the cassette — no key, no spend
+    pytest tests/test_smoke.py --live   # calls OpenAI for real
 
-Without a key the test skips cleanly.
+Re-record with ``pytest --live --record-mode=once``.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from agentship import build_agent
-from conftest import requires_live_key
 
 # The demo's own agent — loaded by path, exactly as `agentship run` would.
 AGENT = str(Path(__file__).resolve().parents[1] / "agents" / "assistant.yaml")
 
 
-@requires_live_key
+@pytest.mark.vcr
 async def test_demo_assistant_returns_a_non_empty_answer():
     """The demo assistant, loaded from its YAML, returns a real non-empty answer."""
     agent = build_agent(AGENT)

@@ -13,7 +13,7 @@ VENV := .venv
 PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
 
-.PHONY: install test demo demo-multiagent demo-observability ask run ui clean
+.PHONY: install test test-live record demo demo-multiagent demo-observability ask run ui clean
 
 ## install: create .venv and install the framework editable-local + test tooling
 install:
@@ -21,10 +21,20 @@ install:
 	$(PIP) install --upgrade pip
 	$(PIP) install -r requirements-dev.txt
 
-## test: run the LIVE test suite — every test calls the real API (needs OPENAI_API_KEY).
-##   Without a key the tests skip cleanly.
+## test: run the suite by REPLAYING committed cassettes — no key, no network, no spend.
+##   This is the CI gate and what a fresh clone gets. A missing cassette fails loudly.
 test:
 	$(VENV)/bin/pytest -q
+
+## test-live: run the same tests against the real API (needs OPENAI_API_KEY; costs money).
+##   Same test bodies as `make test` — this is the drift check against the live providers.
+test-live:
+	$(VENV)/bin/pytest -q --live
+
+## record: refresh the committed cassettes from real calls (needs OPENAI_API_KEY; costs money).
+##   Credentials are redacted on write, so a recorded cassette is safe to commit.
+record:
+	$(VENV)/bin/pytest -q --live --record-mode=once
 
 ## demo: SEE every capability run LIVE against OpenAI, one labeled block each.
 ##   Needs a real OPENAI_API_KEY; exits non-zero if unset or if any slice fails.

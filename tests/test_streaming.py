@@ -16,16 +16,17 @@ Without a key the test skips cleanly.
 
 from __future__ import annotations
 
+import pytest
+
 from pathlib import Path
 
 from agentship import build_agent
-from conftest import requires_live_key
 
 # The demo's own streaming agent — loaded by path, as `agentship run --stream` would.
 AGENT = str(Path(__file__).resolve().parents[1] / "agents" / "streaming.yaml")
 
 
-@requires_live_key
+@pytest.mark.vcr
 async def test_demo_streams_multiple_real_tokens():
     """The demo streaming agent yields >1 real content chunk from a live model."""
     agent = build_agent(AGENT)

@@ -19,7 +19,6 @@ from pathlib import Path
 import pytest
 from agentship import build_agent
 from agentship.skills import render_agent_prompt
-from conftest import requires_live_key
 
 pytest.importorskip("langchain_mcp_adapters", reason="needs agentship-langgraph[mcp]")
 
@@ -36,7 +35,7 @@ def test_skill_teaches_the_agent_how_to_use_the_mcp_tool():
     assert "You are a precise assistant." in prompt
 
 
-@requires_live_key
+@pytest.mark.vcr
 async def test_agent_uses_a_local_mcp_tool():
     """The agent discovers the local MCP server's `days_between` tool and answers 225.
 

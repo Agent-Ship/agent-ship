@@ -13,12 +13,13 @@ Run it (with a key set)::
 
 from __future__ import annotations
 
+import pytest
+
 from pathlib import Path
 
 from agentship import build_agent
 from agentship.context import Caller, RunContext, RunMode
 from agentship.tools import TOOLS, Tool
-from conftest import requires_live_key
 from pydantic import BaseModel
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -44,7 +45,7 @@ TOOLS.register(
 )
 
 
-@requires_live_key
+@pytest.mark.vcr
 async def test_write_pauses_then_fires_only_after_approval():
     """The write pauses for approval (nothing saved), then fires once when approved."""
     _SAVED.clear()

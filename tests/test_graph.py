@@ -20,15 +20,16 @@ Without a key the test skips cleanly.
 
 from __future__ import annotations
 
+import pytest
+
 from pathlib import Path
 
 from agentship import build_agent
-from conftest import requires_live_key
 
 AGENT = str(Path(__file__).resolve().parents[1] / "agents" / "graph.yaml")
 
 
-@requires_live_key
+@pytest.mark.vcr
 async def test_graph_scaffold_routes_and_returns_a_non_empty_answer():
     """agents/graph.yaml (template: graph) routes coordinator -> worker and answers live."""
     agent = build_agent(AGENT)
