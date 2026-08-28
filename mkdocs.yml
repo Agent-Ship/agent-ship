@@ -5,7 +5,7 @@
 # conversion step. The files under docs/ stay readable in an editor and on GitHub — the site
 # is a view over them, never a separate copy.
 #
-#   make docs-serve   # live-reload at http://localhost:8000
+#   make docs-serve   # live-reload at http://localhost:7003
 #   make docs-build   # static HTML into site/
 
 site_name: AgentShip

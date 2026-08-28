@@ -1,7 +1,7 @@
 # AgentShip developer entry points. See .spec-dev/ for the phase plan.
 # This is a monorepo of packages under packages/*/ — install them editable
 # and test/lint across the whole tree from the repo root.
-.PHONY: venv install test run serve lint docs-serve docs-build docs-clean docker-build docker-up docker-down
+.PHONY: venv install test run serve lint docs-serve docs-build docs-clean docker-build docker-up docker-down railway-deploy railway-logs
 
 VENV := .venv
 PY := $(VENV)/bin/python
@@ -40,12 +40,12 @@ lint:
 
 # --- Deployment (parity carry-forward from the old repo) -----------------------------
 # Build the service image and bring it up / down. `docker-up` boots the API on :8000.
-# docs-serve: browse the docs at http://localhost:8000 with live reload.
+# docs-serve: browse the docs at http://localhost:7003 with live reload.
 #   The old repo served Sphinx at :7001/docs; this is the same idea on MkDocs, since our
 #   docs are already Markdown. Port 8000 stays clear of `make serve` (7001) and of the
-#   Docker-published ports in docker-compose.yml (7002 is taken by a container).
+#   the API's 8000 in docker-compose.yml, and the container-published 7002.
 #   Override if you need to: make docs-serve DOCS_PORT=8080
-DOCS_PORT ?= 8000
+DOCS_PORT ?= 7003
 docs-serve:
 	$(VENV)/bin/mkdocs serve --dev-addr localhost:$(DOCS_PORT)
 
@@ -65,3 +65,13 @@ docker-up:
 
 docker-down:
 	docker compose down
+
+# Railway (cloud). Both targets assume the directory is already linked to a project
+# (`railway login && railway link`) — see deploy/RAILWAY.md for the one-time setup and
+# the variables the service needs.
+# railway-deploy: upload this directory and let Railway build the root Dockerfile.
+railway-deploy:
+	railway up
+
+railway-logs:
+	railway logs

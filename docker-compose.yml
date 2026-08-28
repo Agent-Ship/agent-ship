@@ -3,13 +3,16 @@
 #
 # Auth: the dev API-key table is passed via AGENTSHIP_API_KEYS (JSON). Override it — and
 # supply provider keys (OPENAI_API_KEY, …) — through a local .env file (git-ignored).
+#
+# The `postgres` service mirrors what Railway gives you in the cloud, so the durable
+# checkpointer path (AGENT_SESSION_STORE_URI) is exercised locally and not first tried in
+# production. See deploy/RAILWAY.md.
 services:
   agentship:
     build:
       context: .
       dockerfile: Dockerfile
     image: agentship
-    container_name: agentship-api
     ports:
       - "8000:8000"
     env_file:
@@ -18,9 +21,19 @@ services:
       - PORT=8000
       - AGENTSHIP_AGENTS_DIR=/app/agents
       - AGENTSHIP_AUTH_PROVIDER=api_key
-      # A single dev key with wildcard scopes so the quickstart curl works out of the box.
-      # Replace for anything beyond local dev.
-      - AGENTSHIP_API_KEYS=[{"key":"dev","user":"dev","tenant":"dev","scopes":["*"]}]
+      # Two dev keys, on purpose. `dev` has wildcard scopes so the quickstart curl works
+      # out of the box; `dev-no-scope` is a VALID credential that was never granted an
+      # invoke scope, so it proves the 403 path. Without a second key there is no way to
+      # tell "not authenticated" (401) from "authenticated but not allowed" (403), and the
+      # postman collection's 403 request has nothing to fail against.
+      # Replace both for anything beyond local dev.
+      - AGENTSHIP_API_KEYS=[{"key":"dev","user":"dev","tenant":"dev","scopes":["*"]},{"key":"dev-no-scope","user":"reader","tenant":"dev","scopes":["agent:none:read"]}]
+      # Durable, resumable runs on the Postgres checkpointer. On Railway this same
+      # variable is pointed at the managed database's DATABASE_URL.
+      - AGENT_SESSION_STORE_URI=postgresql://agentship:agentship@postgres:5432/agentship
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
@@ -28,3 +41,27 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
+
+  # Local stand-in for Railway's managed Postgres. Credentials are local-only throwaways.
+  # Published on 5433 so it does not collide with a Postgres already running on 5432.
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: agentship
+      POSTGRES_PASSWORD: agentship
+      POSTGRES_DB: agentship
+    ports:
+      # 5434 on the host, not 5433: the retired agent-ship checkout still publishes
+      # 5433, and two checkouts fighting over one port is a confusing failure.
+      - "5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentship"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

@@ -1,132 +1,589 @@
 {
   "info": {
+    "_postman_id": "8f2c1a90-6d3b-4a51-9f07-2f5a1c7b4e10",
     "name": "AgentShip /v1",
-    "description": "The AgentShip runtime-service /v1 surface: discovery, invoke, stream, and the tasks skeleton. Every request except the liveness probe sends the `X-API-Key` auth header from the environment. Import `AgentShip.postman_environment.json` and run against `make docker-up` (http://localhost:8000).",
+    "description": "The AgentShip runtime-service API: health, agent discovery, invoke, SSE streaming, durable tasks, and the auth + RFC-9457 error contract.\n\nEvery request is grounded in `packages/agentship-service/src/agentship_service/` and is runnable with newman. See `postman/README.md` for how to boot the server and run it.\n\nAuth: collection-level `X-API-Key: {{api_key}}`. Only `Health check` sends no credential (it is a public path).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
     "type": "apikey",
     "apikey": [
       { "key": "key", "value": "X-API-Key", "type": "string" },
-      { "key": "value", "value": "{{apiKey}}", "type": "string" },
+      { "key": "value", "value": "{{api_key}}", "type": "string" },
       { "key": "in", "value": "header", "type": "string" }
     ]
   },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000", "type": "string" },
+    { "key": "api_key", "value": "dev", "type": "string" },
+    { "key": "api_key_without_scope", "value": "limited", "type": "string" },
+    { "key": "agent_name", "value": "hello", "type": "string" },
+    { "key": "task_id", "value": "", "type": "string" }
+  ],
   "item": [
     {
-      "name": "Health (public)",
-      "request": {
-        "auth": { "type": "noauth" },
-        "method": "GET",
-        "header": [],
-        "url": { "raw": "{{baseUrl}}/healthz", "host": ["{{baseUrl}}"], "path": ["healthz"] }
-      }
-    },
-    {
-      "name": "List agents",
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": { "raw": "{{baseUrl}}/v1/agents", "host": ["{{baseUrl}}"], "path": ["v1", "agents"] }
-      }
-    },
-    {
-      "name": "Get agent",
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{baseUrl}}/v1/agents/{{agent}}",
-          "host": ["{{baseUrl}}"],
-          "path": ["v1", "agents", "{{agent}}"]
-        }
-      }
-    },
-    {
-      "name": "Invoke agent",
-      "request": {
-        "method": "POST",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"input\": \"hello\"\n}"
-        },
-        "url": {
-          "raw": "{{baseUrl}}/v1/agents/{{agent}}:invoke",
-          "host": ["{{baseUrl}}"],
-          "path": ["v1", "agents", "{{agent}}:invoke"]
-        }
-      }
-    },
-    {
-      "name": "Stream agent (SSE)",
-      "request": {
-        "method": "POST",
-        "header": [
-          { "key": "Content-Type", "value": "application/json" },
-          { "key": "Accept", "value": "text/event-stream" }
-        ],
-        "body": { "mode": "raw", "raw": "{\n  \"input\": \"hello\"\n}" },
-        "url": {
-          "raw": "{{baseUrl}}/v1/agents/{{agent}}:stream",
-          "host": ["{{baseUrl}}"],
-          "path": ["v1", "agents", "{{agent}}:stream"]
-        }
-      }
-    },
-    {
-      "name": "Create task",
-      "event": [
+      "name": "Health",
+      "item": [
         {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "if (pm.response.code === 202) {",
-              "  pm.environment.set('taskId', pm.response.json().id);",
-              "}"
-            ]
-          }
+          "name": "Health check",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/healthz",
+              "host": ["{{base_url}}"],
+              "path": ["healthz"]
+            },
+            "description": "Public liveness probe. `/healthz` is in the auth middleware's public-path set, so it answers without a credential."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('status is ok', () => pm.expect(pm.response.json().status).to.eql('ok'));",
+                  "pm.test('carries a trace id', () => pm.expect(pm.response.headers.get('x-trace-id')).to.be.a('string'));"
+                ]
+              }
+            }
+          ]
         }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
-        "body": { "mode": "raw", "raw": "{\n  \"agent\": \"{{agent}}\",\n  \"input\": \"do it\"\n}" },
-        "url": { "raw": "{{baseUrl}}/v1/tasks", "host": ["{{baseUrl}}"], "path": ["v1", "tasks"] }
-      }
+      ]
     },
     {
-      "name": "Get task",
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{baseUrl}}/v1/tasks/{{taskId}}",
-          "host": ["{{baseUrl}}"],
-          "path": ["v1", "tasks", "{{taskId}}"]
+      "name": "Agents",
+      "item": [
+        {
+          "name": "List agents",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/agents",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "agents"]
+            },
+            "description": "Every agent the service serves, as a discovery AgentCard. Needs a valid credential but no per-agent scope."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const cards = pm.response.json();",
+                  "pm.test('returns a list of agent cards', () => pm.expect(cards).to.be.an('array'));",
+                  "pm.test('the configured agent is served', () => {",
+                  "  const names = cards.map(c => c.name);",
+                  "  pm.expect(names).to.include(pm.variables.get('agent_name'));",
+                  "});",
+                  "pm.test('each card declares its capabilities', () => {",
+                  "  cards.forEach(c => {",
+                  "    pm.expect(c).to.have.property('streaming');",
+                  "    pm.expect(c.capabilities).to.be.an('object');",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get agent",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/agents/{{agent_name}}",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "agents", "{{agent_name}}"]
+            },
+            "description": "The discovery AgentCard for one agent. 404 if there is no such agent."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const card = pm.response.json();",
+                  "pm.test('is the agent we asked for', () => pm.expect(card.name).to.eql(pm.variables.get('agent_name')));",
+                  "pm.test('has a capabilities block', () => pm.expect(card.capabilities).to.be.an('object'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invoke agent",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"input\": \"hello from Postman\",\n  \"metadata\": {\n    \"source\": \"postman\"\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/agents/{{agent_name}}:invoke",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "agents", "{{agent_name}}:invoke"]
+            },
+            "description": "Run one non-streaming turn. Requires the `agent:{name}:invoke` scope.\n\nThe body carries NO identity — no user_id, no tenant_id. Identity comes only from the authenticated caller. Omit `session_id` to start a new session; the response echoes the one the server minted so the next turn can thread it."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('echoes the agent name', () => pm.expect(body.agent).to.eql(pm.variables.get('agent_name')));",
+                  "pm.test('mints and returns a session id', () => pm.expect(body.session_id).to.be.a('string').and.not.empty);",
+                  "pm.test('returns an output', () => pm.expect(body).to.have.property('output'));",
+                  "pm.test('returns a trace id', () => pm.expect(body.trace_id).to.be.a('string'));",
+                  "",
+                  "// Thread the next turn onto this conversation.",
+                  "pm.environment.set('session_id', body.session_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invoke agent again in the same session",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"input\": \"and one more turn\",\n  \"session_id\": \"{{session_id}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/agents/{{agent_name}}:invoke",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "agents", "{{agent_name}}:invoke"]
+            },
+            "description": "A second turn on the session id captured by the previous request — this is how a multi-turn conversation is threaded."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('stays on the same session', () => {",
+                  "  pm.expect(pm.response.json().session_id).to.eql(pm.environment.get('session_id'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Stream agent (SSE)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "text/event-stream" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"input\": \"stream this back to me\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/agents/{{agent_name}}:stream",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "agents", "{{agent_name}}:stream"]
+            },
+            "description": "Stream one turn as Server-Sent Events. Note this is a POST, not a GET — the input is a body.\n\nThe first frame is always `session` at seq 0; each following frame increments seq by one; the stream ends with `done` (or a terminal `error` frame if the turn fails mid-stream, since the HTTP status was already 200).\n\nAn agent whose engine cannot stream is rejected up front with 400 `unsupported`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('is an event stream', () => {",
+                  "  pm.expect(pm.response.headers.get('content-type')).to.include('text/event-stream');",
+                  "});",
+                  "",
+                  "const frames = pm.response.text()",
+                  "  .split('\\n')",
+                  "  .filter(line => line.startsWith('data:'))",
+                  "  .map(line => JSON.parse(line.slice('data:'.length).trim()));",
+                  "",
+                  "const allowed = ['session', 'token', 'content', 'tool_call', 'tool_result', 'guard', 'done', 'error'];",
+                  "",
+                  "pm.test('emits at least one frame', () => pm.expect(frames.length).to.be.above(0));",
+                  "pm.test('opens with a session frame carrying the ids', () => {",
+                  "  pm.expect(frames[0].type).to.eql('session');",
+                  "  pm.expect(frames[0].seq).to.eql(0);",
+                  "  pm.expect(frames[0].data.session_id).to.be.a('string');",
+                  "  pm.expect(frames[0].data.agent).to.eql(pm.variables.get('agent_name'));",
+                  "});",
+                  "pm.test('every frame type is in the stream contract', () => {",
+                  "  frames.forEach(f => pm.expect(allowed).to.include(f.type));",
+                  "});",
+                  "pm.test('seq is gap-free and monotonic from 0', () => {",
+                  "  pm.expect(frames.map(f => f.seq)).to.eql(frames.map((_, i) => i));",
+                  "});",
+                  "pm.test('does not end on an error frame', () => {",
+                  "  pm.expect(frames[frames.length - 1].type).to.not.eql('error');",
+                  "});"
+                ]
+              }
+            }
+          ]
         }
-      }
+      ]
     },
     {
-      "name": "List tasks",
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": { "raw": "{{baseUrl}}/v1/tasks", "host": ["{{baseUrl}}"], "path": ["v1", "tasks"] }
-      }
+      "name": "Tasks",
+      "item": [
+        {
+          "name": "Create task",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent\": \"{{agent_name}}\",\n  \"input\": \"run this in the background\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/tasks",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "tasks"]
+            },
+            "description": "Enqueue a durable task and get its handle back (202 Accepted). Requires `agent:{agent}:invoke` — enqueuing a run is an invocation.\n\nThe task is stamped with the caller's tenant; no client-supplied tenant can widen that. Execution itself is not wired yet (the executor is a later phase), so a new task stays `pending`.\n\nCaptures the returned id into `task_id` for the following requests."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 Accepted', () => pm.response.to.have.status(202));",
+                  "const task = pm.response.json();",
+                  "pm.test('returns a task id', () => pm.expect(task.id).to.be.a('string').and.not.empty);",
+                  "pm.test('starts pending', () => pm.expect(task.status).to.eql('pending'));",
+                  "pm.test('targets the agent we asked for', () => pm.expect(task.agent).to.eql(pm.variables.get('agent_name')));",
+                  "",
+                  "pm.environment.set('task_id', task.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get task",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/tasks/{{task_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "tasks", "{{task_id}}"]
+            },
+            "description": "Read one task the caller's tenant owns. A task owned by another tenant is 404 — a tenant cannot even learn it exists."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('is the task we created', () => {",
+                  "  pm.expect(pm.response.json().id).to.eql(pm.environment.get('task_id'));",
+                  "});",
+                  "pm.test('has a lifecycle status', () => {",
+                  "  const states = ['pending', 'running', 'completed', 'failed', 'cancelled'];",
+                  "  pm.expect(states).to.include(pm.response.json().status);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List tasks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/tasks",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "tasks"]
+            },
+            "description": "List the tasks owned by the caller's tenant — never another tenant's."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const tasks = pm.response.json();",
+                  "pm.test('returns a list', () => pm.expect(tasks).to.be.an('array'));",
+                  "pm.test('includes the task we created', () => {",
+                  "  pm.expect(tasks.map(t => t.id)).to.include(pm.environment.get('task_id'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cancel task",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/tasks/{{task_id}}:cancel",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "tasks", "{{task_id}}:cancel"]
+            },
+            "description": "Cancel a task the caller's tenant owns. Cancelling another tenant's task is 403 (a write, so it is refused explicitly rather than hidden)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('is now cancelled', () => pm.expect(pm.response.json().status).to.eql('cancelled'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
     },
     {
-      "name": "Cancel task",
-      "request": {
-        "method": "POST",
-        "header": [],
-        "url": {
-          "raw": "{{baseUrl}}/v1/tasks/{{taskId}}:cancel",
-          "host": ["{{baseUrl}}"],
-          "path": ["v1", "tasks", "{{taskId}}:cancel"]
+      "name": "Auth and errors",
+      "item": [
+        {
+          "name": "Invoke without a credential (401)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"input\": \"hello\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/agents/{{agent_name}}:invoke",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "agents", "{{agent_name}}:invoke"]
+            },
+            "description": "No API key at all. The auth middleware rejects before any route runs, so the request never reaches the agent."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));",
+                  "pm.test('is problem+json', () => {",
+                  "  pm.expect(pm.response.headers.get('content-type')).to.include('application/problem+json');",
+                  "});",
+                  "const problem = pm.response.json();",
+                  "pm.test('has the RFC-9457 shape', () => {",
+                  "  pm.expect(problem.type).to.be.a('string');",
+                  "  pm.expect(problem.title).to.eql('Unauthorized');",
+                  "  pm.expect(problem.status).to.eql(401);",
+                  "  pm.expect(problem.detail).to.be.a('string');",
+                  "});",
+                  "pm.test('code says no credentials were sent', () => pm.expect(problem.code).to.eql('no_credentials'));",
+                  "pm.test('carries a trace id', () => pm.expect(problem.trace_id).to.be.a('string'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invoke with an unknown key (401)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-Key", "value": "not-a-real-key" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"input\": \"hello\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/agents/{{agent_name}}:invoke",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "agents", "{{agent_name}}:invoke"]
+            },
+            "description": "A key that is not in the service's key table. An unrecognised credential is 401, not 403 — the caller is unauthenticated, not merely unauthorized."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));",
+                  "pm.test('code says the key was not recognised', () => {",
+                  "  pm.expect(pm.response.json().code).to.eql('invalid_api_key');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invoke with a key missing the scope (403)",
+          "request": {
+            "auth": {
+              "type": "apikey",
+              "apikey": [
+                { "key": "key", "value": "X-API-Key", "type": "string" },
+                { "key": "value", "value": "{{api_key_without_scope}}", "type": "string" },
+                { "key": "in", "value": "header", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"input\": \"hello\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/agents/{{agent_name}}:invoke",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "agents", "{{agent_name}}:invoke"]
+            },
+            "description": "A valid key whose scopes do not cover `agent:{agent_name}:invoke`. Authenticated, but not authorized.\n\nRequires the server to be running with a second key in AGENTSHIP_API_KEYS — see README."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 Forbidden', () => pm.response.to.have.status(403));",
+                  "pm.test('is problem+json', () => {",
+                  "  pm.expect(pm.response.headers.get('content-type')).to.include('application/problem+json');",
+                  "});",
+                  "const problem = pm.response.json();",
+                  "pm.test('has the RFC-9457 shape', () => {",
+                  "  pm.expect(problem.title).to.eql('Forbidden');",
+                  "  pm.expect(problem.status).to.eql(403);",
+                  "  pm.expect(problem.detail).to.include('scope');",
+                  "});",
+                  "pm.test('code is forbidden', () => pm.expect(problem.code).to.eql('forbidden'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invoke an agent that does not exist (404)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"input\": \"hello\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/agents/no-such-agent:invoke",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "agents", "no-such-agent:invoke"]
+            },
+            "description": "Authorization runs before agent lookup, so only a caller who *would* be allowed to invoke this name learns that it does not exist.\n\nThis works because the collection's key holds a wildcard scope; a narrower key would get 403 here instead."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 Not Found', () => pm.response.to.have.status(404));",
+                  "pm.test('is problem+json', () => {",
+                  "  pm.expect(pm.response.headers.get('content-type')).to.include('application/problem+json');",
+                  "});",
+                  "const problem = pm.response.json();",
+                  "pm.test('has the RFC-9457 shape', () => {",
+                  "  pm.expect(problem.title).to.eql('Not Found');",
+                  "  pm.expect(problem.status).to.eql(404);",
+                  "  pm.expect(problem.code).to.eql('not_found');",
+                  "  pm.expect(problem.detail).to.include('no-such-agent');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invoke with an invalid body (422)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prompt\": \"input is the required field, prompt is not a field at all\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/agents/{{agent_name}}:invoke",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "agents", "{{agent_name}}:invoke"]
+            },
+            "description": "The request model requires `input` and forbids extra fields, so this body fails validation twice over.\n\nThe response summarises which fields failed but deliberately never echoes the submitted values back."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('422 Unprocessable Entity', () => pm.response.to.have.status(422));",
+                  "pm.test('is problem+json', () => {",
+                  "  pm.expect(pm.response.headers.get('content-type')).to.include('application/problem+json');",
+                  "});",
+                  "const problem = pm.response.json();",
+                  "pm.test('has the RFC-9457 shape', () => {",
+                  "  pm.expect(problem.title).to.eql('Unprocessable Entity');",
+                  "  pm.expect(problem.status).to.eql(422);",
+                  "  pm.expect(problem.code).to.eql('invalid_request');",
+                  "  pm.expect(problem.detail).to.include('body.input');",
+                  "});",
+                  "pm.test('does not echo the submitted value back', () => {",
+                  "  pm.expect(pm.response.text()).to.not.include('not a field at all');",
+                  "});"
+                ]
+              }
+            }
+          ]
         }
-      }
+      ]
     }
   ]
 }

@@ -30,22 +30,27 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && apt-get update && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# Install the packages. Copy only pyprojects first so the dependency layer caches across
-# source edits, then the sources.
-COPY packages/agentship-core/pyproject.toml packages/agentship-core/
-COPY packages/agentship-langgraph/pyproject.toml packages/agentship-langgraph/
-COPY packages/agentship-service/pyproject.toml packages/agentship-service/
-COPY packages/agentship-cli/pyproject.toml packages/agentship-cli/
+# The packages, plus the example agents the image serves by default.
 COPY packages/ packages/
 COPY examples/ agents/
 
+# Install every package in one resolver pass so the sibling `agentship-core` requirements
+# resolve to these local copies instead of PyPI. The extras are the ones the shipped
+# agents/ specs and a real deployment need:
+#   core[postgres] + langgraph[postgres] — the Postgres checkpointer behind
+#       AGENT_SESSION_STORE_URI, so runs are crash-durable and resumable.
+#   langgraph[mcp]                       — the MCP tool client (this is what the Node.js
+#       install above exists for).
+#   langgraph[autonomous]                — deepagents, needed by agents/autonomous.yaml;
+#       without it `serve`'s doctor gate rejects that spec and the container never binds.
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --upgrade pip \
     && pip install \
-        ./packages/agentship-core \
-        ./packages/agentship-langgraph \
+        './packages/agentship-core[postgres]' \
+        './packages/agentship-langgraph[postgres,mcp,autonomous]' \
         ./packages/agentship-service \
-        ./packages/agentship-cli
+        ./packages/agentship-cli \
+        ./packages/agentship-observability
 
 # Run as a non-root user.
 RUN useradd --create-home --shell /bin/bash app && chown -R app:app /app
