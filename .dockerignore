@@ -1,0 +1,18 @@
+# The image serves agents/ only. Everything below is dev-time or test-time and would
+# only bloat the build context (which is the workspace root — see docker-compose.yml).
+**/.venv/
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/.ruff_cache/
+**/.git/
+**/tests/
+**/cassettes/
+**/site/
+**/docs/
+**/.spec-dev/
+**/*.egg-info/
+tools.log
+
+# Never ship real credentials into the image — they come from the environment.
+**/.env

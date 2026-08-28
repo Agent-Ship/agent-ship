@@ -1,0 +1,61 @@
+# Run the demo app as a container you can talk to from outside.
+#
+#   make docker-up      # build + start; API on http://localhost:7005
+#   make docker-logs    # follow the logs
+#   make docker-down    # stop
+#
+# Two services: the demo app, and a Postgres so the durable agents (hitl/, triage/) keep
+# their checkpoints across a restart instead of falling back to an in-memory saver.
+
+services:
+  demo:
+    build:
+      # The workspace root, NOT this directory — the image installs AgentShip from the
+      # sibling ../agentship checkout because it is not on PyPI yet. See Dockerfile.
+      context: ..
+      dockerfile: agentship-demo/Dockerfile
+    ports:
+      # 7005, not the old repo's 7001: that port is still held by the retired agent-ship
+      # containers, and two checkouts fighting over one port is a confusing failure.
+      - "7005:7005"
+    environment:
+      - PORT=7005
+      - AGENTSHIP_AGENTS_DIR=/app/agents
+      - AGENTSHIP_AUTH_PROVIDER=api_key
+      # Two dev keys on purpose: `dev` can do anything so the quickstart curl works, and
+      # `dev-no-scope` is a VALID credential with no invoke scope, so you can see the
+      # difference between 401 (not authenticated) and 403 (authenticated, not allowed).
+      # Replace both for anything beyond local dev.
+      - AGENTSHIP_API_KEYS=[{"key":"dev","user":"dev","tenant":"dev","scopes":["*"]},{"key":"dev-no-scope","user":"reader","tenant":"dev","scopes":["agent:none:read"]}]
+      # Durable checkpoints land in the Postgres below, so a restart resumes rather than restarts.
+      - AGENT_SESSION_STORE_URI=postgresql://demo:demo@postgres:5432/demo
+      # Model keys come from your .env — never baked into the image. Agents that need a key
+      # will fail at call time without one; the echo-engine agents work regardless.
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: demo
+      POSTGRES_PASSWORD: demo
+      POSTGRES_DB: demo
+    ports:
+      # 5435 on the host: 5433 is the retired agent-ship checkout's, 5434 is the framework
+      # repo's. Each checkout gets its own so they can all run at once.
+      - "5435:5432"
+    volumes:
+      - demo_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U demo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  demo_postgres_data:

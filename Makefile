@@ -13,7 +13,7 @@ VENV := .venv
 PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
 
-.PHONY: install test test-live record demo demo-multiagent demo-observability demo-service ask run ui clean
+.PHONY: install test test-live record demo demo-multiagent demo-observability demo-service ask run ui docker-build docker-up docker-down docker-logs docker-reload clean
 
 ## install: create .venv and install the framework editable-local + test tooling
 install:
@@ -62,6 +62,37 @@ demo-observability:
 ##   Needs NO key — the served agent runs on the echo engine.
 demo-service:
 	$(PY) demos/serve_and_call.py
+
+## docker-up: run the demo as a CONTAINER you can call from outside (API on :7005).
+##   Builds the image (AgentShip installed as a package, demo agents copied in) and starts
+##   it with a Postgres so durable agents keep their checkpoints across a restart.
+##   Model keys are read from your .env; the echo-engine agents work without any key.
+docker-up:
+	docker compose up -d --build
+	@echo ""
+	@echo "  API      http://localhost:7005"
+	@echo "  Swagger  http://localhost:7005/docs"
+	@echo "  Health   curl http://localhost:7005/healthz"
+	@echo "  Agents   curl -H 'Authorization: Bearer dev' http://localhost:7005/v1/agents"
+	@echo ""
+
+## docker-down: stop the containers (the Postgres volume survives).
+docker-down:
+	docker compose down
+
+## docker-logs: follow the demo container's logs.
+docker-logs:
+	docker compose logs -f demo
+
+## docker-build: rebuild the image without starting anything.
+docker-build:
+	DOCKER_BUILDKIT=1 docker compose build
+
+## docker-reload: hard reload — rebuild the image and restart everything.
+docker-reload:
+	docker compose down
+	DOCKER_BUILDKIT=1 docker compose build
+	docker compose up -d
 
 ## ask: give the multi-agent panel YOUR OWN task; watch each sub-agent get called live
 ##   and see the final merged response. Needs a real OPENAI_API_KEY.
