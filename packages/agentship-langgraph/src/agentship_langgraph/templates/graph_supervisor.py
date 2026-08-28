@@ -33,6 +33,7 @@ from langgraph.graph.message import add_messages
 from langgraph.types import interrupt
 from typing_extensions import TypedDict
 
+from .. import models
 from ..agent import LangGraphAgent
 from .graph_config import ClassifyConfig, GraphConfig, RouteEntry
 
@@ -80,8 +81,14 @@ def _user_text(state: SupervisorState) -> str:
     return state["messages"][-1].content
 
 
-def make_classify(model: BaseChatModel, cfg: GraphConfig):
-    """The single LLM node: label the request as one of the configured intents (else ``None``)."""
+def make_classify(agent_model: BaseChatModel, cfg: GraphConfig):
+    """The single LLM node: label the request as one of the configured intents (else ``None``).
+
+    Runs on ``cfg.classify.model`` — that is the point of the field: label the request with a
+    cheap model, let the specialists answer on a strong one. Falls back to ``agent_model`` only
+    when the config leaves it blank.
+    """
+    model = models.resolve_model(cfg.classify.model) if cfg.classify.model else agent_model
 
     async def classify(state: SupervisorState) -> dict:
         intents = ", ".join(cfg.classify.intents)
@@ -243,9 +250,10 @@ def build_supervisor_graph(
 
     The single graph builder shared by both authoring paths: the ``code:`` factory
     (:class:`SupervisorAgent`) and the declarative ``members:`` path (the ``graph`` template). Given
-    the engine-wired ``model``, the parsed :class:`GraphConfig`, and a ``{name: agent}`` dict of
-    specialist sub-agents, it wires the nodes (built by the ``make_*`` factories above) into the
-    design §4 C1 topology and returns the uncompiled graph for the engine to compile.
+    the engine-wired ``model`` (the fallback for ``classify``), the parsed :class:`GraphConfig`, and
+    a ``{name: agent}`` dict of specialist sub-agents, it wires the nodes (built by the ``make_*``
+    factories above) into the design §4 C1 topology and returns the uncompiled graph for the engine
+    to compile.
     """
     g = StateGraph(SupervisorState)
     g.add_node("classify", make_classify(model, config))

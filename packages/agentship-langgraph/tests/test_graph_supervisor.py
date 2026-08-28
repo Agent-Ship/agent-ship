@@ -127,3 +127,51 @@ async def test_supervisor_routes_and_answers_end_to_end(monkeypatch):
 
     # The billing specialist (an echo agent) handled it — its echo is in the answer.
     assert "echo: I have a billing question" in result.output
+
+
+# ---- classify model routing (P02 · C5 wiring) -------------------------------------------------
+
+_CHEAP_CLASSIFY_CFG = GraphConfig.model_validate(
+    {
+        # Deliberately different from the supervisor's own model below, so a test can tell
+        # which one the classify node actually ran on.
+        "classify": {"model": "openai/gpt-4o-mini", "intents": ["billing", "general"]},
+        "routing": {
+            "billing": {"specialists": ["billing_specialist"], "strategy": "single"},
+            "general": {"specialists": ["faq_specialist"], "strategy": "single"},
+            "_default": {"specialists": ["faq_specialist"], "strategy": "single"},
+        },
+        "conflict_resolver": {"priority": ["billing_specialist", "faq_specialist"]},
+    }
+)
+
+
+async def test_classify_runs_on_the_configured_classify_model(monkeypatch):
+    """The classify node uses ``cfg.classify.model``, not the supervisor's own model.
+
+    This is the point of a cheap-classifier setup: label the request with a small model,
+    then let the specialists answer on a strong one. Before this wiring, ``classify.model``
+    was accepted by the config and then silently ignored — the node reused whatever model
+    the engine had wired for the agent.
+    """
+    built: list[str] = []
+
+    def _fake_resolve(model_id: str, **params):
+        built.append(model_id)
+        return FakeListChatModel(responses=["billing"])
+
+    monkeypatch.setattr(models_module, "resolve_model", _fake_resolve)
+
+    specialists = {
+        "billing_specialist": build_agent(AgentSpec(name="billing_specialist", engine="echo")),
+        "faq_specialist": build_agent(AgentSpec(name="faq_specialist", engine="echo")),
+    }
+    spec = AgentSpec(name="triage", engine="langgraph", model="openai/gpt-4o")
+    supervisor = SupervisorAgent(spec, config=_CHEAP_CLASSIFY_CFG, specialists=specialists)
+
+    engine = LangGraphEngine()
+    engine.build(spec, supervisor)
+
+    # The cheap classify model was resolved, and it is not the supervisor's model.
+    assert "openai/gpt-4o-mini" in built
+    assert _CHEAP_CLASSIFY_CFG.classify.model != spec.model
