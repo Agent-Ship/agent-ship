@@ -1,15 +1,15 @@
 """The LangGraph engine — AgentShip's default single-agent, real-model engine.
 
 :class:`LangGraphEngine` compiles an :class:`~agentship.spec.AgentSpec` into a
-minimal LangGraph graph: one node that sends ``[system prompt, user input]`` to a
-LiteLLM-backed chat model and returns its answer. It honestly declares only what
-this minimal graph delivers today — ``streaming`` and the LiteLLM ``providers``
-it reaches. **Everything else stays off.** The graph does not yet bind tools
-(``tool_calling`` — phase 03), validate a structured target
-(``structured_output`` — phase 04), coordinate members (``multi_agent``), or
-checkpoint (``durability``); declaring those before they are built would be the
-exact over-claim the conformance matrix exists to catch (*declare, don't fake*),
-so they remain off until their phases land and their conformance cells pass.
+LangGraph graph: by default one node that sends ``[system prompt, user input]`` to
+a LiteLLM-backed chat model and returns its answer, and — via templates, custom
+``build_graph`` authoring, or a declarative ``members:`` team — richer graphs. It
+honestly declares what it delivers today: ``streaming``, the LiteLLM ``providers``
+it reaches, ``durability="checkpoint"``, ``tool_calling``, ``multi_agent``, and
+``hitl="interrupt"``. Structured output is **not** yet built, so it stays off;
+declaring it before it works would be the exact over-claim the conformance matrix
+exists to catch (*declare, don't fake*), so it remains off until its phase lands
+and its conformance cell passes.
 
 **Model injection.** The chat model is resolved through
 :func:`agentship_langgraph.models.resolve_model` (referenced via the module, not imported by
@@ -150,14 +150,16 @@ class _CompiledAgent:
 class LangGraphEngine(Engine):
     """AgentShip's default engine — a single-agent LangGraph graph over LiteLLM.
 
-    Declares what this graph honestly delivers today: ``streaming``, the LiteLLM
-    ``providers`` it can reach, and — as of Phase 02 — ``durability="checkpoint"``
-    (per-node checkpoints via a LangGraph saver, so a crashed run resumes to an
-    identical result through :meth:`resume`). Tool calling, structured output, and
-    multi-agent coordination are still **not** implemented by this single-node graph,
-    so they stay off (``tool_calling=False``, ``structured_output="none"``,
-    ``multi_agent=False``) — the capability gate rejects any spec that asks for them
-    until their phases build them. The model is resolved via
+    Declares what the engine honestly delivers today: ``streaming``, the LiteLLM
+    ``providers`` it can reach, ``durability="checkpoint"`` (per-node checkpoints via
+    a LangGraph saver, so a crashed run resumes to an identical result through
+    :meth:`resume`), ``tool_calling`` (declared tools/MCP servers are resolved and
+    bound into the graph), ``multi_agent`` (a declarative ``members:`` spec compiles
+    a real supervisor team), and ``hitl="interrupt"`` (a durable graph node may call
+    ``interrupt()`` to pause for human approval and be resumed with the decision).
+    Structured output remains **not** implemented, so it stays off
+    (``structured_output="none"``) and the capability gate rejects any spec that asks
+    for it. The model is resolved via
     :func:`agentship_langgraph.models.resolve_model`, which offline tests monkeypatch
     to inject a fake chat model.
     """
@@ -169,6 +171,7 @@ class LangGraphEngine(Engine):
         durability="checkpoint",
         multi_agent=True,
         tool_calling=True,
+        hitl="interrupt",
     )
 
     def build(self, spec: AgentSpec, authored: object = None) -> _CompiledAgent:

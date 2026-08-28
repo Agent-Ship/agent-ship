@@ -10,16 +10,65 @@ from __future__ import annotations
 
 import json
 
+import agentship_langgraph.models as models_module
 from agentship.context import Caller, RunContext, RunMode, current_run
 from agentship.spec import AgentSpec
 from agentship.tools import Tool
 from agentship_langgraph.engine import LangGraphEngine
 from agentship_langgraph.tools import to_langchain_tool
-from pydantic import BaseModel
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import AIMessage
+from langchain_core.outputs import ChatGeneration, ChatResult
+from pydantic import BaseModel, Field
 
 
 class _BumpArgs(BaseModel):
     label: str
+
+
+class _BoomArgs(BaseModel):
+    """Arguments of the ``boom`` tool below — one string, so the model can call it."""
+
+    label: str
+
+
+def _explode(label: str) -> str:
+    """Always raise, standing in for a tool whose backing service is down."""
+    raise RuntimeError(f"upstream service refused {label}")
+
+
+#: A tool that always raises, referenced from a spec as ``test_tool_execution:boom`` so the failure
+#: travels the real resolve → bind → tool-node path rather than a hand-built wrapper.
+boom = Tool("boom", "always fails", _explode, args_schema=_BoomArgs)
+
+
+class ScriptedModel(BaseChatModel):
+    """A fake chat model that replays scripted replies and records the messages it was sent.
+
+    Lets an offline test drive a real ``create_react_agent`` loop: the script's first entry asks for
+    tool calls, the last one answers. ``seen`` keeps every prompt the loop handed the model, so a
+    test can assert what the model could actually read — for example the tool error message that
+    came back after a tool raised.
+    """
+
+    script: list = Field(default_factory=list)
+    seen: list = Field(default_factory=list)
+    model: str = "openai/gpt-4o-mini"
+
+    @property
+    def _llm_type(self) -> str:
+        """LangChain's model-type tag; unused here but required by the base class."""
+        return "scripted"
+
+    def bind_tools(self, tools, **kwargs):
+        """Accept the bound tools and return itself — the script decides which tool is called."""
+        return self
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
+        """Record the incoming messages and return the next scripted reply."""
+        self.seen.append(list(messages))
+        reply = self.script[min(len(self.seen) - 1, len(self.script) - 1)]
+        return ChatResult(generations=[ChatGeneration(message=reply)])
 
 
 def _ctx(thread: str) -> RunContext:
@@ -200,3 +249,48 @@ def test_allowed_tools_filters_the_bound_set():
         name="a", engine="langgraph", model="x", tools=["calculator"], allowed_tools=["other"]
     )
     assert LangGraphEngine()._resolve_tools(drop) == []
+
+
+async def test_a_raising_tool_becomes_a_tool_message_the_model_can_recover_from(monkeypatch):
+    """A tool that raises does not crash the turn — the model sees the error and still answers.
+
+    Drives the real ``single`` template loop with a scripted model: call ``boom`` (which raises),
+    then answer. The turn must complete, and the failure must reach the model as a tool message
+    naming the tool and the error, so it can apologise or try something else.
+    """
+    answer = AIMessage(content="The boom tool is unavailable right now.")
+    asks_for_boom = AIMessage(
+        content="", tool_calls=[{"name": "boom", "args": {"label": "x"}, "id": "call_1"}]
+    )
+    model = ScriptedModel(script=[asks_for_boom, answer])
+    monkeypatch.setattr(models_module, "resolve_model", lambda *a, **k: model)
+
+    spec = AgentSpec(
+        name="a",
+        engine="langgraph",
+        template="single",
+        model="x",
+        tools=["test_tool_execution:boom"],
+    )
+    engine = LangGraphEngine()
+    result = await engine.run(engine.build(spec), "use the boom tool", _ctx("tool-error-thread"))
+
+    assert result.output == "The boom tool is unavailable right now."
+    second_prompt = model.seen[1]
+    tool_messages = [m for m in second_prompt if m.type == "tool"]
+    assert tool_messages, "the model never saw a tool message for the failed call"
+    text = str(tool_messages[-1].content)
+    assert "boom" in text and "upstream service refused" in text, (
+        f"the tool error did not reach the model in a usable form: {text!r}"
+    )
+
+
+async def test_a_raising_tool_reports_the_failure_when_invoked_directly():
+    """Invoked outside the ReAct loop, a failing tool still returns an error string, not a raise.
+
+    The tool-calling loop is not the only caller — a supervisor or a custom graph may invoke a
+    bound tool directly — so the graceful degradation lives in the wrapper itself.
+    """
+    lc = to_langchain_tool(boom)
+    out = await lc.ainvoke({"label": "x"})
+    assert "boom" in str(out) and "upstream service refused" in str(out)

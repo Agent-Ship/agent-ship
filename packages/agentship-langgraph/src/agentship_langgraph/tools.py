@@ -77,6 +77,15 @@ class _ToolInvocation:
         return f"(idempotency) a prior '{self._tool.name}' call may have completed; not re-run"
 
 
+def tool_error_message(name: str, exc: Exception) -> str:
+    """The text a failed tool sends back to the model — the tool's name, error type, and message.
+
+    Kept to one plain sentence naming all three because this string *is* the model's only view of
+    the failure: it has to be enough to decide whether to retry, use another tool, or apologise.
+    """
+    return f"tool {name!r} failed: {type(exc).__name__}: {exc}"
+
+
 def to_langchain_tool(tool: Tool, *, confirm_writes: bool = False) -> StructuredTool:
     """Wrap a core :class:`~agentship.tools.Tool` as a LangChain ``StructuredTool``.
 
@@ -91,25 +100,45 @@ def to_langchain_tool(tool: Tool, *, confirm_writes: bool = False) -> Structured
     - **Exactly-once** (Phase 03 · C4): execution goes through
       :func:`~agentship.primitives.idempotency.call_once` keyed by ``idem_key(thread_id, "tool",
       name, args)`` so a resumed run replays the recorded result instead of re-firing.
+
+    A tool that raises returns :func:`tool_error_message` instead of propagating, so one broken
+    tool degrades to something the model can read and recover from rather than crashing the turn.
     """
 
     async def _run(**kwargs: object) -> str:
-        """Async coroutine LangChain invokes — delegates to the core tool's ``run``."""
-        if not tool.side_effecting:
-            return await tool.run(**kwargs)
-        if confirm_writes:
-            from langgraph.types import interrupt
+        """Async coroutine LangChain invokes — delegates to the core tool's ``run``.
 
-            _tool_logger.info("HITL: pausing before write %r — awaiting human approval", tool.name)
-            decision = interrupt({"action": "confirm_write", "tool": tool.name, "args": kwargs})
-            if not (isinstance(decision, dict) and decision.get("approved")):
-                _tool_logger.warning("HITL: write %r rejected — not executed", tool.name)
-                return f"the write to {tool.name!r} was rejected by the human and was not executed"
-        thread_id = get_run_context().session_id
-        key = idem_key(thread_id, "tool", tool.name, kwargs)
-        _tool_logger.debug("running %r with idempotency guard (key=%s)", tool.name, key)
-        return await call_once(_TOOL_LEDGER, key, _ToolInvocation(tool, dict(kwargs)),
-                               idempotent=False)
+        Any failure inside the tool becomes an error *string* (the model's next prompt), never an
+        exception; LangGraph's own control-flow signals (``interrupt()`` and friends, which subclass
+        ``GraphBubbleUp``) are re-raised untouched so the HITL pause still works.
+        """
+        from langgraph.errors import GraphBubbleUp
+
+        try:
+            if not tool.side_effecting:
+                return await tool.run(**kwargs)
+            if confirm_writes:
+                from langgraph.types import interrupt
+
+                _tool_logger.info("HITL: pausing before write %r — awaiting approval", tool.name)
+                decision = interrupt({"action": "confirm_write", "tool": tool.name, "args": kwargs})
+                if not (isinstance(decision, dict) and decision.get("approved")):
+                    _tool_logger.warning("HITL: write %r rejected — not executed", tool.name)
+                    return (
+                        f"the write to {tool.name!r} was rejected by the human "
+                        f"and was not executed"
+                    )
+            thread_id = get_run_context().session_id
+            key = idem_key(thread_id, "tool", tool.name, kwargs)
+            _tool_logger.debug("running %r with idempotency guard (key=%s)", tool.name, key)
+            return await call_once(_TOOL_LEDGER, key, _ToolInvocation(tool, dict(kwargs)),
+                                   idempotent=False)
+        except GraphBubbleUp:
+            raise
+        except Exception as exc:  # noqa: BLE001 — a tool is arbitrary code; any raise it makes
+            # is a tool failure the model should be told about, not a crashed turn.
+            _tool_logger.warning("tool %r failed: %s: %s", tool.name, type(exc).__name__, exc)
+            return tool_error_message(tool.name, exc)
 
     return StructuredTool.from_function(
         coroutine=_run,
