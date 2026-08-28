@@ -7,13 +7,13 @@ change.
 
 ## What it is
 
-- **A vendor-free `Observer` seam.** The kernel calls one tiny port —
+- **A vendor-free `Observer` seam.** The kernel calls one tiny seam —
   `agentship.observability.Observer` (`span()` / `start_span()` / `on_model()` /
   `current_trace_id()`) — and it never imports OpenTelemetry. The contract, the
   `SpanKind` / `Usage` value types, and the frozen `semconv` keys all live in
   `agentship-core`, so an engine or eval hook reads the tracing contract with
   nothing but the kernel installed. The concrete OTel implementation lives
-  behind the port in the separate `agentship-observability` package.
+  behind the seam in the separate `agentship-observability` package.
 - **The full trace tree.** One interaction is one trace: a root `agent` span
   (`SPAN_AGENT`) wrapping `node.<name>` → `model` → `tool.<name>` children, plus
   `guardrail.*` / `memory.*` spans. Each `model` span carries the OTel GenAI

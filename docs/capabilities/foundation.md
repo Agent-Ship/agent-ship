@@ -1,11 +1,11 @@
-# Foundation & contracts
+# Foundation & base classes
 
-The vendor-free kernel of AgentShip: the small, stable seams every later pillar builds on — an agent spec you write in YAML or Python, an identity context every turn carries, an engine port, a tool type, and a middleware seam — with no vendor SDK in the import path.
+The vendor-free kernel of AgentShip: the small, stable seams every later pillar builds on — an agent spec you write in YAML or Python, an identity context every turn carries, an `Engine` base class, a tool type, and a middleware seam — with no vendor SDK in the import path.
 
 ## What it is
 
 - **A vendor-free kernel.** Importing `agentship` pulls in Pydantic, PyYAML, and the stdlib — no LangGraph, LiteLLM, or `google-*`. Engines and other vendors are reached only through a registry, so core never imports an adapter (`test_packaging_isolation.py` guards this).
-- **The ports.** `RunContext` (`agentship.context`) is the per-turn identity bag — `caller`, `session_id`, `run_id`, `mode` — held in the `current_run` contextvar so concurrent turns never collide. `Engine` (`agentship.engines.base`) is the ABC every engine implements; it must declare an `EngineCapabilities`, so it can never fake a capability it hasn't built. `Middleware` (`agentship.middleware`) is the ordered cross-cutting seam with no-op `on_request`/`on_response`/`on_error` hooks.
+- **The seams.** `RunContext` (`agentship.context`) is the per-turn identity bag — `caller`, `session_id`, `run_id`, `mode` — held in the `current_run` contextvar so concurrent turns never collide. `Engine` (`agentship.engines.base`) is the ABC every engine implements; it must declare an `EngineCapabilities`, so it can never fake a capability it hasn't built. `Middleware` (`agentship.middleware`) is the ordered cross-cutting seam with no-op `on_request`/`on_response`/`on_error` hooks.
 - **The spec model.** `AgentSpec` (`agentship.spec`) is the declarative definition of an agent — engine, model, prompt, tools, members, streaming. It is `extra="forbid"`, so an unknown key is a loud error, and it fails fast on incoherent field combinations.
 - **The tool type.** `Tool` (`agentship.tools.tool`) is deliberately tiny — a name, a description, an optional Pydantic `args_schema`, and a callable. There is no base class to subclass; you build one by handing it a function.
 - **The registry.** `Registry[T]` (`agentship.registry`) is the one extension mechanism, populated by `importlib.metadata` entry points. The `ENGINES` instance holds every installed engine; a vendor ships a class plus one `[project.entry-points."agentship.engines"]` line and it becomes discoverable — no kernel edits.

@@ -92,7 +92,7 @@ against every registered engine, and an engine that declares support it does not
 
 ## One runnable example
 
-[`agentship-demo/agents/triage/`](../../../agentship-demo/agents/triage) ships the same team three
+`agentship-demo/agents/triage` ships the same team three
 ways, so you can see the trade-off directly:
 
 | File | Wiring | Use when |
@@ -123,4 +123,4 @@ tested.
 checkpointing and human-in-the-loop live in [checkpointing-and-hitl.md](checkpointing-and-hitl.md),
 and crash recovery in [durable-resume.md](durable-resume.md).
 
-Authoritative status: [`.spec-dev/STATUS.md`](../../../.spec-dev/STATUS.md).
+Authoritative status: `.spec-dev/STATUS.md`.

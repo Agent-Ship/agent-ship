@@ -113,4 +113,4 @@ rather than a passthrough of the library's config.
   yet shows one agent using both *in the same turn*, which is the claim this page makes in
   its first paragraph.
 
-Authoritative status: [`.spec-dev/STATUS.md`](../../../.spec-dev/STATUS.md).
+Authoritative status: `.spec-dev/STATUS.md`.

@@ -11,8 +11,8 @@ remote agents as if they were in-process — one call site, either side of the w
   `message/send` and `message/stream`. Non-exposed (Layer 0) agents are 404 on
   the wire — they never leak onto the network.
 - **Call remote agents transparently.** A member declared with an `a2a:` block
-  resolves to a `RemoteA2aAgent` that satisfies the same `Specialist.send` port
-  as an in-process `LocalSpecialist`, so a supervisor's `kit.specialist(name)`
+  resolves to a `RemoteA2aAgent` that satisfies the same `Specialist.send` seam
+  as an in-process `LocalSpecialist`, so a supervisor's `specialist(name)`
   call reads identically whichever side of the wire the specialist lives on.
 - **Conformance-guarded wire models.** We keep thin, vendor-free Pydantic wire
   models (`agentship.a2a.models` — `AgentCard`, `Message`, `JsonRpcRequest`)
@@ -85,5 +85,5 @@ engine actually streams.
 
 🟨 in-flight, 15/24. Core A2A done (39 tests). Open: gateway fallback decision
 doc; task-bridge + push BLOCKED on P11's `on_state_change` hook;
-`kit.specialist()` wrapper; ADK `to_a2a()` mount; virtual-MCP parity.
+`specialist()` helper; ADK `to_a2a()` mount; virtual-MCP parity.
 Authoritative status: `.spec-dev/STATUS.md`.

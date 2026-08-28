@@ -72,4 +72,4 @@ capability page for checkpointing says the same thing — it is a genuine limit,
 So: the seam works and is tested, the end-to-end guarantee is not yet proven. This is the single
 most important missing proof in the project, and it is tracked as known-gap #1.
 
-Authoritative status: [`.spec-dev/STATUS.md`](../../../.spec-dev/STATUS.md).
+Authoritative status: `.spec-dev/STATUS.md`.

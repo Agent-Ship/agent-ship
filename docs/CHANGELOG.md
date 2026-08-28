@@ -139,4 +139,4 @@ number. The mapping for the headings in this file:
 | P05 | Agent gateway | **18** A2A Core · **19** A2A Push |
 | P07 | Observability | **05** Observability |
 
-Full crosswalk and the authoritative board: [`.spec-dev/STATUS.md`](../../.spec-dev/STATUS.md).
+Full crosswalk and the authoritative board: `.spec-dev/STATUS.md`.

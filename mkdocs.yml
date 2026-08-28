@@ -1,0 +1,88 @@
+# AgentShip documentation site.
+#
+# The old repo served Sphinx docs at localhost:7001/docs. This is the same idea, on MkDocs
+# instead: our docs are already Markdown, so MkDocs renders them directly with no .rst
+# conversion step. The files under docs/ stay readable in an editor and on GitHub — the site
+# is a view over them, never a separate copy.
+#
+#   make docs-serve   # live-reload at http://localhost:8000
+#   make docs-build   # static HTML into site/
+
+site_name: AgentShip
+site_description: A thin, vendor-free contract over best-of-breed agent libraries.
+docs_dir: docs
+site_dir: site
+use_directory_urls: false
+
+theme:
+  name: material
+  palette:
+    # Light/dark toggle — the site follows the reader, not our preference.
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: teal
+      toggle: {icon: material/weather-night, name: Switch to dark mode}
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: teal
+      toggle: {icon: material/weather-sunny, name: Switch to light mode}
+  features:
+    - navigation.instant     # no full page reload between docs
+    - navigation.sections    # capabilities/decisions render as titled groups
+    - navigation.top
+    - content.code.copy      # every YAML/python block gets a copy button
+    - search.highlight
+    - toc.follow
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc: {permalink: true}
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight: {anchor_linenums: true}
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed: {alternate_style: true}
+
+plugins:
+  - search
+  - exclude:
+      glob:
+        - decisions/_TEMPLATE.md
+
+# Explicit nav, in the order a newcomer should read it: what it is, then one page per
+# capability in phase order, then the decisions behind them.
+nav:
+  - Overview: README.md
+  - Capabilities:
+      - Foundation & base classes: capabilities/foundation.md
+      - Engine & agent: capabilities/engine-and-agent.md
+      - Multi-agent supervisors: capabilities/multi-agent.md
+      - Checkpointing & HITL: capabilities/checkpointing-and-hitl.md
+      - Tools & MCP: capabilities/tools-and-mcp.md
+      - Observability: capabilities/observability.md
+      - Service & security: capabilities/service-and-security.md
+      - Durable resume: capabilities/durable-resume.md
+      - Agent gateway / A2A: capabilities/agent-gateway-a2a.md
+      - Verify & conformance: capabilities/verify-and-conformance.md
+  - Decisions:
+      - "0001 — Integrate, don't reinvent": decisions/0001-integrate-not-invent.md
+      - "0002 — Plain StateGraph supervisor": decisions/0002-plain-stategraph-supervisor.md
+      - "0003 — LangGraph checkpointer substrate": decisions/0003-langgraph-checkpointer-as-the-durability-substrate.md
+      - "0004 — Consume langchain-mcp-adapters": decisions/0004-consume-langchain-mcp-adapters.md
+  - Changelog: CHANGELOG.md
+
+# Fail the build on a broken internal link or a page missing from nav, so a dead link is
+# caught here rather than by a reader. This is the automated docs check the repo lacked.
+strict: true
+validation:
+  nav:
+    omitted_files: warn
+    not_found: warn
+  links:
+    not_found: warn
+    absolute_links: ignore
+    unrecognized_links: warn

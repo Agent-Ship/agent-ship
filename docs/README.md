@@ -8,10 +8,10 @@ The authoritative delivery board is `.spec-dev/STATUS.md`.
 ## Layout
 
 - [`CHANGELOG.md`](CHANGELOG.md) — user-facing changes, grouped by delivery phase.
-- [`capabilities/`](capabilities/) — one page per shipped capability: what it does, how to use it, a
+- [`capabilities/`](capabilities/foundation.md) — one page per shipped capability: what it does, how to use it, a
   runnable example, and its honest status.
-- [`decisions/`](decisions/) — Architecture Decision Records. Start from
-  [`_TEMPLATE.md`](decisions/_TEMPLATE.md) for a new one.
+- [`decisions/`](decisions/0001-integrate-not-invent.md) — Architecture Decision Records. Start from
+  `docs/decisions/_TEMPLATE.md` for a new one.
 
 ## Capabilities
 

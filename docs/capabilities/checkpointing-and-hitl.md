@@ -94,7 +94,7 @@ does not change.
 
 ## One runnable example
 
-[`agentship-demo/agents/hitl/agent.yaml`](../../../agentship-demo/agents/hitl/agent.yaml) — a
+`agentship-demo/agents/hitl/agent.yaml` — a
 note-taker whose `save_note` tool pauses for approval:
 
 ```
@@ -125,4 +125,4 @@ while holding a thread, and a second worker picking it up.
 [durable-resume.md](durable-resume.md). This page gives you the checkpoints; P11 is what drives
 them back to life automatically.
 
-Authoritative status: [`.spec-dev/STATUS.md`](../../../.spec-dev/STATUS.md).
+Authoritative status: `.spec-dev/STATUS.md`.
