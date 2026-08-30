@@ -107,10 +107,11 @@ INPUT ?=
 run:
 	$(VENV)/bin/agentship run agents/assistant.yaml --input "$(if $(INPUT),$(INPUT),Give one productivity tip.)"
 
-## ui: open a browser chat to drive ANY agent — pick one and send a request. Real agents chat
-##   and research on demand; the note-taker pauses for write approval (reply yes/no). No script.
-##   Needs a real OPENAI_API_KEY; FIRECRAWL_API_KEY (free, firecrawl.dev) optional for real
-##   web search + page scraping.
+## ui: open a browser chat that drives the RUNNING SERVICE over HTTP — nothing runs in-process.
+##   The agent picker is the service's own `GET /v1/agents`; a turn is `:stream` or `:invoke`;
+##   a paused run is continued with `:resume`; a 401/403 is shown as its problem+json.
+##   REQUIRES the service to be up first: `make docker-up` (http://localhost:7005).
+##   Override with AGENTSHIP_BASE_URL / AGENTSHIP_API_KEY (defaults: that URL and the `dev` key).
 ui:
 	$(PY) demos/chat_ui.py
 

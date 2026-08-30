@@ -1,23 +1,27 @@
 """Offline proof of the chat UI's plumbing — the machinery ``demos/chat_ui.py`` owns.
 
-The browser app is a thin shell around one async handler, ``respond(message, history,
-agent_label, state)``. These tests drive that handler and its helpers directly — no browser — to
-pin the three things the UI is responsible for:
+The UI is a thin browser shell over one async handler, ``respond(message, history, agent,
+live_tokens, state)``, which talks to a running AgentShip service over HTTP. These tests drive
+that handler and its helpers against a **stubbed transport** — no browser, no server, no key — to
+pin what the UI is responsible for:
 
-* it runs a **real** agent and keeps ONE ``session_id`` across turns (so durable agents remember);
-* it holds a pending resume token between turns and feeds a yes/no reply back into the agent's
-  ``interrupt()`` as the right resume value (``{"approved": bool}`` for a confirm-before-write);
-* a build/run failure is shown in the chat, not crashed.
+* the agent picker comes from ``GET /v1/agents``, and an unreachable service is *said out loud*
+  rather than silently replaced by a hardcoded list or an in-process run;
+* one ``session_id`` is kept across turns (so durable agents remember) and reminted on switch;
+* SSE ``:stream`` frames are rendered as they arrive, with their types and ``seq`` in the trace;
+* a paused turn's ``resume_token`` is held and the next reply goes to ``:resume`` on the same
+  session, with yes/no mapped to ``{"approved": bool}`` and other text passed through;
+* a ``problem+json`` error is shown as its ``detail`` and ``code``, not as a stack trace.
 
-The agent's own model behaviour is exercised live in ``test_deep_research`` and the slice tests;
-here everything is offline (a fake chat model, or a fake agent) so it stays deterministic.
+The stub is an ``httpx.MockTransport`` installed over ``httpx.Client``/``AsyncClient``, so the
+real request-building, header, and SSE-decoding code paths run — only the socket is fake.
 """
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -26,141 +30,253 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-gr = pytest.importorskip("gradio", reason="the chat UI needs gradio (a dev dependency)")
+pytest.importorskip("gradio", reason="the chat UI needs gradio (a dev dependency)")
 
-import agentship_langgraph.models as models_module  # noqa: E402
-from langchain_core.language_models.fake_chat_models import FakeListChatModel  # noqa: E402
+import httpx  # noqa: E402
+
+import demos.chat_ui as chat_ui  # noqa: E402
+
+#: Two agent cards, the shape ``GET /v1/agents`` returns.
+CARDS = [
+    {"name": "assistant", "description": "a plain agent", "streaming": True, "capabilities": {}},
+    {"name": "note-taker", "description": "pauses first", "streaming": False, "capabilities": {}},
+]
+
+
+def sse_body(frames: list[dict]) -> str:
+    """Encode ``StreamEvent`` dicts the way sse-starlette frames them on the wire."""
+    return "".join(
+        f"event: {frame['type']}\r\ndata: {json.dumps(frame)}\r\n\r\n" for frame in frames
+    )
 
 
 @pytest.fixture
-def offline_env(monkeypatch):
-    """Open the UI's key gate and drop any Postgres store so runs stay in-memory and offline."""
-    monkeypatch.setenv("OPENAI_API_KEY", "test-key-so-the-ui-gate-opens")
-    monkeypatch.delenv("AGENT_SESSION_STORE_URI", raising=False)
+def service(monkeypatch):
+    """Install a fake AgentShip service over httpx and record every request the UI makes.
 
-
-def test_every_agent_in_the_picker_builds():
-    """Every YAML in the picker must build, so the dropdown never offers a broken entry.
-
-    Building resolves the spec, model, and tools but makes no model call, so this is offline. A
-    picker entry that needs external setup (an MCP server) is deliberately excluded from ``AGENTS``
-    — this test is what keeps that list honest.
+    Routes are registered per test by assigning to ``service.routes`` (keyed by the request path
+    plus, for POSTs, nothing else — the demo only ever hits one endpoint per path). The default
+    catalog route keeps the common case a one-liner.
     """
-    from agentship import build_agent
-    from demos.chat_ui import AGENTS
 
-    for label, path in AGENTS.items():
-        agent = build_agent(path)
-        assert agent.spec.name, f"{label} ({path}) built without a name"
+    class FakeService:
+        """A tiny recorder + router standing in for the real ``/v1`` surface."""
 
+        def __init__(self) -> None:
+            """Start with the catalog route wired and an empty request log."""
+            self.requests: list[httpx.Request] = []
+            self.routes = {"/v1/agents": httpx.Response(200, json=CARDS)}
 
-def test_resume_value_maps_confirm_write_and_passes_other_text_through():
-    """A yes/no reply to a write pause becomes ``{"approved": bool}``; other text passes through."""
-    from demos.chat_ui import _resume_value
+        def handle(self, request: httpx.Request) -> httpx.Response:
+            """Log the request and return the registered response (404 if none is registered)."""
+            self.requests.append(request)
+            return self.routes.get(
+                request.url.path, httpx.Response(404, json={"title": "Not Found", "status": 404})
+            )
 
-    write = {"action": "confirm_write", "tool": "save_note", "args": {"text": "buy milk"}}
-    assert _resume_value("yes", write) == {"approved": True}
-    assert _resume_value("no", write) == {"approved": False}
-    # A free-form (non confirm-write) interrupt gets the raw text, so the UI drives any interrupt.
-    assert _resume_value("use 3 sources", {"question": "How many sources?"}) == "use 3 sources"
+        def body(self, index: int) -> dict:
+            """The decoded JSON body of the n-th recorded request."""
+            return json.loads(self.requests[index].content)
 
-
-def test_pause_message_renders_a_write_approval_prompt():
-    """A confirm-write interrupt is rendered as a clear approve/reject prompt naming the tool."""
-    from demos.chat_ui import _pause_message
-
-    msg = _pause_message({"action": "confirm_write", "tool": "save_note", "args": {"text": "hi"}})
-    assert "Approve write" in msg
-    assert "save_note" in msg
-    assert "yes" in msg
-
-
-async def test_a_real_agent_answers_and_the_thread_is_stable_across_turns(offline_env, monkeypatch):
-    """respond() runs a real ReAct agent and reuses one session_id across turns (no per-turn reset).
-
-    Reusing the thread is exactly what gives a durable agent conversation memory; here a fake model
-    stands in for the LLM so the assertion is deterministic and offline.
-    """
-    from demos.chat_ui import _new_state, respond
-
-    fake = FakeListChatModel(responses=["Hello! How can I help?", "The sky is blue."])
-    monkeypatch.setattr(models_module, "resolve_model", lambda *a, **k: fake)
-    label = "assistant — plain single agent"
-    state = _new_state()
-
-    history, box, state, _ = await respond("hi", [], label, state)
-    assert box == "" and state["token"] is None
-    assert history[-1]["content"] == "Hello! How can I help?"
-    first_session = state["session_id"]
-    assert first_session, "a conversation thread should be opened on the first turn"
-
-    # A second turn on the same agent keeps the SAME thread — the source of conversation memory.
-    history, _, state, _ = await respond("why is the sky blue?", history, label, state)
-    assert state["session_id"] == first_session
-    assert history[-1]["content"] == "The sky is blue."
-
-
-async def test_ui_holds_the_token_then_resumes_a_paused_run(offline_env, monkeypatch):
-    """A paused run's token is held between turns and the next reply resumes it (UI plumbing only).
-
-    A fake agent stands in for the note-taker: its first run pauses with a confirm-write interrupt,
-    and ``engine.resume`` completes when approved. This pins that the UI carries the token across
-    turns and feeds the mapped ``{"approved": True}`` decision back in — no model, fully offline.
-    """
-    import demos.chat_ui as chat_ui
-    from demos.chat_ui import _new_state, respond
-
-    pause = SimpleNamespace(
-        interrupt={"action": "confirm_write", "tool": "save_note", "args": {"text": "buy milk"}},
-        resume_token="tok-123",
-        output=None,
+    fake = FakeService()
+    transport = httpx.MockTransport(fake.handle)
+    original_client, original_async = httpx.Client, httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx, "Client", lambda **kw: original_client(**{**kw, "transport": transport})
     )
-    done = SimpleNamespace(interrupt=None, resume_token=None, output="saved: buy milk")
-
-    class _FakeEngine:
-        """Stand-in engine whose ``resume`` asserts it got the approved decision + held token."""
-
-        async def resume(self, compiled, token, ctx, *, resume_value):
-            """Complete the paused run once the human approves the write."""
-            assert token == "tok-123"
-            assert resume_value == {"approved": True}
-            return done
-
-    async def _run(message, *, session_id=None):
-        """First (and only) run pauses for approval."""
-        return pause
-
-    fake_agent = SimpleNamespace(
-        spec=SimpleNamespace(name="note-taker"),
-        compiled=object(),
-        engine=_FakeEngine(),
-        run=_run,
+    monkeypatch.setattr(
+        httpx, "AsyncClient", lambda **kw: original_async(**{**kw, "transport": transport})
     )
-    monkeypatch.setattr(chat_ui, "build_agent", lambda path: fake_agent)
-    label = "note-taker — HITL: pauses for approval before a write"
-    state = _new_state()
+    monkeypatch.setenv("AGENTSHIP_BASE_URL", "http://service.test")
+    monkeypatch.setenv("AGENTSHIP_API_KEY", "test-key")
+    return fake
 
-    # Turn 1: the agent pauses for approval; the UI holds the resume token, nothing completes.
-    history, _, state, _ = await respond("save a note: buy milk", [], label, state)
-    assert state["token"] == "tok-123"
-    assert "Approve write" in history[-1]["content"]
 
-    # Turn 2: replying "yes" resumes the run to completion and clears the pending token.
-    history, _, state, _ = await respond("yes", history, label, state)
-    assert state["token"] is None
+async def drain(handler) -> tuple:
+    """Run ``respond``'s async generator to completion and return its last yielded tuple."""
+    last = None
+    async for value in handler:
+        last = value
+    return last
+
+
+def test_the_picker_is_the_services_catalog_and_carries_the_api_key(service):
+    """The dropdown is ``GET /v1/agents`` — the service's own list — sent with the bearer key."""
+    names, error = chat_ui.fetch_agent_names()
+
+    assert names == ["assistant", "note-taker"]
+    assert error is None
+    assert service.requests[0].url.path == "/v1/agents"
+    assert service.requests[0].headers["authorization"] == "Bearer test-key"
+
+
+def test_an_unreachable_service_is_said_out_loud_not_papered_over(monkeypatch):
+    """A dead service yields no agents and a message naming the URL — never a fallback list.
+
+    This is the whole point of the rewrite: the UI must not quietly run agents in-process when
+    the deployment it claims to demonstrate is not there.
+    """
+
+    def refuse(request: httpx.Request) -> httpx.Response:
+        """Every call fails to connect, as it would with nothing listening on the port."""
+        raise httpx.ConnectError("connection refused", request=request)
+
+    original = httpx.Client
+    transport = httpx.MockTransport(refuse)
+    monkeypatch.setattr(httpx, "Client", lambda **kw: original(**{**kw, "transport": transport}))
+    monkeypatch.setenv("AGENTSHIP_BASE_URL", "http://down.test")
+
+    names, error = chat_ui.fetch_agent_names()
+
+    assert names == []
+    assert "cannot reach the service at http://down.test" in error.lower()
+    assert "make docker-up" in error
+
+
+def test_a_401_is_shown_as_its_problem_json_detail_and_code(service):
+    """An auth failure renders the service's ``detail`` and ``code`` — its real behaviour."""
+    service.routes["/v1/agents"] = httpx.Response(
+        401,
+        json={
+            "type": "about:blank",
+            "title": "Unauthorized",
+            "status": 401,
+            "detail": "no API key — send it in the 'x-api-key' header",
+            "code": "no_credentials",
+            "trace_id": "abc123",
+        },
+    )
+
+    names, error = chat_ui.fetch_agent_names()
+
+    assert names == []
+    assert "Unauthorized" in error
+    assert "no API key" in error
+    assert "code: no_credentials" in error
+    assert "Traceback" not in error
+
+
+def test_resume_value_maps_yes_no_and_passes_other_text_through():
+    """A yes/no reply to a pause becomes ``{"approved": bool}``; other text passes through."""
+    assert chat_ui.resume_value_from_reply("yes") == {"approved": True}
+    assert chat_ui.resume_value_from_reply("no") == {"approved": False}
+    assert chat_ui.resume_value_from_reply("use 3 sources") == "use 3 sources"
+
+
+def test_a_pause_is_only_a_token_with_no_output():
+    """A durable turn that *finished* also returns a token, so the token alone is not a pause."""
+    assert chat_ui.is_paused({"output": None, "resume_token": {"engine": "langgraph"}})
+    assert not chat_ui.is_paused({"output": "done", "resume_token": {"engine": "langgraph"}})
+    assert not chat_ui.is_paused({"output": None, "resume_token": None})
+
+
+async def test_a_streamed_turn_renders_frames_and_traces_their_types_and_seq(service):
+    """``:stream`` tokens land in the transcript as they arrive and the trace names each frame."""
+    service.routes["/v1/agents/assistant:stream"] = httpx.Response(
+        200,
+        headers={"content-type": "text/event-stream"},
+        text=sse_body(
+            [
+                {"type": "session", "seq": 0, "data": {"session_id": "s1", "agent": "assistant"}},
+                {"type": "content", "seq": 1, "data": {"content": "Hello"}},
+                {"type": "content", "seq": 2, "data": {"content": ", world"}},
+                {"type": "done", "seq": 3, "data": {}},
+            ]
+        ),
+    )
+    state = chat_ui.new_state()
+
+    history, box, state, trace = await drain(
+        chat_ui.respond("hi", [], "assistant", True, state)
+    )
+
+    assert box == ""
+    assert history[-1]["content"] == "Hello, world"
+    assert "/v1/agents/assistant:stream" in trace
+    # The panel shows what the wire carried: every frame's type against its sequence number.
+    for expected in ("seq   0  session", "seq   1  content", "seq   3  done"):
+        assert expected in trace
+
+
+async def test_one_session_id_is_kept_across_turns_and_reminted_on_agent_switch(service):
+    """Durable memory depends on the thread: same agent keeps the session, a new agent starts one."""
+    service.routes["/v1/agents/assistant:invoke"] = httpx.Response(
+        200, json={"agent": "assistant", "session_id": "s1", "output": "hi", "resume_token": None}
+    )
+    service.routes["/v1/agents/note-taker:invoke"] = httpx.Response(
+        200, json={"agent": "note-taker", "session_id": "s2", "output": "ok", "resume_token": None}
+    )
+    state = chat_ui.new_state()
+
+    history, _, state, _ = await drain(chat_ui.respond("hi", [], "assistant", False, state))
+    first = state["session_id"]
+    assert first, "a conversation thread should be opened on the first turn"
+    assert history[-1]["content"] == "hi"
+
+    history, _, state, _ = await drain(chat_ui.respond("again", history, "assistant", False, state))
+    assert state["session_id"] == first
+    assert service.body(0)["session_id"] == first
+    assert service.body(1)["session_id"] == first
+
+    # Switching agent is a different conversation, so it must not reuse the old thread.
+    _, _, state, _ = await drain(chat_ui.respond("hello", history, "note-taker", False, state))
+    assert state["session_id"] != first
+
+
+async def test_a_paused_turn_is_held_then_resumed_on_the_same_session(service):
+    """A pause is shown, the token held, and the next reply goes to ``:resume`` with that token."""
+    token = {"engine": "langgraph", "blob": {"thread_id": "t1", "interrupt": True}}
+    service.routes["/v1/agents/note-taker:invoke"] = httpx.Response(
+        200,
+        json={"agent": "note-taker", "session_id": "s1", "output": None, "resume_token": token},
+    )
+    service.routes["/v1/agents/note-taker:resume"] = httpx.Response(
+        200,
+        json={
+            "agent": "note-taker",
+            "session_id": "s1",
+            "output": "saved: buy milk",
+            "resume_token": None,
+        },
+    )
+    state = chat_ui.new_state()
+
+    history, _, state, _ = await drain(
+        chat_ui.respond("save a note: buy milk", [], "note-taker", False, state)
+    )
+    assert state["resume_token"] == token
+    assert "paused" in history[-1]["content"].lower()
+    session_id = state["session_id"]
+
+    history, _, state, trace = await drain(
+        chat_ui.respond("yes", history, "note-taker", False, state)
+    )
+    resume_body = service.body(1)
+    assert service.requests[1].url.path == "/v1/agents/note-taker:resume"
+    assert resume_body["resume_token"] == token
+    assert resume_body["session_id"] == session_id, "a resume must replay the paused thread"
+    assert resume_body["resume_value"] == {"approved": True}
+    assert state["resume_token"] is None
     assert history[-1]["content"] == "saved: buy milk"
+    assert ":resume" in trace
 
 
-async def test_a_build_failure_is_shown_in_chat_not_crashed(offline_env, monkeypatch):
-    """If building/running an agent raises, the error is surfaced in the chat, not propagated."""
-    import demos.chat_ui as chat_ui
-    from demos.chat_ui import _new_state, respond
+async def test_a_failed_turn_is_shown_in_the_chat_not_raised(service):
+    """A 403 during a turn renders in the transcript and clears any stale pause, without crashing."""
+    service.routes["/v1/agents/assistant:invoke"] = httpx.Response(
+        403,
+        json={
+            "title": "Forbidden",
+            "status": 403,
+            "detail": "missing scope agent:assistant:invoke",
+            "code": "forbidden",
+        },
+    )
+    state = chat_ui.new_state()
 
-    def _boom(*a, **k):
-        raise RuntimeError("no MCP server running")
+    history, box, state, _ = await drain(chat_ui.respond("hi", [], "assistant", False, state))
 
-    monkeypatch.setattr(chat_ui, "build_agent", _boom)
-    label = next(iter(chat_ui.AGENTS))
-    history, box, state, _ = await respond("hello", [], label, _new_state())
-    assert box == "" and state["token"] is None
-    assert "RuntimeError" in history[-1]["content"] and "no MCP server" in history[-1]["content"]
+    assert box == "" and state["resume_token"] is None
+    assert "Forbidden" in history[-1]["content"]
+    assert "missing scope" in history[-1]["content"]
+    assert "code: forbidden" in history[-1]["content"]

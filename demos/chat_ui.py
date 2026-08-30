@@ -1,300 +1,369 @@
-"""A generic chat + debug UI for AgentShip — pick ANY agent, send input, watch it work.
+"""A browser chat that drives a RUNNING AgentShip service over HTTP — nothing runs in-process.
 
-This is the one interactive front door for the whole demo. It replaces per-demo driver scripts
-with a single Gradio app that can drive *any* agent in ``agents/``:
+This UI builds no agents. Every turn is an HTTP call to the ``/v1`` surface of a service you
+started separately, so what you see in the browser is exactly what any other caller gets:
 
-* real model-driven agents (``deep-research``, ``quick-search``, ``assistant``, ``calculator``)
-  hold a normal conversation and reach for a tool only when the model decides to — say "hi" to
-  deep-research and it just greets you; ask a real question and it researches;
-* the multi-agent supervisors (``triage``, ``triage panel``) classify, route, and fan out to
-  sub-agents — and the **Trace** panel shows that decision path (classify → route → dispatch →
-  resolve) live, so the routing is visible, not hidden behind a single chat bubble;
-* the ``note-taker`` (HITL) agent **pauses** before a write for your approval — the pause shows up
-  as a chat message and your next reply (**yes**/**no**) resumes the checkpointed run in-place.
+* the agent picker is ``GET /v1/agents`` — the service's own catalog, not a list in this file;
+* a turn is ``POST /v1/agents/{name}:stream`` (SSE frames rendered as they arrive) or
+  ``POST /v1/agents/{name}:invoke`` (one JSON reply);
+* a run that paused for a human is continued with ``POST /v1/agents/{name}:resume``, echoing the
+  ``resume_token`` back on the *same* ``session_id``;
+* an auth or validation failure comes back as ``application/problem+json`` and is shown in the
+  chat as its ``detail`` and ``code`` — the service's real answer, not a stack trace;
+* the Trace panel shows what the wire actually carried: the SSE frame types and ``seq`` numbers,
+  plus the ``session_id``, ``trace_id`` and ``resume_token``.
 
-So the interaction is exactly what you'd expect — *pick an agent, send input, see it work* — and
-the pause→resume plumbing lives here once, generically, on the same public ``run``/``resume`` API
-any caller would use. Durable agents (``durability: checkpoint``) keep the same ``session_id``
-across turns, so they remember the earlier conversation. The Trace panel is just AgentShip's own
-``agentship.*`` INFO logs captured for the turn, so it works for every agent without the UI knowing
-any agent's internals.
+There is deliberately **no in-process fallback**. If the service is unreachable the UI says so
+and stops, because a UI that quietly runs agents locally proves nothing about the deployment.
 
-Run it (needs a real ``OPENAI_API_KEY``; ``FIRECRAWL_API_KEY`` — free at https://firecrawl.dev —
-optional for real web search + page scraping)::
+Run it (the service must already be up)::
 
-    set -a; source ../agentship/.env; set +a
-    make ui                       # or: python demos/chat_ui.py
+    make docker-up                # the service, on http://localhost:7005
+    make ui                       # this UI, on http://127.0.0.1:7860
 
-Then open the printed ``http://127.0.0.1:7860`` in a browser.
+Point it elsewhere with ``AGENTSHIP_BASE_URL`` / ``AGENTSHIP_API_KEY``.
 """
 
 from __future__ import annotations
 
-import logging
+import json
 import os
 import uuid
-from pathlib import Path
+from typing import Any
 
 import gradio as gr
-import litellm
-from agentship import build_agent
-from agentship.context import Caller, RunContext, RunMode
-from agentship.tools import TOOLS, Tool
-from pydantic import BaseModel
+import httpx
 
-# The triage supervisor references sub-agent files by repo-root-relative paths, so resolve the
-# working directory to the demo root before any agent is built (mirrors the CLI's behaviour).
-REPO_ROOT = Path(__file__).resolve().parents[1]
-os.chdir(REPO_ROOT)
+#: Defaults match ``docker-compose.yml``: the demo service listens on 7005 and ships a ``dev``
+#: API key with every scope. Both are read per call so the environment can change without a
+#: restart (and so tests can point the UI at a stub).
+DEFAULT_BASE_URL = "http://localhost:7005"
+DEFAULT_API_KEY = "dev"
 
-# Match the demo scripts' LiteLLM setup so model calls behave identically here.
-litellm.disable_aiohttp_transport = True
-os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
+#: No read timeout — a research agent can think for minutes — but fail fast when nothing is
+#: listening, so "the service is down" surfaces in seconds rather than hanging the browser.
+TIMEOUT = httpx.Timeout(None, connect=5.0)
 
-
-class _NoteArgs(BaseModel):
-    """Argument schema for the demo ``save_note`` write tool."""
-
-    text: str
+#: Words that resume a pause as approve / decline. Anything else is passed to the paused
+#: ``interrupt()`` verbatim, so this one UI can also drive free-form (non yes/no) pauses.
+APPROVE = {"yes", "y", "approve", "ok", "okay", "go", "continue", "sure", "do it"}
+DECLINE = {"no", "n", "stop", "reject", "decline", "cancel", "don't", "dont"}
 
 
-#: Notes the HITL agent has been approved to save this session (visible proof the write fired).
-SAVED_NOTES: list[str] = []
+class ServiceError(Exception):
+    """A ``/v1`` call that failed, carrying a message already worded for the chat transcript.
 
-
-def _register_save_note() -> None:
-    """Register the side-effecting ``save_note`` tool so the ``note-taker`` agent can resolve it.
-
-    Idempotent: the tool is registered once per process. It is side-effecting, so the framework's
-    ``confirm_writes`` guard pauses for human approval before it runs — that is the HITL demo.
+    One exception type for both "nothing is listening" and "the service said no", because the
+    UI does the same thing with either: show it to the human and end the turn.
     """
-    if "save_note" in TOOLS:
-        return
-    TOOLS.register(
-        "save_note",
-        Tool(
-            "save_note",
-            "Save a note to the user's notebook.",
-            lambda text: SAVED_NOTES.append(text) or f"saved: {text}",
-            args_schema=_NoteArgs,
-            side_effecting=True,
-        ),
+
+
+def base_url() -> str:
+    """The service root to call, from ``AGENTSHIP_BASE_URL`` (default: the compose port 7005)."""
+    return (os.environ.get("AGENTSHIP_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
+
+
+def api_key() -> str:
+    """The key sent with every request, from ``AGENTSHIP_API_KEY`` (default: the ``dev`` key)."""
+    return os.environ.get("AGENTSHIP_API_KEY") or DEFAULT_API_KEY
+
+
+def request_headers() -> dict[str, str]:
+    """Auth + content headers for a ``/v1`` call (the service also accepts ``X-API-Key``)."""
+    return {"Authorization": f"Bearer {api_key()}", "Content-Type": "application/json"}
+
+
+def unreachable_message(exc: Exception) -> str:
+    """Word a connection failure so the human knows the service, not the UI, is the problem."""
+    return (
+        f"⚠️ Cannot reach the service at {base_url()} — is `make docker-up` running?\n\n"
+        f"({type(exc).__name__}: {exc})"
     )
 
 
-_register_save_note()
+def problem_message(status: int, body: str) -> str:
+    """Word an error response, preferring the service's ``problem+json`` ``detail`` and ``code``.
 
-#: Every standalone-runnable agent, label → YAML path (repo-relative). The deep-research agent is
-#: first; the multi-agent supervisors show their routing in the Trace panel; the note-taker is the
-#: human-in-the-loop demo (it pauses for write approval). One agent is omitted because the generic
-#: UI can't stand up its dependency: ``mcp`` (needs an external MCP server).
-AGENTS: dict[str, str] = {
-    "deep-research — researches when asked, chats otherwise (durable)": "agents/deep_research.yaml",
-    "quick-search — single-turn web search": "agents/quick_search.yaml",
-    "triage — multi-agent supervisor (classify → route → dispatch)": "agents/triage/triage.yaml",
-    "triage panel — parallel fan-out to specialists": "agents/triage/panel.yaml",
-    "note-taker — HITL: pauses for approval before a write": "agents/hitl/agent.yaml",
-    "assistant — plain single agent": "agents/assistant.yaml",
-    "calculator — single agent with a tool": "agents/calculator.yaml",
-    "streaming — single agent (streaming-capable)": "agents/streaming.yaml",
-    "graph — supervisor scaffold": "agents/graph.yaml",
-    "custom — native build_graph agent": "agents/custom/custom.yaml",
-    "autonomous — deepagents-style planner": "agents/autonomous.yaml",
-}
-
-#: Words that resume a pause as approve / decline. Anything else is passed to the agent verbatim as
-#: the resume value, so this UI also drives free-form (non yes/no) interrupts.
-_APPROVE = {"yes", "y", "approve", "ok", "okay", "go", "continue", "sure", "do it"}
-_DECLINE = {"no", "n", "stop", "reject", "decline", "cancel", "don't", "dont"}
-
-
-def _new_state() -> dict:
-    """A fresh per-conversation state: the built agent, its thread, and any pending pause."""
-    return {"agent": None, "label": None, "session_id": None, "token": None, "payload": None}
-
-
-class _TraceCollector(logging.Handler):
-    """A logging handler that buffers AgentShip's ``agentship.*`` INFO logs for one turn.
-
-    Attaching this to the ``agentship`` logger for the duration of a run captures the decision
-    trace every agent already emits — the supervisor's classify/route/dispatch/resolve lines and
-    tool calls — so the Trace panel is generic and needs no per-agent wiring. Each record is
-    rendered as ``<logger tail>: <message>`` (e.g. ``supervisor: dispatch …``).
+    Showing the envelope verbatim is the point: a 401 with ``code: invalid_api_key`` is the
+    service's real behaviour, and hiding it behind a generic message would hide the feature.
     """
-
-    def __init__(self) -> None:
-        """Buffer at INFO level; the lines are drained into the Trace panel after the turn."""
-        super().__init__(level=logging.INFO)
-        self.lines: list[str] = []
-
-    def emit(self, record: logging.LogRecord) -> None:
-        """Append one formatted log line (never raising — logging must not break the turn)."""
-        try:
-            name = record.name
-            if name.startswith("agentship."):
-                name = name[len("agentship."):]
-            self.lines.append(f"{name}: {record.getMessage()}")
-        except Exception:  # noqa: BLE001  # defensive: a bad log record must never crash a turn
-            self.lines.append("(unformattable log record)")
+    try:
+        problem = json.loads(body)
+    except ValueError:
+        problem = {}
+    if not isinstance(problem, dict) or "title" not in problem:
+        return f"⚠️ HTTP {status} from the service:\n\n```\n{body[:2000]}\n```"
+    lines = [f"⚠️ **{problem.get('title')}** (HTTP {problem.get('status', status)})"]
+    if problem.get("detail"):
+        lines.append(str(problem["detail"]))
+    ids = [f"`{key}: {problem[key]}`" for key in ("code", "trace_id") if problem.get(key)]
+    if ids:
+        lines.append(" · ".join(ids))
+    return "\n\n".join(lines)
 
 
-def _capture_trace() -> _TraceCollector:
-    """Install a fresh trace collector on the ``agentship`` logger and ensure INFO is emitted.
+def raise_for_problem(response: httpx.Response, body: str) -> None:
+    """Turn a non-2xx response into a :class:`ServiceError` carrying its problem+json text."""
+    if response.status_code >= 400:
+        raise ServiceError(problem_message(response.status_code, body))
 
-    Returns the collector; the caller must pass it to :func:`_release_trace` in a ``finally`` so the
-    handler is always removed and the logger's level restored, even if the run raises.
+
+def fetch_agent_names() -> tuple[list[str], str | None]:
+    """Ask ``GET /v1/agents`` which agents the service serves.
+
+    Returns ``(names, error)`` rather than raising because this runs while the UI is being
+    assembled: a dead service must produce an empty picker and a message in the chat, never a
+    crash and never a hardcoded fallback list.
     """
-    collector = _TraceCollector()
-    root = logging.getLogger("agentship")
-    collector._prev_level = root.level  # type: ignore[attr-defined]  # stash for restore
-    if root.level == logging.NOTSET or root.level > logging.INFO:
-        root.setLevel(logging.INFO)
-    root.addHandler(collector)
-    return collector
+    try:
+        with httpx.Client(timeout=TIMEOUT) as client:
+            response = client.get(f"{base_url()}/v1/agents", headers=request_headers())
+            body = response.text
+    except httpx.RequestError as exc:
+        return [], unreachable_message(exc)
+    if response.status_code >= 400:
+        return [], problem_message(response.status_code, body)
+    try:
+        cards = json.loads(body)
+        return [card["name"] for card in cards], None
+    except (ValueError, KeyError, TypeError) as exc:
+        return [], f"⚠️ {base_url()}/v1/agents returned something unexpected: {exc}"
 
 
-def _release_trace(collector: _TraceCollector) -> str:
-    """Remove the collector, restore the logger level, and return the captured trace text."""
-    root = logging.getLogger("agentship")
-    root.removeHandler(collector)
-    root.setLevel(collector._prev_level)  # type: ignore[attr-defined]
-    return "\n".join(collector.lines) if collector.lines else "(no trace emitted this turn)"
+async def post_json(path: str, body: dict) -> dict:
+    """POST a JSON body to ``path`` on the service and return the decoded reply.
+
+    Shared by ``:invoke`` and ``:resume`` — both take JSON in and return an ``InvokeResponse``.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+            response = await client.post(
+                f"{base_url()}{path}", headers=request_headers(), json=body
+            )
+            text = response.text
+    except httpx.RequestError as exc:
+        raise ServiceError(unreachable_message(exc)) from exc
+    raise_for_problem(response, text)
+    return json.loads(text)
 
 
-def _resume_value(reply: str, payload: dict) -> object:
+async def invoke_turn(agent: str, text: str, session_id: str) -> dict:
+    """Run one non-streaming turn: ``POST /v1/agents/{agent}:invoke``.
+
+    This is also the only endpoint that reports a human-in-the-loop pause, because ``:stream``
+    has no frame for a ``resume_token`` — see :data:`PAUSE_NOTE`.
+    """
+    return await post_json(
+        f"/v1/agents/{agent}:invoke", {"input": text, "session_id": session_id}
+    )
+
+
+async def resume_turn(agent: str, resume_token: dict, session_id: str, value: Any) -> dict:
+    """Continue a paused run: ``POST /v1/agents/{agent}:resume`` with the token and the decision.
+
+    ``session_id`` is required here (unlike ``:invoke``) because a resume replays one specific
+    checkpoint thread — sending a fresh id would silently resume nothing.
+    """
+    return await post_json(
+        f"/v1/agents/{agent}:resume",
+        {"resume_token": resume_token, "session_id": session_id, "resume_value": value},
+    )
+
+
+async def stream_frames(agent: str, text: str, session_id: str):
+    """Yield each SSE frame of ``POST /v1/agents/{agent}:stream`` as a ``{type, seq, data}`` dict.
+
+    Only the ``data:`` lines are decoded; the ``event:`` line repeats the type already inside the
+    JSON payload, and sse-starlette's keepalive comments carry nothing.
+    """
+    body = {"input": text, "session_id": session_id}
+    try:
+        async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+            async with client.stream(
+                "POST", f"{base_url()}/v1/agents/{agent}:stream",
+                headers=request_headers(), json=body,
+            ) as response:
+                if response.status_code >= 400:
+                    raise_for_problem(response, (await response.aread()).decode())
+                async for line in response.aiter_lines():
+                    if line.startswith("data:"):
+                        yield json.loads(line[len("data:"):].strip())
+    except httpx.RequestError as exc:
+        raise ServiceError(unreachable_message(exc)) from exc
+
+
+def resume_value_from_reply(reply: str) -> Any:
     """Turn a human's chat reply into the value the paused ``interrupt()`` should receive.
 
-    The HITL confirm-before-write pause (payload ``{"action": "confirm_write", ...}``) expects
-    ``{"approved": bool}``, so a yes/no reply is mapped to that shape. For any other interrupt the
-    raw reply text is passed straight through, so this one UI can resume arbitrary ``interrupt()``
-    payloads without knowing the agent's internals.
+    A yes/no word becomes ``{"approved": bool}`` — the shape a confirm-before-write pause
+    expects — and anything else is passed through verbatim, so this UI drives free-form pauses
+    too. The mapping is keyed off the reply rather than the pause's payload because the wire's
+    ``InvokeResponse`` does not carry the payload (see :data:`PAUSE_NOTE`).
     """
     text = reply.strip().lower()
-    approve = text in _APPROVE and text not in _DECLINE
-    if payload.get("action") == "confirm_write":
-        return {"approved": approve}
+    if text in APPROVE:
+        return {"approved": True}
+    if text in DECLINE:
+        return {"approved": False}
     return reply.strip()
 
 
-def _pause_message(payload: dict) -> str:
-    """Render a pending ``interrupt()`` payload as an assistant chat message inviting a reply."""
-    if payload.get("action") == "confirm_write":
-        tool = payload.get("tool", "a write")
-        args = payload.get("args", {})
-        return (
-            f"⏸️ **Approve write?** The agent wants to run `{tool}` with `{args}`.\n\n"
-            "Reply **yes** to approve (it runs) or **no** to reject (it won't)."
-        )
-    question = payload.get("question", "The agent paused and needs your input.")
-    return f"⏸️ **{question}**\n\nReply to continue."
+#: Why the pause is rendered generically. ``InvokeResponse`` carries ``resume_token`` but not the
+#: ``interrupt`` payload the engine produced, so the UI knows a run paused but not what it asked.
+PAUSE_NOTE = (
+    "The service's `InvokeResponse` returns the `resume_token` but not the pause's payload, "
+    "so this UI can tell you *that* the run paused, not what it wants to do."
+)
 
 
-def _resume_ctx(agent, session_id: str) -> RunContext:
-    """A RunContext that resumes the paused run on its own checkpoint thread (``session_id``)."""
-    return RunContext(
-        caller=Caller(user_id="ui"),
-        session_id=session_id,
-        run_id=uuid.uuid4().hex,
-        agent_name=agent.spec.name,
-        mode=RunMode.INVOKE,
+def is_paused(reply: dict) -> bool:
+    """True when an ``InvokeResponse`` describes a run that stopped for a human.
+
+    The engine returns no ``output`` and a ``resume_token`` only when a run interrupted; a
+    durable run that *finished* also returns a token, but with its answer, so the token alone
+    is not the signal.
+    """
+    return reply.get("resume_token") is not None and not reply.get("output")
+
+
+def pause_message() -> str:
+    """Render a pause as an assistant message inviting the reply that will resume the run."""
+    return (
+        "⏸️ **The run paused for you.** Reply **yes** to approve or **no** to reject "
+        "(anything else is passed to the run verbatim).\n\n"
+        f"_{PAUSE_NOTE}_"
     )
 
 
-async def respond(message: str, history: list, agent_label: str, state: dict):
-    """Handle one chat turn; return ``(history, cleared_box, state, trace)`` for the UI outputs.
+def new_state() -> dict:
+    """Fresh per-conversation state: the chosen agent, its session, and any pending pause."""
+    return {"agent": None, "session_id": None, "resume_token": None}
 
-    Either starts a fresh run or resumes a paused one, capturing AgentShip's INFO logs for the
-    turn into the Trace panel. ``state`` carries the built agent, its conversation ``session_id``,
-    and any pending resume token/payload between turns. When a token is pending, this turn's
-    ``message`` resumes the paused run; otherwise it (re)builds the selected agent — reusing the
-    same ``session_id`` across turns so a durable agent remembers the conversation — and runs it.
-    Build/run errors are shown in the chat rather than crashing the app.
+
+def trace_text(lines: list[str]) -> str:
+    """Join the turn's wire notes for the Trace panel, or say plainly that nothing arrived."""
+    return "\n".join(lines) if lines else "(nothing on the wire yet)"
+
+
+def note_reply(lines: list[str], reply: dict) -> None:
+    """Append the ids an ``InvokeResponse`` carried to the turn's trace notes."""
+    lines.append(f"session_id : {reply.get('session_id')}")
+    lines.append(f"trace_id   : {reply.get('trace_id')}")
+    lines.append(f"resume_token: {json.dumps(reply.get('resume_token'))}")
+
+
+async def respond(message: str, history: list, agent: str, live_tokens: bool, state: dict):
+    """Handle one chat turn against the service, yielding ``(history, box, state, trace)``.
+
+    An async generator so streamed tokens reach the browser as they arrive. Three paths: a
+    pending ``resume_token`` sends the reply to ``:resume``; otherwise the turn goes to
+    ``:stream`` (live tokens) or ``:invoke``. The ``session_id`` is kept for the whole
+    conversation so durable agents remember, and reminted when the agent changes.
     """
-    if not (os.environ.get("OPENAI_API_KEY") or "").strip():
-        warning = "⚠️ Set OPENAI_API_KEY (source ../agentship/.env) and reload."
-        history = history + [
-            {"role": "user", "content": message},
-            {"role": "assistant", "content": warning},
-        ]
-        return history, "", state, "(no API key set)"
-
     history = history + [{"role": "user", "content": message}]
-    collector = _capture_trace()
+    if not agent:
+        history.append({"role": "assistant", "content": "⚠️ No agent selected — is the service up?"})
+        yield history, "", state, trace_text([])
+        return
+
+    if state.get("agent") != agent or not state.get("session_id"):
+        state["agent"] = agent
+        state["session_id"] = uuid.uuid4().hex
+        state["resume_token"] = None
+    session_id = state["session_id"]
+    lines = [f"POST {base_url()}/v1/agents/{agent}"]
+
     try:
-        if state.get("token") is not None:
-            # Resume a paused run: this reply is the human's decision, fed back into interrupt().
-            agent = state["agent"]
-            ctx = _resume_ctx(agent, state["session_id"])
-            decision = _resume_value(message, state["payload"])
-            result = await agent.engine.resume(
-                agent.compiled, state["token"], ctx, resume_value=decision
+        if state.get("resume_token") is not None:
+            lines[0] += ":resume"
+            reply = await resume_turn(
+                agent, state["resume_token"], session_id, resume_value_from_reply(message)
             )
+        elif live_tokens:
+            lines[0] += ":stream"
+            history.append({"role": "assistant", "content": ""})
+            async for frame in stream_frames(agent, message, session_id):
+                lines.append(f"seq {frame.get('seq'):>3}  {frame.get('type')}")
+                text = frame.get("data", {}).get("content")
+                if text:
+                    history[-1]["content"] += str(text)
+                if frame.get("type") == "error":
+                    history[-1]["content"] += f"\n\n⚠️ {frame.get('data', {}).get('detail')}"
+                yield history, "", state, trace_text(lines)
+            lines.append(f"session_id : {session_id}")
+            yield history, "", state, trace_text(lines)
+            return
         else:
-            # Fresh turn. Rebuild only when the selected agent changed, and start a new
-            # conversation thread then; otherwise keep the same session_id so a durable agent
-            # remembers the earlier turns (the checkpointer keys memory off session_id).
-            if state.get("agent") is None or state.get("label") != agent_label:
-                state["agent"] = build_agent(AGENTS[agent_label])
-                state["label"] = agent_label
-                state["session_id"] = uuid.uuid4().hex
-            elif not state.get("session_id"):
-                state["session_id"] = uuid.uuid4().hex
-            agent = state["agent"]
-            result = await agent.run(message, session_id=state["session_id"])
-    except Exception as exc:  # noqa: BLE001  # a UI must show any agent failure, not crash
-        # Never crash the app — surface the failure in the chat and clear any stale pause.
-        state["token"] = None
-        state["payload"] = None
-        history.append({"role": "assistant", "content": f"⚠️ {type(exc).__name__}: {exc}"})
-        return history, "", state, _release_trace(collector)
+            lines[0] += ":invoke"
+            reply = await invoke_turn(agent, message, session_id)
+    except ServiceError as exc:
+        state["resume_token"] = None
+        history.append({"role": "assistant", "content": str(exc)})
+        yield history, "", state, trace_text(lines)
+        return
 
-    trace = _release_trace(collector)
-    # A pending interrupt means the agent paused; keep the token for the next reply. Otherwise the
-    # run finished — clear any token and show the answer.
-    if result.interrupt is not None:
-        state["token"] = result.resume_token
-        state["payload"] = result.interrupt
-        history.append({"role": "assistant", "content": _pause_message(result.interrupt)})
+    note_reply(lines, reply)
+    if is_paused(reply):
+        state["resume_token"] = reply["resume_token"]
+        history.append({"role": "assistant", "content": pause_message()})
     else:
-        state["token"] = None
-        state["payload"] = None
-        history.append({"role": "assistant", "content": str(result.output).strip()})
-    return history, "", state, trace
+        state["resume_token"] = None
+        history.append({"role": "assistant", "content": str(reply.get("output", "")).strip()})
+    yield history, "", state, trace_text(lines)
 
 
-def _reset(agent_label: str):
-    """Start a brand-new conversation with the selected agent (clears chat, state, and trace)."""
-    return [], _new_state(), "(trace appears here after you send a message)"
+def start_new_chat(agent: str):
+    """Clear the transcript, session and trace so the next turn opens a fresh conversation."""
+    return [], new_state(), trace_text([])
+
+
+def reload_agents():
+    """Re-ask the service for its catalog, so a UI opened before the service came up recovers."""
+    names, error = fetch_agent_names()
+    chat = [{"role": "assistant", "content": error}] if error else []
+    return gr.Dropdown(choices=names, value=names[0] if names else None), chat, new_state()
 
 
 def build_ui() -> gr.Blocks:
-    """Assemble the chat + debug UI: agent picker, transcript, input box, and a trace panel."""
+    """Assemble the chat: an agent picker fed by the service, a transcript, and a wire trace."""
+    names, error = fetch_agent_names()
     with gr.Blocks(title="AgentShip chat") as ui:
         gr.Markdown(
-            "# AgentShip — chat & debug\n"
-            "Pick an agent, send input, and watch it work. Real agents chat normally and use a "
-            "tool only when they decide to; multi-agent supervisors show their **classify → route "
-            "→ dispatch → resolve** path in the Trace panel; the **note-taker** pauses before a "
-            "write — reply **yes**/**no** to approve. No scripts."
+            "# AgentShip — chat over the running service\n"
+            f"Every turn is an HTTP call to `{base_url()}/v1` with your API key — the same "
+            "surface any caller uses. Nothing runs in this process. Pick an agent (listed by "
+            "`GET /v1/agents`), send input, and watch the frames in **Trace**. If the run "
+            "pauses, reply **yes**/**no** and the UI continues it with `:resume`."
         )
-        state = gr.State(_new_state())
+        state = gr.State(new_state())
         with gr.Row():
-            agent_label = gr.Dropdown(
-                choices=list(AGENTS), value=next(iter(AGENTS)), label="Agent", scale=4
+            agent = gr.Dropdown(
+                choices=names, value=names[0] if names else None, label="Agent", scale=4
             )
-            reset_btn = gr.Button("New chat", scale=1)
-        chatbot = gr.Chatbot(type="messages", height=460, label="Conversation")
-        box = gr.Textbox(
-            placeholder="Send input, or reply yes/no when the agent pauses…",
-            label="Message",
+            live_tokens = gr.Checkbox(value=True, label=":stream (live tokens)", scale=1)
+            new_chat_btn = gr.Button("New chat", scale=1)
+            reload_btn = gr.Button("Reload agents", scale=1)
+        chatbot = gr.Chatbot(
+            type="messages",
+            height=460,
+            label="Conversation",
+            value=[{"role": "assistant", "content": error}] if error else None,
         )
-        with gr.Accordion("Trace (AgentShip's decision log for the last turn)", open=False):
-            trace = gr.Code(value="(trace appears here after you send a message)", label="")
+        box = gr.Textbox(
+            placeholder="Send input, or reply yes/no when the run pauses…", label="Message"
+        )
+        gr.Markdown(
+            "_Uncheck `:stream` to use `:invoke` — the only endpoint that reports a pause, "
+            "because the SSE contract has no `resume_token` frame._"
+        )
+        with gr.Accordion("Trace (what came over the wire this turn)", open=False):
+            trace = gr.Code(value=trace_text([]), label="endpoint · SSE frames · ids")
 
-        box.submit(respond, [box, chatbot, agent_label, state], [chatbot, box, state, trace])
-        # Switching agents or clicking "New chat" starts a fresh conversation on that agent.
-        reset_btn.click(_reset, [agent_label], [chatbot, state, trace])
-        agent_label.change(_reset, [agent_label], [chatbot, state, trace])
+        box.submit(respond, [box, chatbot, agent, live_tokens, state], [chatbot, box, state, trace])
+        # Switching agent or clicking "New chat" starts a fresh session_id, so memory resets too.
+        new_chat_btn.click(start_new_chat, [agent], [chatbot, state, trace])
+        agent.change(start_new_chat, [agent], [chatbot, state, trace])
+        reload_btn.click(reload_agents, None, [agent, chatbot, state])
     return ui
 
 

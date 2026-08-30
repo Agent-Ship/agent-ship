@@ -70,7 +70,7 @@ top to bottom.
 | 5 | P01 | **`ModelRouter`** — router picks the model id, then a real turn runs | _(spec built inline)_ | `pytest tests/test_router.py -q` |
 | 6 | P02 | **Durable multi-agent supervisor** — 1 supervisor + 3 real sub-agents; classify → route to **one** sub-agent → resolve; then a **fresh engine resumes from the checkpoint and produces byte-identical output** (the kill-9 guarantee, actually proven). The classify → route → dispatch → resolve trace prints inline so the routing is visible. | `agents/triage/triage.yaml` | `pytest tests/test_triage.py -q` |
 | 7 | P02 | **Multi-agent fan-out** — one question dispatched to **all 3 sub-agents concurrently** (`strategy: parallel`), then the `ConflictResolver` merges their competing answers by priority. You watch several real sub-agents run at once and get reconciled. | `agents/triage/panel.yaml` | `pytest tests/test_triage.py -q` |
-| 8 | P02 | **Quick vs deep research (the many-speed ecosystem)** — a fast single-turn **quick-search** agent (seconds, `durability: none`) and a real **model-driven deep-research** agent (`template: single` ReAct, `durability: checkpoint`, `tools: [web_search, scrape_url]`): say "hi" and it just greets you (no search, no pause); ask a substantive question and it runs several `web_search` calls from different angles, `scrape_url`s the best sources to read their full content, cross-checks, and writes a cited answer. Because it's durable and the chat reuses one `session_id`, it remembers the conversation and a long run survives a crash/wait and resumes. Drive both from the **browser chat** (`make ui`). | `agents/quick_search.yaml` · `agents/deep_research.yaml` · `demos/chat_ui.py` | `pytest tests/test_deep_research.py tests/test_chat_ui.py -q` |
+| 8 | P02 | **Quick vs deep research (the many-speed ecosystem)** — a fast single-turn **quick-search** agent (seconds, `durability: none`) and a real **model-driven deep-research** agent (`template: single` ReAct, `durability: checkpoint`, `tools: [web_search, scrape_url]`): say "hi" and it just greets you (no search, no pause); ask a substantive question and it runs several `web_search` calls from different angles, `scrape_url`s the best sources to read their full content, cross-checks, and writes a cited answer. Because it's durable and the chat reuses one `session_id`, it remembers the conversation and a long run survives a crash/wait and resumes. Drive both from the **browser chat** (`make docker-up`, then `make ui` — the chat talks to the running service over `/v1`). | `agents/quick_search.yaml` · `agents/deep_research.yaml` · `demos/chat_ui.py` | `pytest tests/test_deep_research.py tests/test_chat_ui.py -q` |
 | 9 | P07 | **Observability — a full trace from one YAML block** — add an `observability:` block and the runtime resolves it to a real OpenTelemetry observer, so a live tool-calling turn exports a nested span tree (**agent → node → model → tool**) carrying tokens, cost, and latency. The default `console` exporter prints the tree to **stderr** (stdout stays the clean answer); switch `exporters:` to **Opik / LangFuse / LangSmith** and the same trace ships to that hosted backend. The test reads the trace **back** from each backend's own API to prove it landed — skipping any backend whose keys aren't set. | `agents/observability.yaml` · `demos/observability.py` | `pytest tests/test_observability.py -q` |
 | 10 | P06-P09 | **The served `/v1` surface** — the same agent answered three ways over a **real booted server** (not `TestClient`): `POST :invoke` returns JSON, `POST :stream` delivers **more than one** SSE frame, and the `/live` WebSocket streams a turn back. Around those calls, the security envelope: **one route, three callers, three outcomes** (no credential → 401, valid key → 200, valid key without the scope → **403**); **tenant B gets 404, not 403**, on tenant A's row, so existence is never leaked; security headers on every response, a disallowed CORS origin refused, and a malformed request rendered as an RFC-9457 `application/problem+json` document. The served agent runs on the `echo` engine, so the whole slice is **keyless and offline** — what is under test is the envelope, not the model. | `agents/service/support.yaml` · `demos/serve_and_call.py` | `pytest tests/test_service_endpoints.py tests/test_auth_demo.py tests/test_tenant_isolation_demo.py tests/test_posture_demo.py -q` |
 
@@ -325,6 +325,7 @@ Two agents at opposite ends of the speed spectrum:
 
 ```bash
 set -a; source ../agentship/.env; set +a   # OPENAI_API_KEY (+ optional FIRECRAWL_API_KEY)
+make docker-up                              # the SERVICE, on http://localhost:7005 — required
 make ui                                     # opens http://127.0.0.1:7860
 ```
 
@@ -332,13 +333,22 @@ Pick **deep-research**, send *"hi"* → it just greets you (no search). Send *"S
 reactors in 2026"* → it runs several web searches, opens the best sources with `scrape_url`,
 cross-checks, and returns a cited answer.
 
-The chat UI (`demos/chat_ui.py`) is the **one interactive front door for every agent** — the
-dropdown lists all of them (deep-research, quick-search, triage, triage panel, note-taker HITL,
-assistant, calculator, streaming, graph, custom, autonomous). Pick any, send input, watch it
-work. A collapsible **Trace** panel shows AgentShip's own decision log for the turn, so the
-multi-agent supervisors' **classify → route → dispatch → resolve** path is visible instead of
-hidden behind a single reply. It's all on the same public `run`/`resume` API any caller would use;
-build/run failures are shown in the chat rather than crashing the app.
+The chat UI (`demos/chat_ui.py`) is the **one interactive front door**, and it drives the
+**running service over HTTP** — it builds no agents in-process, so what you see in the browser is
+exactly what any other caller gets. The dropdown is the service's own `GET /v1/agents`; a turn is
+`POST /v1/agents/{name}:stream` (SSE tokens rendered as they arrive) or `:invoke`; a run that
+paused is continued with `:resume`, echoing the `resume_token` back on the same `session_id`,
+which is also what gives durable agents their memory across turns. A collapsible **Trace** panel
+shows what actually came over the wire — the endpoint, each SSE frame's type and `seq`, and the
+`session_id` / `trace_id` / `resume_token`. A 401/403/400 is rendered as the service's
+`application/problem+json` `detail` and `code` rather than a stack trace, and an unreachable
+service is said out loud ("cannot reach the service at …") — there is deliberately **no
+in-process fallback**. Point it at another deployment with `AGENTSHIP_BASE_URL` /
+`AGENTSHIP_API_KEY` (defaults: `http://localhost:7005` and the compose `dev` key).
+
+> Only the specs directly inside `agents/` are served (`agentship serve` does not walk
+> subdirectories), so the `hitl/` note-taker and the `triage/` panel are not in the picker today —
+> drive those with `pytest tests/test_hitl_write.py tests/test_triage.py` instead.
 
 > With `FIRECRAWL_API_KEY` (free at firecrawl.dev) or `BRAVE_API_KEY`, `web_search`/`scrape_url`
 > return real results; without a key each returns a clearly-labelled setup message and the model
@@ -350,7 +360,7 @@ The **durable pause/resume** guarantee is showcased by the **note-taker HITL** a
 | Test | What it proves |
 |---|---|
 | `tests/test_deep_research.py` | **Live** (skips without `OPENAI_API_KEY`): deep-research answers "hi" with a normal reply and runs **no web search** — the old force-pause bug, encoded as a regression guard |
-| `tests/test_chat_ui.py` | **Offline** (fake chat model): every picker agent builds; yes/no maps to `{"approved": bool}` for a confirm-write and other text passes through; the write-approval prompt renders; a real agent answers with a stable `session_id` across turns; the UI holds a resume token then resumes a paused run; a build failure is shown in chat not crashed |
+| `tests/test_chat_ui.py` | **Offline** (a stubbed HTTP transport, no server, no key): the picker is the service's `GET /v1/agents`; an unreachable service is said out loud, never replaced by a fallback list; `:stream` frames render with their types and `seq` in the trace; one `session_id` is kept across turns and reminted on agent switch; a paused turn's `resume_token` is held and the next reply goes to `:resume` on the same session with yes/no mapped to `{"approved": bool}`; a `problem+json` error shows its `detail` and `code`, not a stack trace |
 
 ### 9 — Observability: a full trace from one YAML block (Phase 07)
 
@@ -478,7 +488,7 @@ pytest -q        # or: make test
 
 Most tests call OpenAI live — without a key they skip, and never fake-pass. The
 exception is the UI plumbing (slice 8), covered by the deterministic **offline**
-`test_chat_ui.py` (a fake chat model) that runs with or without a key; the live
+`test_chat_ui.py` (a stubbed HTTP transport) that runs with or without a key; the live
 `test_deep_research.py` (deep-research answers "hi" without searching) skips cleanly
 when no key is set.
 
@@ -510,7 +520,7 @@ agentship-demo/
       agent.yaml                # note-taker HITL — confirm_writes: true, pauses for approval before save_note
   demos/
     run_all.py                  # `make demo` runner — runs slices 1–7 LIVE, prints each result
-    chat_ui.py                  # `make ui` — one browser chat for EVERY agent: trace panel + pause/resume
+    chat_ui.py                  # `make ui` — browser chat over the RUNNING service's /v1 (HTTP, no in-process agents)
     ask_multiagent.py           # `make ask` — give the multi-agent panel your own task
   tests/
     conftest.py                 # requires_live_key skip guard + LiteLLM transport setup
@@ -521,7 +531,7 @@ agentship-demo/
     test_router.py              # slice 5: router picks model + real turn runs (live)
     test_triage.py              # slices 6+7: happy path, kill-9 resume, parallel fan-out (live)
     test_deep_research.py       # slice 8: deep-research answers "hi" with NO web search (live)
-    test_chat_ui.py             # slice 8: every picker agent builds, resume-token plumbing, memory (offline)
+    test_chat_ui.py             # slice 8: the UI's /v1 plumbing — catalog, stream, resume, problem+json (offline, stubbed HTTP)
     test_hitl_write.py          # slice 6: note-taker pauses → approve → write fires once (live)
   pyproject.toml                # pins agentship[starter]==0.0.1 (future PyPI install)
   requirements-dev.txt          # editable-local install of the framework + gradio (dev mode)
