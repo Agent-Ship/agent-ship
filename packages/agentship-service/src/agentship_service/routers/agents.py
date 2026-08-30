@@ -12,14 +12,14 @@ from __future__ import annotations
 import uuid
 
 from agentship.context import Caller
-from agentship.engines.base import Result
+from agentship.engines.base import Result, ResumeToken
 from agentship.errors import CapabilityError
 from fastapi import APIRouter, Depends
 from sse_starlette.sse import EventSourceResponse
 
 from ..context import current_trace_id
 from ..middleware import get_caller, require_scope
-from ..models.v1 import AgentCard, InvokeRequest, InvokeResponse, StreamEvent
+from ..models.v1 import AgentCard, InvokeRequest, InvokeResponse, ResumeRequest, StreamEvent
 from ..registry import AgentRegistry
 from ._common import (
     agent_card,
@@ -62,6 +62,34 @@ async def invoke(
     session_id = body.session_id or uuid.uuid4().hex
     result = await agent.run(body.input, caller=caller, session_id=session_id)
     return _invoke_response(name, session_id, result)
+
+
+@router.post("/{name}:resume", response_model=InvokeResponse)
+async def resume(
+    name: str,
+    body: ResumeRequest,
+    caller: Caller = Depends(require_scope("invoke")),
+    agents: AgentRegistry = Depends(get_agents),
+    _limit: None = Depends(enforce_body_limit),
+) -> InvokeResponse:
+    """Continue a paused or crashed run of agent ``name`` from the token a prior turn returned.
+
+    This is what makes the ``resume_token`` in an :class:`InvokeResponse` usable. Without
+    it the service handed out a token no endpoint accepted, so a human-in-the-loop agent
+    could pause over HTTP and never be resumed over HTTP.
+
+    Gated by the same ``agent:{name}:invoke`` scope as ``:invoke`` — a resume *is* running
+    the agent, so it must not be cheaper to authorize. A token minted by a different engine,
+    or a resume on an engine that is not durable, raises rather than pretending to continue.
+    """
+    agent = resolve_agent(agents, name)
+    result = await agent.resume(
+        ResumeToken.model_validate(body.resume_token),
+        resume_value=body.resume_value,
+        caller=caller,
+        session_id=body.session_id,
+    )
+    return _invoke_response(name, body.session_id, result)
 
 
 @router.post("/{name}:stream")

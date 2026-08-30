@@ -47,6 +47,29 @@ class InvokeRequest(BaseModel):
     )
 
 
+class ResumeRequest(BaseModel):
+    """Continue a run that paused (HITL) or crashed, using the token a prior turn returned.
+
+    ``resume_token`` is the ``{engine, blob}`` value handed back in an
+    :class:`InvokeResponse` — echo it back unchanged. ``resume_value`` is the human's
+    decision for a run paused on an ``interrupt`` (e.g. ``{"approved": true}``); omit it
+    for a plain crash-resume.
+
+    ``session_id`` is required, unlike on :class:`InvokeRequest`: a resume replays a
+    specific checkpoint thread, so there is no sensible id to mint — a fresh one would
+    silently resume nothing. Identity still comes from the authenticated caller, never
+    the body.
+    """
+
+    model_config = {"extra": "forbid"}
+
+    resume_token: dict = Field(..., description="The {engine, blob} token from a prior turn.")
+    session_id: str = Field(..., description="The paused run's session (its checkpoint thread).")
+    resume_value: Any | None = Field(
+        default=None, description='The human\'s decision, e.g. {"approved": true}.'
+    )
+
+
 class Usage(BaseModel):
     """Token/turn accounting for one run, when the engine reports it."""
 

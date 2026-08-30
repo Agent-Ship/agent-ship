@@ -16,7 +16,7 @@ from collections.abc import AsyncIterator, Sequence
 from typing import TYPE_CHECKING, Any
 
 from .context import Caller, RunContext, RunMode, current_run
-from .engines.base import ENGINES, Event, Result, assert_spec_supported
+from .engines.base import ENGINES, Event, Result, ResumeToken, assert_spec_supported
 from .errors import EngineNotFoundError, SpecError
 from .observability import (
     NoOpObserver,
@@ -201,6 +201,60 @@ class RunnableAgent:
             # anyway so teardown can never mask the exception in flight.
             try:
                 current_run.reset(token)
+            except ValueError:  # pragma: no cover - defensive; set/reset share a frame
+                current_run.set(None)  # type: ignore[arg-type]
+            try:
+                current_observer.reset(observer_token)
+            except ValueError:  # pragma: no cover - defensive; set/reset share a frame
+                current_observer.set(None)
+
+    async def resume(
+        self,
+        token: ResumeToken,
+        *,
+        resume_value: Any = None,
+        caller: Caller | None = None,
+        user_id: str = "anonymous",
+        session_id: str | None = None,
+    ) -> Result:
+        """Continue a paused or crashed run from ``token`` and return its :class:`Result`.
+
+        The third public verb alongside :meth:`run` and :meth:`stream`. ``resume_value`` is
+        the human's decision for a run that paused on a HITL ``interrupt`` (e.g.
+        ``{"approved": True}``); leave it ``None`` for a plain crash-resume.
+
+        ``session_id`` must be the paused run's session — that is the checkpoint thread the
+        engine replays from, so passing a fresh one resumes nothing. Identity is handled
+        exactly as in :meth:`run`: pass ``caller`` for a real authenticated identity, or
+        ``user_id`` for a dev call.
+
+        This exists so a caller holding a resume token never has to reach into
+        ``agent.engine.resume(agent.compiled, …)`` and hand-build a ``RunContext``. That
+        is also why the HTTP service could not offer a resume endpoint before: there was
+        no public operation to expose.
+        """
+        ctx = self._make_context(
+            "", caller=_caller_for(caller, user_id), session_id=session_id, mode=RunMode.INVOKE
+        )
+        run_token = current_run.set(ctx)
+        observer_token = current_observer.set(self.observer)
+        try:
+            with self.observer.span(
+                semconv.SPAN_AGENT, SpanKind.AGENT, self._root_attrs(ctx)
+            ) as root:
+                ctx.trace_id = self.observer.current_trace_id()
+                try:
+                    result = await self.engine.resume(
+                        self.compiled, token, ctx, resume_value=resume_value
+                    )
+                except BaseException:
+                    root.set_attribute(semconv.AS_STATUS, "error")
+                    raise
+                root.set_attribute(semconv.AS_STATUS, "ok")
+                return result
+        finally:
+            try:
+                current_run.reset(run_token)
             except ValueError:  # pragma: no cover - defensive; set/reset share a frame
                 current_run.set(None)  # type: ignore[arg-type]
             try:

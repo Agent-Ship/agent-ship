@@ -23,6 +23,7 @@ class _NonStreamingEngine:
     name = "nostream"
     capabilities = EngineCapabilities(streaming=False)
 
+
 #: Two keys in two tenants: ``full`` holds ``*`` (all agents); ``narrow`` holds only
 #: ``agent:support:invoke`` so we can prove a scope that does not cover ``billing``.
 _KEYS = json.dumps(
@@ -195,3 +196,42 @@ def _parse_sse(lines) -> list[dict]:
         if text.startswith("data:"):
             events.append(json.loads(text[len("data:") :].strip()))
     return events
+
+
+# ---- :resume — the endpoint that makes a returned resume_token usable ---------------------------
+
+
+def test_resume_requires_the_invoke_scope() -> None:
+    """``:resume`` continues a run, so it is gated by the same scope as ``:invoke``."""
+    client = _client()
+    body = {"resume_token": {"engine": "echo", "blob": {}}, "session_id": "s1"}
+    assert (
+        client.post(
+            "/v1/agents/billing:resume", json=body, headers={"X-API-Key": "narrow"}
+        ).status_code
+        == 403
+    )
+
+
+def test_resume_on_a_non_durable_engine_is_a_clean_error() -> None:
+    """Resuming an engine that declares ``durability="none"`` fails loudly, never silently.
+
+    The echo engine is not durable, so this must surface as a real error response rather
+    than pretending the run continued. Declare-don't-fake, enforced at the HTTP edge.
+    """
+    client = _client()
+    body = {"resume_token": {"engine": "echo", "blob": {}}, "session_id": "s1"}
+    response = client.post("/v1/agents/support:resume", json=body, headers={"X-API-Key": "full"})
+    # 400: asking a non-durable engine to resume is a bad request, not a server fault.
+    assert response.status_code == 400
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert response.json()["code"] == "unsupported"
+
+
+def test_resume_rejects_a_body_without_a_token() -> None:
+    """A resume with no token is a malformed request, not an empty resume."""
+    client = _client()
+    response = client.post(
+        "/v1/agents/support:resume", json={"session_id": "s1"}, headers={"X-API-Key": "full"}
+    )
+    assert response.status_code == 422
