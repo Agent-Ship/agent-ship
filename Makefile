@@ -68,7 +68,7 @@ demo-service:
 ##   it with a Postgres so durable agents keep their checkpoints across a restart.
 ##   Model keys are read from your .env; the echo-engine agents work without any key.
 docker-up:
-	docker compose up -d --build
+	AGENTSHIP_BUILD=$$(date +%Y%m%d-%H%M%S) docker compose up -d --build
 	@echo ""
 	@echo "  API      http://localhost:7005"
 	@echo "  Swagger  http://localhost:7005/docs"

@@ -14,6 +14,9 @@ services:
       # sibling ../agentship checkout because it is not on PyPI yet. See Dockerfile.
       context: ..
       dockerfile: agentship-demo/Dockerfile
+      args:
+        # Distinguishes one build from the next; `make docker-up` passes a timestamp.
+        AGENTSHIP_BUILD: ${AGENTSHIP_BUILD:-dev}
     ports:
       # 7005, not the old repo's 7001: that port is still held by the retired agent-ship
       # containers, and two checkouts fighting over one port is a confusing failure.

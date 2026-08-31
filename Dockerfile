@@ -49,6 +49,11 @@ USER demo
 # (e.g. `agents/triage/agent.py:build_triage_supervisor`), so /app is where we must be.
 WORKDIR /app
 
+# Stamps which build this image is, surfaced by GET /healthz and the startup banner.
+# docker-compose passes a timestamp; a CI build should pass the git sha.
+ARG AGENTSHIP_BUILD=dev
+ENV AGENTSHIP_BUILD=${AGENTSHIP_BUILD}
+
 # A fallback only. Railway and docker-compose both inject PORT.
 ENV PORT=7005
 
