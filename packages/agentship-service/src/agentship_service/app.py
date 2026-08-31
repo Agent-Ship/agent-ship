@@ -23,7 +23,7 @@ from .build_info import build_info
 from .errors import install_error_handlers
 from .middleware import AuthMiddleware, RateLimitMiddleware, SecurityHeadersMiddleware
 from .registry import AgentRegistry
-from .routers import a2a_router, agents_router, live_router, tasks_router
+from .routers import a2a_router, agents_router, live_router, studio_router, tasks_router
 from .routers.tasks import TaskStore
 
 
@@ -45,8 +45,8 @@ def create_app(
     ``hsts`` turns on Strict-Transport-Security for a TLS deployment. ``rate_limit`` enables
     the optional in-process token-bucket limiter (off by default — a gateway-free safety
     net only; real rate-limiting is agentgateway's job). The returned app already has a
-    public ``GET /healthz`` liveness probe, the v1 agent + task routers, and the problem+json
-    error handlers installed.
+    public ``GET /healthz`` liveness probe, the public ``GET /studio`` debug UI, the v1
+    agent + task routers, and the problem+json error handlers installed.
     """
     app = FastAPI(title=title, docs_url="/docs", redoc_url="/redoc")
     app.state.agents = agents if agents is not None else AgentRegistry()
@@ -65,6 +65,7 @@ def create_app(
 
     app.include_router(agents_router)
     app.include_router(live_router)
+    app.include_router(studio_router)
     app.include_router(tasks_router)
     app.include_router(a2a_router)
 

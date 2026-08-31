@@ -31,3 +31,6 @@ a2a = ["a2a-sdk>=1.1,<2"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/agentship_service"]
+# The Studio page is data, not code: name it explicitly so it cannot be dropped from a
+# wheel by a future exclude rule. GET /studio reads this file at request time.
+artifacts = ["src/agentship_service/static/studio.html"]

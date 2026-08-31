@@ -22,8 +22,10 @@ from starlette.requests import HTTPConnection
 from ..context import bind_caller, current_caller, reset_caller
 from ..errors import problem_dict
 
-#: Paths that skip authentication entirely (liveness + the API's own schema/docs).
-_DEFAULT_PUBLIC_PATHS = frozenset({"/healthz", "/openapi.json", "/docs", "/redoc"})
+#: Paths that skip authentication entirely: liveness, the API's own schema/docs, and the
+#: Studio page. ``/studio`` is markup and script only — it holds no tenant data, and every
+#: ``/v1`` call it makes carries the user's own key, so the data path stays authenticated.
+_DEFAULT_PUBLIC_PATHS = frozenset({"/healthz", "/openapi.json", "/docs", "/redoc", "/studio"})
 
 
 class AuthMiddleware:

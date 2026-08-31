@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgentShip Studio</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%237c6ff7'/><path d='M10 20l6-11 6 11z' fill='white'/></svg>">
+<style>
+/* ---------------------------------------------------------------------------
+   Palette. Dark is the default (the <html> element carries `dark`); the light
+   theme is expressed as an override on `html:not(.dark)` so the toggle only has
+   to add/remove one class.
+   --------------------------------------------------------------------------- */
+:root {
+  --bg: #08080f;
+  --surface: #0f0f1a;
+  --surface2: #161625;
+  --surface3: #1d1d30;
+  --border: rgba(255,255,255,.07);
+  --borderh: rgba(255,255,255,.13);
+  --t1: #eeeeff;
+  --t2: #9a96c5;
+  --t3: #4e4a72;
+  --accent: #7c6ff7;
+  --accentdim: rgba(124,111,247,.13);
+  --accentb: rgba(124,111,247,.28);
+  --green: #34d399;
+  --greendim: rgba(52,211,153,.12);
+  --purple: #c084fc;
+  --purpledim: rgba(192,132,252,.12);
+  --red: #f87171;
+  --reddim: rgba(248,113,113,.12);
+  --amber: #fbbf24;
+  --amberdim: rgba(251,191,36,.12);
+  --ui: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+html:not(.dark) {
+  --bg: #f5f5fc;
+  --surface: #ffffff;
+  --surface2: #f0f0f8;
+  --surface3: #e8e8f4;
+  --border: rgba(0,0,0,.07);
+  --borderh: rgba(0,0,0,.13);
+  --t1: #18162e;
+  --t2: #5a5676;
+  --t3: #9694b2;
+  --accentdim: rgba(124,111,247,.08);
+  --accentb: rgba(124,111,247,.22);
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--t1);
+  font-family: var(--ui);
+  font-size: 14px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+button, input, textarea, select { font: inherit; color: inherit; }
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: var(--borderh); }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* --- app frame: header on top, three columns below ----------------------- */
+#app { display: flex; flex-direction: column; height: 100vh; }
+
+header {
+  display: flex; align-items: center; gap: 12px;
+  height: 52px; flex: none; padding: 0 16px;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+}
+.brand { display: flex; align-items: center; gap: 9px; font-weight: 650; letter-spacing: -.01em; }
+.brand svg { width: 22px; height: 22px; flex: none; }
+.brand small { color: var(--t2); font-weight: 500; letter-spacing: .04em; text-transform: uppercase; font-size: 10px; }
+.spacer { flex: 1; }
+
+.iconbtn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 32px; min-width: 32px; padding: 0 10px;
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--t2); cursor: pointer; transition: .12s;
+}
+.iconbtn:hover { background: var(--surface3); border-color: var(--borderh); color: var(--t1); }
+.iconbtn.on { background: var(--accentdim); border-color: var(--accentb); color: var(--accent); }
+.iconbtn svg { width: 15px; height: 15px; }
+
+main { flex: 1; display: flex; min-height: 0; }
+
+/* --- sidebar: the agent list -------------------------------------------- */
+#sidebar {
+  width: 264px; flex: none; display: flex; flex-direction: column;
+  background: var(--surface); border-right: 1px solid var(--border);
+}
+.panelhead {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 14px 8px; font-size: 10px; font-weight: 600;
+  letter-spacing: .09em; text-transform: uppercase; color: var(--t3);
+}
+#agentlist { flex: 1; overflow-y: auto; padding: 0 8px 8px; }
+.agent {
+  display: block; width: 100%; text-align: left;
+  padding: 9px 10px; margin-bottom: 3px;
+  background: transparent; border: 1px solid transparent; border-radius: 9px;
+  cursor: pointer; transition: .12s;
+}
+.agent:hover { background: var(--surface2); }
+.agent.selected { background: var(--accentdim); border-color: var(--accentb); }
+.agent .name { font-weight: 550; color: var(--t1); }
+.agent.selected .name { color: var(--accent); }
+.agent .badges { margin-top: 5px; }
+
+.badge {
+  display: inline-block; margin: 2px 4px 0 0; padding: 1px 7px;
+  font-size: 10px; font-family: var(--mono); letter-spacing: .01em;
+  border-radius: 5px; background: var(--surface3); color: var(--t2);
+  border: 1px solid var(--border); white-space: nowrap;
+}
+.badge.accent { background: var(--accentdim); color: var(--accent); border-color: var(--accentb); }
+.badge.green { background: var(--greendim); color: var(--green); border-color: transparent; }
+.badge.purple { background: var(--purpledim); color: var(--purple); border-color: transparent; }
+
+.empty { padding: 16px 14px; color: var(--t3); font-size: 13px; }
+
+/* --- chat column --------------------------------------------------------- */
+#chat { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+#chathead {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 18px; flex: none;
+  border-bottom: 1px solid var(--border); background: var(--surface);
+}
+#chathead .title { font-weight: 600; letter-spacing: -.01em; }
+#transcript { flex: 1; overflow-y: auto; padding: 22px 18px; }
+.turns { max-width: 780px; margin: 0 auto; }
+
+.msg { display: flex; margin-bottom: 16px; }
+.msg.user { justify-content: flex-end; }
+.bubble {
+  max-width: 82%; padding: 10px 14px; border-radius: 14px;
+  border: 1px solid var(--border); background: var(--surface);
+  overflow-wrap: anywhere;
+}
+.msg.user .bubble { background: var(--accentdim); border-color: var(--accentb); border-bottom-right-radius: 4px; }
+.msg.agent .bubble { border-bottom-left-radius: 4px; }
+.msg.pause .bubble { background: var(--amberdim); border-color: var(--amber); color: var(--t1); }
+.msg.failed .bubble { background: var(--reddim); border-color: var(--red); }
+.who {
+  font-size: 10px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--t3); margin-bottom: 4px;
+}
+.bubble p { margin: 0 0 8px; }
+.bubble p:last-child { margin-bottom: 0; }
+.bubble ul, .bubble ol { margin: 0 0 8px; padding-left: 20px; }
+.bubble h1, .bubble h2, .bubble h3 { margin: 10px 0 6px; font-size: 15px; }
+.bubble a { color: var(--accent); }
+.bubble code {
+  font-family: var(--mono); font-size: 12.5px;
+  background: var(--surface3); padding: 1px 5px; border-radius: 4px;
+}
+.bubble pre {
+  font-family: var(--mono); font-size: 12.5px; margin: 8px 0;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 9px; padding: 10px 12px; overflow-x: auto;
+}
+.bubble pre code { background: none; padding: 0; }
+.caret::after {
+  content: ''; display: inline-block; width: 7px; height: 14px;
+  vertical-align: -2px; margin-left: 2px; background: var(--accent);
+  animation: blink 1s steps(2) infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+
+.welcome { text-align: center; color: var(--t2); padding: 64px 20px; }
+.welcome svg { width: 46px; height: 46px; opacity: .75; }
+.welcome h2 { margin: 14px 0 6px; font-size: 19px; color: var(--t1); letter-spacing: -.02em; }
+
+/* --- composer ------------------------------------------------------------ */
+#composer { flex: none; border-top: 1px solid var(--border); background: var(--surface); padding: 12px 18px 14px; }
+.composerinner { max-width: 780px; margin: 0 auto; display: flex; gap: 9px; align-items: flex-end; }
+#input {
+  flex: 1; resize: none; min-height: 44px; max-height: 190px;
+  padding: 11px 13px; border-radius: 11px;
+  background: var(--surface2); border: 1px solid var(--border);
+  outline: none; line-height: 1.5;
+}
+#input:focus { border-color: var(--accentb); background: var(--surface3); }
+#send {
+  height: 44px; padding: 0 18px; border: none; border-radius: 11px;
+  background: var(--accent); color: #fff; font-weight: 600; cursor: pointer;
+}
+#send:disabled { opacity: .45; cursor: not-allowed; }
+.hint { max-width: 780px; margin: 7px auto 0; font-size: 11px; color: var(--t3); display: flex; gap: 12px; }
+
+/* --- trace panel --------------------------------------------------------- */
+#trace {
+  width: 372px; flex: none; display: flex; flex-direction: column;
+  background: var(--surface); border-left: 1px solid var(--border);
+}
+#trace.hidden { display: none; }
+#traceids { padding: 4px 14px 10px; border-bottom: 1px solid var(--border); }
+.idrow { display: flex; gap: 8px; font-family: var(--mono); font-size: 11px; padding: 2px 0; }
+.idrow .k { color: var(--t3); width: 82px; flex: none; }
+.idrow .v { color: var(--t2); overflow-wrap: anywhere; }
+#frames { flex: 1; overflow-y: auto; padding: 8px 10px; font-family: var(--mono); font-size: 11.5px; }
+.frame { padding: 4px 6px; border-radius: 6px; border-left: 2px solid var(--border); margin-bottom: 3px; }
+.frame:hover { background: var(--surface2); }
+.frame .seq { color: var(--t3); margin-right: 7px; }
+.frame .type { font-weight: 600; margin-right: 7px; }
+.frame .payload { color: var(--t2); overflow-wrap: anywhere; }
+.frame.token { border-left-color: var(--t3); }
+.frame.token .type { color: var(--t2); }
+.frame.session .type, .frame.done .type { color: var(--green); }
+.frame.session, .frame.done { border-left-color: var(--green); }
+.frame.tool_call .type, .frame.tool_result .type { color: var(--purple); }
+.frame.tool_call, .frame.tool_result { border-left-color: var(--purple); }
+.frame.error .type { color: var(--red); }
+.frame.error { border-left-color: var(--red); }
+.frame.guard .type { color: var(--amber); }
+.frame.guard { border-left-color: var(--amber); }
+.frame.note .type { color: var(--accent); }
+.frame.note { border-left-color: var(--accent); }
+
+/* --- settings dialog ----------------------------------------------------- */
+#settings {
+  position: fixed; inset: 0; display: none;
+  align-items: center; justify-content: center;
+  background: rgba(0,0,0,.55); z-index: 40;
+}
+#settings.open { display: flex; }
+.card {
+  width: 420px; max-width: calc(100vw - 32px);
+  background: var(--surface); border: 1px solid var(--borderh);
+  border-radius: 14px; padding: 20px;
+}
+.card h3 { margin: 0 0 4px; font-size: 16px; letter-spacing: -.01em; }
+.card .sub { color: var(--t2); font-size: 12.5px; margin-bottom: 14px; }
+.card label { display: block; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--t3); margin-bottom: 5px; }
+.card input[type=password], .card input[type=text] {
+  width: 100%; padding: 9px 11px; border-radius: 9px;
+  background: var(--surface2); border: 1px solid var(--border); outline: none;
+}
+.card input:focus { border-color: var(--accentb); }
+.checkrow { display: flex; align-items: center; gap: 8px; margin-top: 14px; color: var(--t2); font-size: 13px; }
+.cardactions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.primary { background: var(--accent); border: none; color: #fff; font-weight: 600; }
+.primary:hover { background: var(--accent); filter: brightness(1.08); }
+
+/* --- inline banner (auth failures and other real errors) ----------------- */
+#banner {
+  display: none; margin: 0 8px 8px; padding: 10px 12px;
+  border-radius: 9px; background: var(--reddim); border: 1px solid var(--red);
+  font-size: 12.5px; color: var(--t1);
+}
+#banner.show { display: block; }
+#banner .code { font-family: var(--mono); font-size: 11px; color: var(--t2); display: block; margin-top: 4px; }
+#banner button {
+  margin-top: 8px; padding: 4px 10px; border-radius: 7px; cursor: pointer;
+  background: var(--surface2); border: 1px solid var(--borderh);
+}
+.stamp { font-family: var(--mono); font-size: 10.5px; color: var(--t3); }
+
+@media (max-width: 1100px) { #trace { width: 300px; } }
+@media (max-width: 860px) { #sidebar { width: 200px; } #trace.hidden, #trace { display: none; } }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand">
+      <svg viewBox="0 0 32 32" aria-hidden="true">
+        <circle cx="16" cy="16" r="14" fill="var(--accent)"/>
+        <path d="M10 21l6-12 6 12z" fill="#fff"/>
+        <path d="M7 23h18" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <span>AgentShip</span>
+      <small>Studio</small>
+    </div>
+    <div class="spacer"></div>
+    <span class="stamp" id="buildstamp"></span>
+    <button class="iconbtn" id="streamtoggle" title="Toggle streaming (:stream vs :invoke)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+      <span id="streamlabel">stream</span>
+    </button>
+    <button class="iconbtn" id="tracetoggle" title="Toggle the trace panel">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v16h16"/><path d="M8 16l3-5 3 3 4-7"/></svg>
+    </button>
+    <button class="iconbtn" id="themetoggle" title="Switch theme"></button>
+    <button class="iconbtn" id="keybutton" title="API key">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="M10.8 12.2L20 3l1.5 1.5M17 6l1.5 1.5"/></svg>
+    </button>
+  </header>
+
+  <main>
+    <nav id="sidebar">
+      <div class="panelhead">Agents<span class="spacer"></span><span id="agentcount" class="stamp"></span></div>
+      <div id="banner"></div>
+      <div id="agentlist"><div class="empty">Loading agents…</div></div>
+    </nav>
+
+    <section id="chat">
+      <div id="chathead">
+        <span class="title" id="agentname">No agent selected</span>
+        <span id="agentbadges"></span>
+        <div class="spacer"></div>
+        <button class="iconbtn" id="clearbutton" title="Clear the transcript and start a new session">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
+          <span>Clear</span>
+        </button>
+      </div>
+      <div id="transcript">
+        <div class="turns" id="turns">
+          <div class="welcome" id="welcome">
+            <svg viewBox="0 0 32 32" aria-hidden="true">
+              <circle cx="16" cy="16" r="14" fill="var(--accent)"/>
+              <path d="M10 21l6-12 6 12z" fill="#fff"/>
+              <path d="M7 23h18" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            <h2>AgentShip Studio</h2>
+            <div>Pick an agent on the left to start a conversation.</div>
+          </div>
+        </div>
+      </div>
+      <div id="composer">
+        <div class="composerinner">
+          <textarea id="input" rows="1" placeholder="Send a message…  (Enter to send, Shift+Enter for a newline)"></textarea>
+          <button id="send">Send</button>
+        </div>
+        <div class="hint">
+          <span id="modehint">streaming via :stream</span>
+          <span id="pausehint"></span>
+        </div>
+      </div>
+    </section>
+
+    <aside id="trace">
+      <div class="panelhead">Trace<span class="spacer"></span><button class="iconbtn" id="clearframes" title="Clear frames">clear</button></div>
+      <div id="traceids">
+        <div class="idrow"><span class="k">session_id</span><span class="v" id="v-session">—</span></div>
+        <div class="idrow"><span class="k">trace_id</span><span class="v" id="v-trace">—</span></div>
+        <div class="idrow"><span class="k">resume_token</span><span class="v" id="v-resume">—</span></div>
+      </div>
+      <div id="frames"></div>
+    </aside>
+  </main>
+</div>
+
+<div id="settings">
+  <div class="card">
+    <h3>API key</h3>
+    <div class="sub">Sent as <code>Authorization: Bearer …</code> on every <code>/v1</code> call. Stored in this browser's localStorage only.</div>
+    <label for="keyinput">Key</label>
+    <input id="keyinput" type="password" placeholder="your API key" autocomplete="off" spellcheck="false">
+    <div class="checkrow"><input id="showkey" type="checkbox"><label for="showkey" style="text-transform:none;letter-spacing:0;font-size:13px;color:var(--t2);margin:0">Show key</label></div>
+    <div class="cardactions">
+      <button class="iconbtn" id="keycancel">Cancel</button>
+      <button class="iconbtn primary" id="keysave">Save &amp; reload agents</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ===========================================================================
+   AgentShip Studio — a single-file chat/debug client for the runtime service.
+   No build step, no framework, no network dependency beyond this origin's /v1.
+
+   It drives exactly five endpoints:
+     GET  /healthz                  build stamp (public)
+     GET  /v1/agents                the agent catalog
+     POST /v1/agents/{n}:invoke     one non-streaming turn
+     POST /v1/agents/{n}:stream     one streaming turn (SSE frames)
+     POST /v1/agents/{n}:resume     continue a turn that paused for a human
+   =========================================================================== */
+
+/* Everything the page remembers about the current conversation. Kept as one
+   plain object rather than scattered globals so `clearChat` can reset it. */
+const chat = {
+  agents: [],          // AgentCards from GET /v1/agents
+  selected: null,      // the selected AgentCard
+  sessionId: null,     // threaded across turns; new one per agent and per clear
+  resumeToken: null,   // non-null while a run is paused waiting on a human
+  busy: false,
+};
+
+const STORE_KEY = "agentship.studio.key";
+const STORE_THEME = "agentship.studio.theme";
+const STORE_STREAM = "agentship.studio.stream";
+
+const el = (id) => document.getElementById(id);
+
+/* --- settings ------------------------------------------------------------ */
+
+// The API key this browser has saved ("" when the user has not set one yet).
+function apiKey() {
+  return localStorage.getItem(STORE_KEY) || "";
+}
+
+// Whether turns should go through :stream (true) or :invoke (false).
+function streamingOn() {
+  return localStorage.getItem(STORE_STREAM) !== "off";
+}
+
+// Flip between :stream and :invoke and redraw the toggle + hint.
+function toggleStreaming() {
+  localStorage.setItem(STORE_STREAM, streamingOn() ? "off" : "on");
+  showStreamingMode();
+}
+
+// Paint the streaming toggle and the composer hint from the stored preference.
+function showStreamingMode() {
+  const on = streamingOn();
+  el("streamtoggle").classList.toggle("on", on);
+  el("streamlabel").textContent = on ? "stream" : "invoke";
+  el("modehint").textContent = on ? "streaming via :stream" : "non-streaming via :invoke";
+}
+
+// Apply the saved theme (dark unless the user chose light) and set the toggle glyph.
+function showTheme() {
+  const light = localStorage.getItem(STORE_THEME) === "light";
+  document.documentElement.classList.toggle("dark", !light);
+  el("themetoggle").innerHTML = light
+    ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>'
+    : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/></svg>';
+}
+
+// Switch between light and dark, persisting the choice.
+function toggleTheme() {
+  localStorage.setItem(STORE_THEME, localStorage.getItem(STORE_THEME) === "light" ? "dark" : "light");
+  showTheme();
+}
+
+/* --- HTTP ---------------------------------------------------------------- */
+
+// Call a service path with the saved key attached. Returns the raw Response.
+function callApi(path, options) {
+  const opts = options || {};
+  const headers = Object.assign({}, opts.headers);
+  const key = apiKey();
+  if (key) headers["Authorization"] = "Bearer " + key;
+  if (opts.body) headers["Content-Type"] = "application/json";
+  return fetch(path, Object.assign({}, opts, { headers }));
+}
+
+/* Read a failed response as RFC-9457 problem+json and return {detail, code}.
+   Falls back to the status line when the body is not problem+json, so a proxy
+   error or an HTML 502 still produces something a human can act on. */
+async function readProblem(response) {
+  try {
+    const body = await response.json();
+    if (body && (body.detail || body.title)) {
+      return { detail: body.detail || body.title, code: body.code || String(response.status) };
+    }
+  } catch (err) {
+    /* not JSON — fall through to the status line */
+  }
+  return { detail: response.status + " " + response.statusText, code: String(response.status) };
+}
+
+/* --- the error banner over the agent list -------------------------------- */
+
+// Show a problem in the sidebar banner, optionally offering the key dialog.
+function showBanner(problem, offerKey) {
+  const banner = el("banner");
+  banner.innerHTML = "";
+  banner.appendChild(document.createTextNode(problem.detail));
+  const code = document.createElement("span");
+  code.className = "code";
+  code.textContent = "code: " + problem.code;
+  banner.appendChild(code);
+  if (offerKey) {
+    const button = document.createElement("button");
+    button.textContent = "Set API key";
+    button.onclick = openKeyDialog;
+    banner.appendChild(button);
+  }
+  banner.classList.add("show");
+}
+
+// Hide the sidebar banner.
+function hideBanner() {
+  el("banner").classList.remove("show");
+}
+
+/* --- agent catalog ------------------------------------------------------- */
+
+/* Load GET /v1/agents into the sidebar. A 401/403 is shown verbatim with a
+   prompt to set the key — never an unexplained empty list. */
+async function loadAgents() {
+  const list = el("agentlist");
+  list.innerHTML = '<div class="empty">Loading agents…</div>';
+  let response;
+  try {
+    response = await callApi("/v1/agents");
+  } catch (err) {
+    list.innerHTML = "";
+    showBanner({ detail: "Could not reach the service: " + err.message, code: "network" }, false);
+    return;
+  }
+  if (!response.ok) {
+    list.innerHTML = "";
+    const problem = await readProblem(response);
+    showBanner(problem, response.status === 401 || response.status === 403);
+    return;
+  }
+  hideBanner();
+  chat.agents = await response.json();
+  showAgents();
+}
+
+// Render the agent rows, restoring the selection highlight.
+function showAgents() {
+  const list = el("agentlist");
+  list.innerHTML = "";
+  el("agentcount").textContent = chat.agents.length ? chat.agents.length : "";
+  if (!chat.agents.length) {
+    list.innerHTML = '<div class="empty">This service exposes no agents.</div>';
+    return;
+  }
+  for (const card of chat.agents) {
+    const row = document.createElement("button");
+    row.className = "agent" + (chat.selected && chat.selected.name === card.name ? " selected" : "");
+    row.onclick = () => selectAgent(card);
+    const name = document.createElement("div");
+    name.className = "name";
+    name.textContent = card.name;
+    row.appendChild(name);
+    const badges = document.createElement("div");
+    badges.className = "badges";
+    for (const badge of badgesFor(card)) badges.appendChild(badge);
+    row.appendChild(badges);
+    list.appendChild(row);
+  }
+}
+
+/* Build the badge elements for an agent card. The card exposes capabilities
+   rather than an engine/model name, so the badges describe what the agent can
+   do: its providers, streaming, tools, HITL, durability, teams. */
+function badgesFor(card) {
+  const caps = card.capabilities || {};
+  const badges = [];
+  const add = (text, tone) => {
+    const span = document.createElement("span");
+    span.className = "badge" + (tone ? " " + tone : "");
+    span.textContent = text;
+    badges.push(span);
+  };
+  for (const provider of (caps.providers || []).slice(0, 2)) add(provider, "accent");
+  if (card.streaming || caps.streaming) add("streaming", "green");
+  if (caps.tool_calling) add("tools", "purple");
+  if (caps.hitl && caps.hitl !== "none") add("hitl:" + caps.hitl, "purple");
+  if (caps.durability && caps.durability !== "none") add(caps.durability);
+  if (caps.multi_agent) add("team");
+  return badges;
+}
+
+/* Select an agent: reset the conversation (a session never crosses agents) and
+   redraw the header badges. */
+function selectAgent(card) {
+  chat.selected = card;
+  showAgents();
+  el("agentname").textContent = card.name;
+  const badges = el("agentbadges");
+  badges.innerHTML = "";
+  for (const badge of badgesFor(card)) badges.appendChild(badge);
+  el("input").placeholder = "Message " + card.name + "…  (Enter to send, Shift+Enter for a newline)";
+  clearChat();
+  el("input").focus();
+}
+
+/* --- transcript ---------------------------------------------------------- */
+
+// Drop the transcript, frames and ids, and start a fresh session id.
+function clearChat() {
+  chat.sessionId = chat.selected ? newSessionId() : null;
+  chat.resumeToken = null;
+  el("turns").innerHTML = "";
+  el("frames").innerHTML = "";
+  showIds();
+  showPauseHint();
+  if (!chat.selected) return;
+  addFrame("note", "", { agent: chat.selected.name, session_id: chat.sessionId });
+}
+
+// A fresh conversation id, minted client-side so the ids line up in the trace panel.
+function newSessionId() {
+  return "studio-" + Math.random().toString(16).slice(2, 10) + Date.now().toString(16);
+}
+
+/* Append a message bubble and return its body element so a streaming turn can
+   keep writing into it. `kind` is one of user | agent | pause | failed. */
+function addMessage(kind, text) {
+  const row = document.createElement("div");
+  row.className = "msg " + (kind === "user" ? "user" : kind);
+  const bubble = document.createElement("div");
+  bubble.className = "bubble";
+  const who = document.createElement("div");
+  who.className = "who";
+  who.textContent = { user: "You", agent: chat.selected ? chat.selected.name : "Agent", pause: "Paused — waiting on you", failed: "Error" }[kind];
+  const body = document.createElement("div");
+  body.innerHTML = renderMarkdown(text || "");
+  bubble.appendChild(who);
+  bubble.appendChild(body);
+  row.appendChild(bubble);
+  el("turns").appendChild(row);
+  scrollToEnd();
+  return body;
+}
+
+// Keep the transcript pinned to the newest message.
+function scrollToEnd() {
+  const view = el("transcript");
+  view.scrollTop = view.scrollHeight;
+}
+
+/* --- markdown ------------------------------------------------------------ */
+
+// Escape the four characters that would otherwise let model output inject HTML.
+function escapeHtml(text) {
+  return String(text)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/* Render a small, safe subset of Markdown: fenced code, inline code, bold,
+   italics, links, headings, bullet lists, paragraphs. Everything is escaped
+   first, so no model output can inject markup. */
+function renderMarkdown(text) {
+  // Fenced code is lifted out first and put back last so none of the inline
+  // rules below rewrite anything inside a code block. The placeholder is a NUL
+  // sentinel, which escapeHtml can never produce, so it cannot collide.
+  const blocks = [];
+  let escaped = escapeHtml(text).replace(/```(\w*)\n?([\s\S]*?)```/g, (match, lang, code) => {
+    blocks.push('<pre><code>' + code.replace(/\n$/, "") + "</code></pre>");
+    return "\u0000" + (blocks.length - 1) + "\u0000";
+  });
+  escaped = escaped
+    .replace(/`([^`\n]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>")
+    .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+
+  const html = escaped.split(/\n{2,}/).map((chunk) => {
+    const trimmed = chunk.trim();
+    if (!trimmed) return "";
+    if (/^\u0000\d+\u0000$/.test(trimmed)) return trimmed;
+    const heading = trimmed.match(/^(#{1,3})\s+(.*)$/);
+    if (heading) return "<h" + heading[1].length + ">" + heading[2] + "</h" + heading[1].length + ">";
+    if (/^\s*[-*+]\s+/.test(trimmed)) {
+      const items = trimmed.split("\n").map((line) => "<li>" + line.replace(/^\s*[-*+]\s+/, "") + "</li>");
+      return "<ul>" + items.join("") + "</ul>";
+    }
+    return "<p>" + trimmed.replace(/\n/g, "<br>") + "</p>";
+  }).join("");
+
+  return html.replace(/\u0000(\d+)\u0000/g, (match, index) => blocks[Number(index)]);
+}
+
+/* --- trace panel --------------------------------------------------------- */
+
+// Append one line to the frame log, colour-coded by frame type.
+function addFrame(type, seq, data) {
+  const line = document.createElement("div");
+  line.className = "frame " + type;
+  const seqSpan = document.createElement("span");
+  seqSpan.className = "seq";
+  seqSpan.textContent = seq === "" ? "·" : "#" + seq;
+  const typeSpan = document.createElement("span");
+  typeSpan.className = "type";
+  typeSpan.textContent = type;
+  const payload = document.createElement("span");
+  payload.className = "payload";
+  payload.textContent = summarize(data);
+  line.appendChild(seqSpan);
+  line.appendChild(typeSpan);
+  line.appendChild(payload);
+  const log = el("frames");
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+}
+
+// One-line JSON summary of a frame payload, truncated so the panel stays readable.
+function summarize(data) {
+  if (data === null || data === undefined) return "";
+  let text;
+  try {
+    text = typeof data === "string" ? data : JSON.stringify(data);
+  } catch (err) {
+    text = String(data);
+  }
+  return text.length > 220 ? text.slice(0, 220) + "…" : text;
+}
+
+// Repaint the session / trace / resume ids in the trace panel.
+function showIds(traceId) {
+  el("v-session").textContent = chat.sessionId || "—";
+  if (traceId !== undefined) el("v-trace").textContent = traceId || "—";
+  el("v-resume").textContent = chat.resumeToken ? summarize(chat.resumeToken) : "—";
+}
+
+// Show or clear the composer hint that says the next reply resumes a paused run.
+function showPauseHint() {
+  el("pausehint").textContent = chat.resumeToken
+    ? "paused — your next reply resumes this run (yes / no, or free text)"
+    : "";
+}
+
+/* --- sending a turn ------------------------------------------------------ */
+
+// Enable or disable the composer while a turn is in flight.
+function setBusy(busy) {
+  chat.busy = busy;
+  el("send").disabled = busy;
+  el("input").disabled = busy;
+}
+
+/* Send whatever is in the composer. Routes to :resume when a run is paused,
+   otherwise to :stream or :invoke depending on the toggle. */
+async function sendTurn() {
+  const input = el("input");
+  const text = input.value.trim();
+  if (!text || chat.busy || !chat.selected) return;
+  input.value = "";
+  input.style.height = "auto";
+  addMessage("user", text);
+  setBusy(true);
+  try {
+    if (chat.resumeToken) {
+      await resumeTurn(text);
+    } else if (streamingOn() && (chat.selected.streaming || (chat.selected.capabilities || {}).streaming)) {
+      await streamTurn(text);
+    } else {
+      await invokeTurn(text);
+    }
+  } catch (err) {
+    addMessage("failed", err.message);
+    addFrame("error", "", { detail: err.message });
+  } finally {
+    setBusy(false);
+    input.focus();
+  }
+}
+
+// One non-streaming turn through :invoke.
+async function invokeTurn(text) {
+  const response = await callApi("/v1/agents/" + encodeURIComponent(chat.selected.name) + ":invoke", {
+    method: "POST",
+    body: JSON.stringify({ input: text, session_id: chat.sessionId }),
+  });
+  await showTurnResult(response);
+}
+
+// Continue a paused run through :resume, echoing the token back unchanged.
+async function resumeTurn(text) {
+  const response = await callApi("/v1/agents/" + encodeURIComponent(chat.selected.name) + ":resume", {
+    method: "POST",
+    body: JSON.stringify({
+      resume_token: chat.resumeToken,
+      session_id: chat.sessionId,
+      resume_value: resumeValueFor(text),
+    }),
+  });
+  chat.resumeToken = null;
+  addFrame("note", "", { resumed_with: resumeValueFor(text) });
+  await showTurnResult(response);
+}
+
+/* Map the human's reply onto a resume value: a bare yes/no becomes the
+   approval shape engines expect, anything else is passed through verbatim. */
+function resumeValueFor(text) {
+  const word = text.trim().toLowerCase();
+  if (["yes", "y", "approve", "approved", "ok"].includes(word)) return { approved: true };
+  if (["no", "n", "reject", "rejected", "deny"].includes(word)) return { approved: false };
+  return text;
+}
+
+/* Render an :invoke / :resume response into the transcript, capturing the
+   resume token when the run paused for a human. */
+async function showTurnResult(response) {
+  if (!response.ok) {
+    const problem = await readProblem(response);
+    addMessage("failed", problem.detail + "  (" + problem.code + ")");
+    addFrame("error", "", problem);
+    return;
+  }
+  const body = await response.json();
+  chat.sessionId = body.session_id || chat.sessionId;
+  chat.resumeToken = body.resume_token || null;
+  addFrame("done", "", { output: body.output, usage: body.usage });
+  showIds(body.trace_id);
+  showPauseHint();
+  addMessage("agent", asText(body.output));
+  if (chat.resumeToken) {
+    addMessage("pause", "This run paused and is waiting for your decision. Reply **yes** or **no** to approve or reject, or type any other text to pass it through.");
+  }
+}
+
+// Coerce an agent output (string, object, or null) into displayable text.
+function asText(output) {
+  if (output === null || output === undefined) return "_(no output)_";
+  if (typeof output === "string") return output;
+  return "```json\n" + JSON.stringify(output, null, 2) + "\n```";
+}
+
+/* One streaming turn through :stream. EventSource cannot POST, so the SSE body
+   is read off the fetch stream and framed here. */
+async function streamTurn(text) {
+  const response = await callApi("/v1/agents/" + encodeURIComponent(chat.selected.name) + ":stream", {
+    method: "POST",
+    body: JSON.stringify({ input: text, session_id: chat.sessionId }),
+  });
+  if (!response.ok) {
+    const problem = await readProblem(response);
+    addMessage("failed", problem.detail + "  (" + problem.code + ")");
+    addFrame("error", "", problem);
+    return;
+  }
+  const body = addMessage("agent", "");
+  body.classList.add("caret");
+  let text_so_far = "";
+  await readSseFrames(response, (frame) => {
+    addFrame(frame.type, frame.seq, frame.data);
+    const data = frame.data || {};
+    if (frame.type === "session") {
+      chat.sessionId = data.session_id || chat.sessionId;
+      showIds(data.trace_id);
+      return;
+    }
+    if (frame.type === "error") {
+      body.classList.remove("caret");
+      addMessage("failed", data.detail || "the stream failed");
+      return;
+    }
+    if (data.resume_token) {
+      chat.resumeToken = data.resume_token;
+      showIds(data.trace_id);
+      showPauseHint();
+    }
+    const chunk = textOf(frame.type, data);
+    if (chunk) {
+      text_so_far += chunk;
+      body.innerHTML = renderMarkdown(text_so_far);
+      scrollToEnd();
+    }
+  });
+  body.classList.remove("caret");
+  if (!text_so_far) body.innerHTML = renderMarkdown("_(no output)_");
+  if (chat.resumeToken) {
+    addMessage("pause", "This run paused and is waiting for your decision. Reply **yes** or **no** to approve or reject, or type any other text to pass it through.");
+  }
+}
+
+/* Pull the displayable text out of a stream frame's data. Token and content
+   frames carry the transcript; tool frames are shown in the trace panel only. */
+function textOf(type, data) {
+  if (type !== "token" && type !== "content" && type !== "done") return "";
+  if (typeof data.content === "string") return data.content;
+  if (typeof data.text === "string") return data.text;
+  if (typeof data.delta === "string") return data.delta;
+  if (type === "done" && typeof data.output === "string") return data.output;
+  return "";
+}
+
+/* Read an SSE response body and hand each decoded frame to `onFrame`.
+   Frames arrive as `event: <type>` / `data: <json>` pairs separated by a blank
+   line; only the JSON payload is used, since it repeats the type and seq. */
+async function readSseFrames(response, onFrame) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    // sse-starlette frames with CRLF; drop the CRs so one blank-line rule works
+    // whatever the server uses, and a CR split across chunks cannot confuse it.
+    buffer += decoder.decode(value, { stream: true }).replace(/\r/g, "");
+    let split = buffer.indexOf("\n\n");
+    while (split !== -1) {
+      const block = buffer.slice(0, split);
+      buffer = buffer.slice(split + 2);
+      const payload = block.split("\n")
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice(5).trim())
+        .join("\n");
+      if (payload) {
+        try {
+          onFrame(JSON.parse(payload));
+        } catch (err) {
+          onFrame({ type: "content", seq: "", data: { content: payload } });
+        }
+      }
+      split = buffer.indexOf("\n\n");
+    }
+  }
+}
+
+/* --- build stamp --------------------------------------------------------- */
+
+// Read /healthz (public) and show which build is answering, in the header.
+async function loadBuildStamp() {
+  try {
+    const response = await fetch("/healthz");
+    const body = await response.json();
+    const core = (body.packages || {})["agentship-core"];
+    el("buildstamp").textContent = "build " + body.build + (core ? " · core " + core : "");
+    el("buildstamp").title = JSON.stringify(body.packages || {}, null, 2);
+  } catch (err) {
+    el("buildstamp").textContent = "build unknown";
+  }
+}
+
+/* --- key dialog ---------------------------------------------------------- */
+
+// Open the API-key dialog with the saved key prefilled.
+function openKeyDialog() {
+  el("keyinput").value = apiKey();
+  el("settings").classList.add("open");
+  el("keyinput").focus();
+}
+
+// Close the API-key dialog without saving.
+function closeKeyDialog() {
+  el("settings").classList.remove("open");
+}
+
+// Save the typed key and reload the catalog with it.
+function saveKey() {
+  localStorage.setItem(STORE_KEY, el("keyinput").value.trim());
+  closeKeyDialog();
+  loadAgents();
+}
+
+/* --- wiring -------------------------------------------------------------- */
+
+// Attach every event listener and paint the initial state.
+function start() {
+  showTheme();
+  showStreamingMode();
+  el("themetoggle").onclick = toggleTheme;
+  el("streamtoggle").onclick = toggleStreaming;
+  el("tracetoggle").onclick = () => el("trace").classList.toggle("hidden");
+  el("keybutton").onclick = openKeyDialog;
+  el("keycancel").onclick = closeKeyDialog;
+  el("keysave").onclick = saveKey;
+  el("clearbutton").onclick = clearChat;
+  el("clearframes").onclick = () => { el("frames").innerHTML = ""; };
+  el("showkey").onchange = (event) => { el("keyinput").type = event.target.checked ? "text" : "password"; };
+  el("send").onclick = sendTurn;
+  el("settings").onclick = (event) => { if (event.target === el("settings")) closeKeyDialog(); };
+
+  const input = el("input");
+  input.onkeydown = (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      sendTurn();
+    }
+  };
+  // Grow the composer with its content, up to the CSS max-height.
+  input.oninput = () => {
+    input.style.height = "auto";
+    input.style.height = Math.min(input.scrollHeight, 190) + "px";
+  };
+
+  loadBuildStamp();
+  loadAgents();
+  if (!apiKey()) openKeyDialog();
+}
+
+start();
+</script>
+</body>
+</html>

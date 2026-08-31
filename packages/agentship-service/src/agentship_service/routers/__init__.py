@@ -8,6 +8,7 @@ identity — it authorizes and scopes against what is already proven.
 from .a2a import router as a2a_router
 from .agents import router as agents_router
 from .live import router as live_router
+from .studio import router as studio_router
 from .tasks import router as tasks_router
 
-__all__ = ["a2a_router", "agents_router", "live_router", "tasks_router"]
+__all__ = ["a2a_router", "agents_router", "live_router", "studio_router", "tasks_router"]
