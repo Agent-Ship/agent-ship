@@ -655,8 +655,15 @@ def _serve(
     # only uvicorn's access lines and nothing about what an agent actually did.
     configure_logging(log_level)
 
+    from agentship_service.build_info import build_id, installed_versions
+
+    versions = installed_versions()
     click.echo(f"Serving {len(specs)} agent(s) from {agents_dir} on http://{host}:{port}")
     click.echo(f"Auth provider: {auth_provider}   Log level: {log_level}")
+    click.echo(
+        f"Build: {build_id()}   "
+        + "  ".join(f"{n.removeprefix('agentship-')}={v}" for n, v in versions.items())
+    )
     run_server(host=host, port=port, reload=reload, workers=workers)
 
 

@@ -48,7 +48,9 @@ def test_healthz_is_public() -> None:
     client = TestClient(_app())
     resp = client.get("/healthz")
     assert resp.status_code == 200
-    assert resp.json() == {"status": "ok"}
+    # Asserts the status field, not the whole body: the probe also carries build info, and
+    # adding a field to a health response must not break a caller (or this test).
+    assert resp.json()["status"] == "ok"
 
 
 def test_missing_credential_is_problem_json_401() -> None:
@@ -149,3 +151,23 @@ def test_schema_and_docs_are_public(path: str) -> None:
     client = TestClient(_app())
     resp = client.get(path)
     assert resp.status_code == 200
+
+
+def test_healthz_reports_which_build_is_answering() -> None:
+    """``/healthz`` carries the build stamp and package versions, not just ``ok``.
+
+    A deployment that cannot say what code it is running is one you cannot trust a bug
+    report against. This is the check that answers "is the container actually on the
+    latest framework?" from outside, without shelling in.
+    """
+    from agentship.auth import ApiKeyAuthProvider, EnvApiKeyStore
+    from agentship_service import AgentRegistry, create_app
+    from fastapi.testclient import TestClient
+
+    auth = ApiKeyAuthProvider(EnvApiKeyStore(raw="[]"))
+    client = TestClient(create_app(auth=auth, agents=AgentRegistry()))
+
+    body = client.get("/healthz").json()
+    assert body["status"] == "ok"
+    assert body["build"]  # "dev" locally, a git sha in a built image
+    assert "agentship-core" in body["packages"]

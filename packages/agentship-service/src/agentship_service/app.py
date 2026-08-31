@@ -19,6 +19,7 @@ from agentship.auth import AuthProvider
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
+from .build_info import build_info
 from .errors import install_error_handlers
 from .middleware import AuthMiddleware, RateLimitMiddleware, SecurityHeadersMiddleware
 from .registry import AgentRegistry
@@ -53,9 +54,14 @@ def create_app(
     install_error_handlers(app)
 
     @app.get("/healthz", include_in_schema=False)
-    async def healthz() -> dict[str, str]:
-        """Unauthenticated liveness probe."""
-        return {"status": "ok"}
+    async def healthz() -> dict[str, object]:
+        """Unauthenticated liveness probe, carrying which build is answering.
+
+        The build stamp and package versions are here so a caller can tell *what code*
+        is running without shelling into the container — the question "is this the
+        latest?" should be answerable from outside.
+        """
+        return {"status": "ok", **build_info()}
 
     app.include_router(agents_router)
     app.include_router(live_router)
