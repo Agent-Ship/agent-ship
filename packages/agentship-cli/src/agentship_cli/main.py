@@ -170,9 +170,7 @@ def run(
         # and point at --debug for the full trace.
         if debug:
             raise
-        click.echo(
-            f"Error: {exc} (run with --debug for the full traceback)", err=True
-        )
+        click.echo(f"Error: {exc} (run with --debug for the full traceback)", err=True)
         sys.exit(1)
 
 
@@ -568,6 +566,13 @@ def _scaffold_agent(name: str, template: str, agents_dir: Path, *, force: bool) 
     default=None,
     help="Load provider credentials from this .env before serving (default: ./.env).",
 )
+@click.option(
+    "--log-level",
+    "log_level",
+    default=lambda: os.environ.get("AGENTSHIP_LOG_LEVEL", "info"),
+    show_default="info (or $AGENTSHIP_LOG_LEVEL)",
+    help="Log level for the agentship.* loggers: debug | info | warning | error.",
+)
 def serve(
     host: str,
     port: int,
@@ -576,6 +581,7 @@ def serve(
     agents_dir: str,
     auth_provider: str,
     env_file: str | None,
+    log_level: str,
 ) -> None:
     """Serve the agents in AGENTS-DIR over the secure ``/v1`` REST/SSE/WS surface.
 
@@ -594,7 +600,7 @@ def serve(
             "--reload and --workers>1 are mutually exclusive (uvicorn constraint)"
         )
     try:
-        _serve(host, port, reload, workers, Path(agents_dir), auth_provider, env_file)
+        _serve(host, port, reload, workers, Path(agents_dir), auth_provider, env_file, log_level)
     except AgentShipError as exc:
         # Doctor-gate failure (bad spec / uninstalled or misconfigured provider): exit 1
         # before anything is bound.
@@ -610,6 +616,7 @@ def _serve(
     agents_dir: Path,
     auth_provider: str,
     env_file: str | None,
+    log_level: str = "info",
 ) -> None:
     """Doctor-gate, configure the app factory's environment, and launch the server.
 
@@ -643,9 +650,27 @@ def _serve(
     os.environ[ENV_AUTH_PROVIDER] = auth_provider
     build_auth_provider(auth_provider, _auth_config_from_env(auth_provider))
 
+    # Turn the agentship.* logger tree on. Without this every component logger
+    # (engine, supervisor, tools, mcp, skills) is silent, so a served deployment shows
+    # only uvicorn's access lines and nothing about what an agent actually did.
+    configure_logging(log_level)
+
     click.echo(f"Serving {len(specs)} agent(s) from {agents_dir} on http://{host}:{port}")
-    click.echo(f"Auth provider: {auth_provider}")
+    click.echo(f"Auth provider: {auth_provider}   Log level: {log_level}")
     run_server(host=host, port=port, reload=reload, workers=workers)
+
+
+class _QuietHealthChecks(logging.Filter):
+    """Drop uvicorn access lines for ``/healthz`` so the probe does not drown the log.
+
+    Docker and Railway both poll the health endpoint every few seconds. Left alone that is
+    one access line per probe forever, which buries the requests a reader actually cares
+    about. The probe still shows up at DEBUG via uvicorn itself; only the access line goes.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Return False (drop) when the access record is a health-check request."""
+        return "/healthz" not in record.getMessage()
 
 
 def run_server(*, host: str, port: int, reload: bool, workers: int | None) -> None:
@@ -656,6 +681,8 @@ def run_server(*, host: str, port: int, reload: bool, workers: int | None) -> No
     doctor-gate already configured. Tests monkeypatch this function to avoid binding a socket.
     """
     import uvicorn
+
+    logging.getLogger("uvicorn.access").addFilter(_QuietHealthChecks())
 
     uvicorn.run(
         "agentship_service.serving:build_from_env",
@@ -768,6 +795,99 @@ def run_studio_process(cmd: list[str], env: dict[str, str], *, cwd: Path) -> Non
     import subprocess
 
     subprocess.run(cmd, env=env, cwd=str(cwd), check=True)
+
+
+@main.command()
+@click.option(
+    "--agents-dir",
+    "agents_dir",
+    type=click.Path(exists=True, file_okay=False),
+    default=None,
+    help="Also verify the agents + wired contracts of this project directory.",
+)
+@click.option(
+    "--live/--offline",
+    "live",
+    default=False,
+    show_default=True,
+    help="Reserved for live-provider checks; today every section runs fully offline.",
+)
+@click.option(
+    "--debug", is_flag=True, help="Re-raise on an unexpected failure for the full traceback."
+)
+def verify(agents_dir: str | None, live: bool, debug: bool) -> None:
+    """Prove that installed engines honour their declared capabilities — no over-claims.
+
+    This is the user-facing surface for AgentShip's "verifiable agents" theme. It runs
+    a themed report of sections and exits non-zero if *any* present section has a real
+    failure (an over-claim, an invalid spec, a broken contract); a section whose
+    optional dependency is missing, or which has nothing to check, is reported
+    ``SKIPPED`` with a reason and never fails the run (declare, don't fake):
+
+    - ``engine×capability grid`` — every installed engine really honours what it
+      declares (and rejects what it does not); any failed ``prove`` cell is named as
+      an over-claim.
+    - ``spec validation`` — with ``--agents-dir``, every spec loads and passes the same
+      capability gate ``doctor`` runs.
+    - ``observability span-tree`` — one ``echo`` run emits the frozen root ``agent``
+      span (skipped if the observability extra is absent).
+    - ``service contracts`` — with ``--agents-dir``, the served app rejects
+      unauthenticated calls and isolates tenants (skipped if the service extra is
+      absent).
+    - ``A2A interop`` — every ``a2a.expose`` agent renders a schema-valid, honest Agent
+      Card (skipped if none is exposed).
+
+    Runs fully offline (fake model seam + the model-free ``echo`` engine), so it needs
+    no provider keys. ``--debug`` re-raises an *unexpected* error with its traceback.
+    """
+    from .verify import run_verification
+
+    try:
+        report = asyncio.run(run_verification(Path(agents_dir) if agents_dir else None, live=live))
+    except AgentShipError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+    except Exception as exc:  # noqa: BLE001 - unexpected; surface cleanly or re-raise
+        if debug:
+            raise
+        click.echo(f"Error: {exc} (run with --debug for the full traceback)", err=True)
+        sys.exit(1)
+
+    _print_verify_report(report)
+    if not report.ok:
+        sys.exit(1)
+
+
+#: Width the section label is dotted-out to, so the status column lines up in the report.
+_VERIFY_LABEL_WIDTH = 28
+
+
+def _print_verify_report(report) -> None:
+    """Render a :class:`~agentship_cli.verify.VerifyReport` as the themed status block.
+
+    Each section prints ``label ...... passed/total <status>`` — a green check when it
+    ran and passed, a red cross when it really failed, or ``SKIPPED (reason)`` when it
+    declared a missing path rather than faking one. Failure details (each named
+    over-claim / invalid spec / broken contract) are indented beneath their section.
+    The closing arrow summarises the headline honesty claim.
+    """
+    for section in report.sections:
+        label = section.name
+        dots = "." * max(3, _VERIFY_LABEL_WIDTH - len(label))
+        if section.skipped:
+            click.echo(f"  {label} {dots} SKIPPED ({section.skipped_reason})")
+            continue
+        mark = "✅" if not section.failed else "❌"
+        click.echo(f"  {label} {dots} {section.passed}/{section.total} {mark}")
+        if section.failed:
+            for detail in section.details:
+                click.echo(f"      - {detail}")
+
+    if report.ok:
+        click.echo(f"  → all declared capabilities proven, {len(report.over_claims)} over-claims")
+    else:
+        n = len(report.over_claims)
+        click.echo(f"  → verification FAILED — {n} over-claim(s); see failures above")
 
 
 @main.group()

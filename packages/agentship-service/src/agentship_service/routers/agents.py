@@ -9,7 +9,10 @@ the service's catalog, not any tenant-owned resource.
 
 from __future__ import annotations
 
+import logging
+import time
 import uuid
+from contextlib import contextmanager
 
 from agentship.context import Caller
 from agentship.engines.base import Result, ResumeToken
@@ -34,6 +37,12 @@ from ._common import (
 router = APIRouter(prefix="/v1/agents", tags=["agents"])
 
 
+#: One line per served turn, so a running deployment shows what an agent actually did — not
+#: just uvicorn's access lines. Silent unless the tree is configured (``agentship serve``
+#: does that; importing the library still prints nothing).
+logger = logging.getLogger("agentship.service")
+
+
 def _invoke_response(name: str, session_id: str, result: Result) -> InvokeResponse:
     """Shape an engine :class:`Result` into the wire :class:`InvokeResponse`."""
     return InvokeResponse(
@@ -43,6 +52,36 @@ def _invoke_response(name: str, session_id: str, result: Result) -> InvokeRespon
         resume_token=result.resume_token.model_dump() if result.resume_token else None,
         trace_id=current_trace_id(),
     )
+
+
+@contextmanager
+def log_turn(verb: str, name: str, caller: Caller, session_id: str):
+    """Log one served turn's start and outcome, with who asked and how long it took.
+
+    Emits ``verb agent=… tenant=… session=…`` on entry and a matching ``ok``/``failed`` line
+    with the elapsed milliseconds on exit, so a reader can see the turn happen, attribute it
+    to a tenant, and spot a slow or failing agent without turning on tracing. The exception is
+    logged and re-raised unchanged — this observes, it never swallows.
+    """
+    started = time.monotonic()
+    logger.info("%s agent=%s tenant=%s session=%s", verb, name, caller.tenant_id, session_id)
+    try:
+        yield
+    except BaseException as exc:
+        elapsed = (time.monotonic() - started) * 1000
+        logger.warning(
+            "%s agent=%s session=%s failed in %.0fms: %s: %s",
+            verb,
+            name,
+            session_id,
+            elapsed,
+            type(exc).__name__,
+            exc,
+        )
+        raise
+    else:
+        elapsed = (time.monotonic() - started) * 1000
+        logger.info("%s agent=%s session=%s ok in %.0fms", verb, name, session_id, elapsed)
 
 
 @router.post("/{name}:invoke", response_model=InvokeResponse)
@@ -60,7 +99,8 @@ async def invoke(
     """
     agent = resolve_agent(agents, name)
     session_id = body.session_id or uuid.uuid4().hex
-    result = await agent.run(body.input, caller=caller, session_id=session_id)
+    with log_turn("invoke", name, caller, session_id):
+        result = await agent.run(body.input, caller=caller, session_id=session_id)
     return _invoke_response(name, session_id, result)
 
 
@@ -83,12 +123,13 @@ async def resume(
     or a resume on an engine that is not durable, raises rather than pretending to continue.
     """
     agent = resolve_agent(agents, name)
-    result = await agent.resume(
-        ResumeToken.model_validate(body.resume_token),
-        resume_value=body.resume_value,
-        caller=caller,
-        session_id=body.session_id,
-    )
+    with log_turn("resume", name, caller, body.session_id):
+        result = await agent.resume(
+            ResumeToken.model_validate(body.resume_token),
+            resume_value=body.resume_value,
+            caller=caller,
+            session_id=body.session_id,
+        )
     return _invoke_response(name, body.session_id, result)
 
 
@@ -114,6 +155,8 @@ async def stream(
 
     async def frames():
         """Yield the SSE frames for this turn: session, then engine events, then errors."""
+        logger.info("stream agent=%s tenant=%s session=%s", name, caller.tenant_id, session_id)
+        started = time.monotonic()
         seq = 0
         yield sse(
             StreamEvent(type="session", seq=seq, data={"session_id": session_id, "agent": name})
@@ -124,7 +167,24 @@ async def stream(
                 yield sse(StreamEvent(type=frame_type(event.type), seq=seq, data=frame_data(event)))
                 seq += 1
         except Exception as exc:  # noqa: BLE001 — a mid-stream failure becomes an error frame
+            logger.warning(
+                "stream agent=%s session=%s failed after %d frame(s): %s: %s",
+                name,
+                session_id,
+                seq,
+                type(exc).__name__,
+                exc,
+            )
             yield sse(StreamEvent(type="error", seq=seq, data={"detail": str(exc)}))
+        else:
+            elapsed = (time.monotonic() - started) * 1000
+            logger.info(
+                "stream agent=%s session=%s ok in %.0fms (%d frames)",
+                name,
+                session_id,
+                elapsed,
+                seq,
+            )
 
     return EventSourceResponse(frames())
 
