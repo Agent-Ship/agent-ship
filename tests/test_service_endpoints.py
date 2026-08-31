@@ -38,11 +38,18 @@ def base_url():
 
 
 def test_the_server_boots_and_reports_itself_live(base_url):
-    """The booted app answers its unauthenticated liveness probe — the socket really serves."""
+    """The booted app answers its unauthenticated liveness probe — the socket really serves.
+
+    Asserts the fields it cares about rather than the whole body: the probe also reports
+    which build is answering, and a test that pins the exact body breaks every time a
+    field is added to a health response.
+    """
     response = httpx.get(f"{base_url}/healthz")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["build"]  # the build stamp — "dev" locally, a timestamp/sha in an image
 
 
 def test_invoke_returns_one_json_result(base_url):
