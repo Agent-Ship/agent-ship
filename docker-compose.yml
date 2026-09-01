@@ -32,11 +32,20 @@ services:
       - AGENTSHIP_API_KEYS=[{"key":"dev","user":"dev","tenant":"dev","scopes":["*"]},{"key":"dev-no-scope","user":"reader","tenant":"dev","scopes":["agent:none:read"]}]
       # Durable checkpoints land in the Postgres below, so a restart resumes rather than restarts.
       - AGENT_SESSION_STORE_URI=postgresql://demo:demo@postgres:5432/demo
+      # `agentship db upgrade` reads this; it is the same database.
+      - AGENTSHIP_DATABASE_URL=postgresql://demo:demo@postgres:5432/demo
       # Model keys come from your .env — never baked into the image. Agents that need a key
       # will fail at call time without one; the echo-engine agents work regardless.
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+    # Create the checkpoint tables before serving. Without this the first turn against any
+    # durable agent fails with `relation "checkpoints" does not exist`. Every migration is
+    # idempotent, so running it on each start is a no-op once applied.
+    command: >-
+      sh -c "agentship db upgrade --allow-migrations &&
+             agentship serve --host 0.0.0.0 --port $${PORT}
+               --agents-dir $${AGENTSHIP_AGENTS_DIR} --auth $${AGENTSHIP_AUTH_PROVIDER}"
     depends_on:
       postgres:
         condition: service_healthy
