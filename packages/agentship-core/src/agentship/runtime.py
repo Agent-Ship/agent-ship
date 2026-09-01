@@ -25,6 +25,7 @@ from .observability import (
     current_observer,
     resolve_observer,
     semconv,
+    tracing_callback_installed,
 )
 from .observability.phi import hashed_user_id
 from .primitives.model_router import stamp_routed_model
@@ -184,8 +185,16 @@ class RunnableAgent:
         token = current_run.set(ctx)
         # Expose this agent's observer to the engine so it can attach its span-emitting callback to
         # the same observer whose root ``agent`` span is open — the inner tree then nests under it.
-        observer = _observer_for_this_run(self.observer)
+        # An ambient observer means this run is nested inside another one: a sub-agent
+        # dispatched by a supervisor. It then traces through the PARENT's observer, so its work
+        # lands in one tree — and it must not install a second tracing callback, because
+        # LangChain propagates the parent's callbacks into this invoke and both would record
+        # the same model call, doubling its tokens and cost.
+        ambient = current_observer.get()
+        nested = ambient is not None
+        observer = ambient if nested else self.observer
         observer_token = current_observer.set(observer)
+        tracing_token = tracing_callback_installed.set(nested)
         try:
             # The ``route`` step: stamp the chosen model id on the context before the
             # engine runs, so the adapter reads it and never routes itself (§13.5).
@@ -193,9 +202,7 @@ class RunnableAgent:
             # Open the root ``agent`` span around the whole pipeline so every guard/
             # memory/engine span nests under it, and stamp the trace id on the context
             # so middleware, the engine, and the service (X-Trace-Id) can read it.
-            with observer.span(
-                semconv.SPAN_AGENT, SpanKind.AGENT, self._root_attrs(ctx)
-            ) as root:
+            with observer.span(semconv.SPAN_AGENT, SpanKind.AGENT, self._root_attrs(ctx)) as root:
                 ctx.trace_id = observer.current_trace_id()
                 try:
                     for mw in pipeline:
@@ -223,6 +230,10 @@ class RunnableAgent:
                 current_observer.reset(observer_token)
             except ValueError:  # pragma: no cover - defensive; set/reset share a frame
                 current_observer.set(None)
+            try:
+                tracing_callback_installed.reset(tracing_token)
+            except ValueError:  # pragma: no cover - defensive; set/reset share a frame
+                tracing_callback_installed.set(False)
 
     async def resume(
         self,

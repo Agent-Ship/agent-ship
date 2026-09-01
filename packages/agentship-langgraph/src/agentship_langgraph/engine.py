@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from agentship.engines.base import Engine, EngineCapabilities, Event, Result, ResumeToken
 from agentship.errors import CapabilityError, ResumeError
-from agentship.observability import NoOpObserver, get_observer
+from agentship.observability import NoOpObserver, get_observer, tracing_callback_installed
 from agentship.thread_lock import resolve_thread_lock
 from langchain_core.messages import (
     AIMessage,
@@ -66,6 +66,12 @@ def _run_callbacks() -> list:
     """
     callbacks: list = [_TOOL_CALL_LOGGER]
     observer = get_observer()
+    # A nested run — a sub-agent dispatched by a supervisor — shares the parent's observer, and
+    # LangChain propagates the parent invoke's callbacks into this one. Installing a second
+    # tracing callback would make both record the same model call, duplicating the span and
+    # double-counting its tokens and cost. The parent's callback already covers us.
+    if tracing_callback_installed.get():
+        return callbacks
     if observer is not None and not isinstance(observer, NoOpObserver):
         capture = bool(getattr(observer, "capture_content", False))
         callbacks.append(ObservabilityCallback(observer, capture_content=capture))

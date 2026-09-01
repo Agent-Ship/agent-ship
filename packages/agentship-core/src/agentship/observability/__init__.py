@@ -14,6 +14,8 @@ capture used by offline verifiers and by the runtime tests.
 
 from __future__ import annotations
 
+from contextvars import ContextVar as _ContextVar
+
 from .attributes import usage_attributes
 from .capture import replay_attributes, request_hash
 from .observer import NoOpObserver, Observer, Span, current_observer, get_observer
@@ -23,6 +25,16 @@ from .redaction import redact_pii
 from .registry import OBSERVERS, ObserverFactory, resolve_observer
 from .trace_view import SpanNode, TraceView
 from .types import SpanKind, Usage
+
+#: True while a tracing callback is already watching this turn. A sub-agent dispatched by a
+#: supervisor shares the parent's observer, and LangChain propagates the parent invoke's
+#: callbacks into nested invokes — so a nested run installing its own callback makes two
+#: recorders watch the same model call, duplicating the span and double-counting its tokens
+#: and cost. Engines read this and skip installing a second one.
+tracing_callback_installed: _ContextVar[bool] = _ContextVar(
+    "agentship_tracing_callback_installed", default=False
+)
+
 
 __all__ = [
     "NoOpObserver",
