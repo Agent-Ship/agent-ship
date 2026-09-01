@@ -253,3 +253,80 @@ def test_a_finished_durable_run_is_not_reported_as_paused() -> None:
 
     assert reply["output"], "the run answered"
     assert reply["paused"] is False, "an answered run is not waiting for a human"
+
+
+class _PausingEngine:
+    """An engine whose run pauses for a human AND emits partial output.
+
+    That combination is the case the old `paused` rule got wrong: it inferred a pause from
+    "no output", so any pause that had already said something was reported as finished.
+    """
+
+    name = "pausing"
+    capabilities = EngineCapabilities(durability="checkpoint")
+
+    def build(self, spec, authored=None):
+        """Nothing to compile; the tests drive run/resume directly."""
+        return object()
+
+    async def run(self, compiled, text, ctx):
+        """Pause for approval, having already produced some visible output."""
+        from agentship.engines.base import Result, ResumeToken
+
+        return Result(
+            output="I drafted the email. Send it?",
+            resume_token=ResumeToken(engine=self.name, blob={}),
+            interrupt={"action": "confirm_write", "tool": "send_email"},
+        )
+
+
+def _pausing_client() -> TestClient:
+    """A client over an app serving one agent on the pausing engine."""
+    from agentship.engines.base import ENGINES
+
+    ENGINES.register("pausing", _PausingEngine)
+    agents = AgentRegistry([build_agent(AgentSpec(name="drafter", engine="pausing"))])
+    auth = ApiKeyAuthProvider(EnvApiKeyStore(raw=_KEYS))
+    return TestClient(create_app(auth=auth, agents=agents))
+
+
+def test_a_pause_that_already_said_something_is_still_a_pause() -> None:
+    """A run can produce output AND still be waiting on a human.
+
+    The rule was `resume_token is not None and not result.output`, so any pause that had
+    emitted text reported paused=false — and a client would discard a live resume token,
+    leaving the run unresumable. The engine already reports the pause on Result.interrupt;
+    inferring it from emptiness was the mistake.
+    """
+    try:
+        reply = _pausing_client().post(
+            "/v1/agents/drafter:invoke",
+            json={"input": "draft an email"},
+            headers={"X-API-Key": "full"},
+        ).json()
+    finally:
+        from agentship.engines.base import ENGINES
+
+        ENGINES._providers.pop("pausing", None)
+
+    assert reply["output"], "this run did produce output"
+    assert reply["paused"] is True, "a run waiting on a human is paused, output or not"
+
+
+def test_a_pause_tells_the_client_what_it_is_asking() -> None:
+    """The interrupt payload reaches the client, so it can render the actual question.
+
+    Without it a UI can only say "this run paused" and cannot show WHAT is being approved.
+    """
+    try:
+        reply = _pausing_client().post(
+            "/v1/agents/drafter:invoke",
+            json={"input": "draft an email"},
+            headers={"X-API-Key": "full"},
+        ).json()
+    finally:
+        from agentship.engines.base import ENGINES
+
+        ENGINES._providers.pop("pausing", None)
+
+    assert reply["interrupt"] == {"action": "confirm_write", "tool": "send_email"}

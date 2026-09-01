@@ -84,7 +84,12 @@ class InvokeResponse(BaseModel):
     ``resume_token`` is present for ANY durable run — it is the crash-resume handle, so a
     run that finished normally carries one too. ``paused`` is the field that says a human is
     actually being waited on; a client must branch on that, never on the token's presence.
-    ``trace_id`` ties the response to its span tree (P07) for debugging.
+    ``interrupt`` carries what the run is asking (the payload the node passed to
+    ``interrupt(...)``), so a client can render the real question instead of a generic
+    "this run paused". ``trace_id`` ties the response to its span tree (P07) for debugging.
+
+    A paused run may ALSO have produced output — it can say something before it asks — so
+    neither field implies anything about the other.
     """
 
     agent: str
@@ -92,6 +97,7 @@ class InvokeResponse(BaseModel):
     output: Any = None
     resume_token: dict | None = None
     paused: bool = False
+    interrupt: dict | None = None
     usage: Usage | None = None
     trace_id: str | None = None
 
