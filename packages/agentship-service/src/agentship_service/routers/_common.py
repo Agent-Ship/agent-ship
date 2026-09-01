@@ -60,14 +60,27 @@ def enforce_body_limit(request: Request) -> None:
 
 
 def agent_card(agent: RunnableAgent) -> AgentCard:
-    """Build the discovery :class:`AgentCard` for a built agent from its spec + engine."""
+    """Build the discovery :class:`AgentCard` describing what THIS agent does.
+
+    The engine's capabilities are its ceiling, not this agent's behaviour: a LangGraph agent
+    *can* checkpoint, but only one declaring ``durability: checkpoint`` actually does. The card
+    used to publish the engine's capabilities verbatim, so every agent advertised durability it
+    had not asked for — and a UI rendering that as a badge told users an agent remembered
+    conversations when it kept no state at all.
+
+    So a capability the spec opts into is reported as the spec set it; everything else is the
+    engine's, because the agent makes no claim either way.
+    """
     spec = agent.spec
-    caps = agent.engine.capabilities
+    caps = agent.engine.capabilities.model_dump(mode="json")
+    # Opt-in per agent: report the spec's answer, not the engine's ceiling.
+    caps["durability"] = spec.durability
+    caps["streaming"] = bool(spec.streaming and agent.engine.capabilities.streaming)
     return AgentCard(
         name=spec.name,
         description=spec.prompt,
-        streaming=spec.streaming or caps.streaming,
-        capabilities=caps.model_dump(mode="json"),
+        streaming=caps["streaming"],
+        capabilities=caps,
         input_schema=None,
         output_schema=None,
     )

@@ -330,3 +330,36 @@ def test_a_pause_tells_the_client_what_it_is_asking() -> None:
         ENGINES._providers.pop("pausing", None)
 
     assert reply["interrupt"] == {"action": "confirm_write", "tool": "send_email"}
+
+
+def test_the_agent_card_reports_the_AGENT_not_the_engine() -> None:
+    """A card must describe what THIS agent does, not what its engine could do.
+
+    The card was built from ``agent.engine.capabilities``, so every LangGraph agent
+    advertised ``durability: checkpoint`` — including the ones declaring
+    ``durability: none``. Studio renders that as a badge, so 7 of 8 demo agents claimed
+    to remember conversations when they keep no state at all, and a user reasonably
+    concluded memory was broken.
+    """
+    agents = AgentRegistry(
+        [
+            # langgraph, because it is the engine that CAN checkpoint — which is exactly
+            # why it advertised checkpointing for agents that had not asked for it.
+            build_agent(AgentSpec(name="forgetful", engine="langgraph", model="x")),
+            build_agent(
+                AgentSpec(
+                    name="remembers", engine="langgraph", model="x", durability="checkpoint"
+                )
+            ),
+        ]
+    )
+    auth = ApiKeyAuthProvider(EnvApiKeyStore(raw=_KEYS))
+    cards = TestClient(create_app(auth=auth, agents=agents)).get(
+        "/v1/agents", headers={"X-API-Key": "full"}
+    ).json()
+    by_name = {c["name"]: c for c in cards}
+
+    assert by_name["forgetful"]["capabilities"]["durability"] == "none", (
+        "an agent that declares durability: none must not advertise checkpointing"
+    )
+    assert by_name["remembers"]["capabilities"]["durability"] == "checkpoint"
