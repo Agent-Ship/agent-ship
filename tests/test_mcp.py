@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 from agentship import build_agent
 from agentship.skills import render_agent_prompt
+from conftest import live_only
 
 pytest.importorskip("langchain_mcp_adapters", reason="needs agentship-langgraph[mcp]")
 
@@ -35,7 +36,7 @@ def test_skill_teaches_the_agent_how_to_use_the_mcp_tool():
     assert "You are a precise assistant." in prompt
 
 
-@pytest.mark.vcr
+@live_only
 async def test_agent_uses_a_local_mcp_tool():
     """The agent discovers the local MCP server's `days_between` tool and answers 225.
 
@@ -55,3 +56,47 @@ async def test_agent_uses_a_local_mcp_tool():
     finally:
         os.chdir(cwd)
     assert "225" in result.output
+
+
+# ---- one turn, both kinds of tool -------------------------------------------------------------
+
+COMBINED = str(REPO_ROOT / "agents" / "mcp" / "combined.yaml")
+
+
+def test_a_native_tool_and_an_mcp_tool_are_bound_side_by_side():
+    """Both sources end up in one tool list the model cannot tell apart.
+
+    ``calculator`` ships with the framework; ``days_between`` is discovered from the local
+    stdio MCP server. The phase's headline claim is that they are indistinguishable to the
+    agent, and nothing in this repo showed both together before. Keyless: binding happens at
+    build time, no model call.
+    """
+    agent = build_agent(COMBINED)
+    bound = set(agent.compiled.bound_tools)
+
+    assert "calculator" in bound, f"native tool missing from {bound}"
+    assert "days_between" in bound, f"MCP tool missing from {bound}"
+
+
+# Both live turns below are `live_only`, not cassette-replayed. MCP tool discovery does not
+# return its tools in a stable order, so the request body differs between record and replay and
+# VCR never matches. Recording them anyway would leave two permanently-red tests; pretending
+# they replay would be worse. The deterministic half — that a native tool and an MCP tool are
+# bound side by side — IS keyless, and it is the claim that matters.
+
+@live_only
+async def test_one_turn_calls_the_mcp_tool_then_the_native_tool():
+    """A single question needing both: a date difference (MCP) times three (native).
+
+    Asserts the run used BOTH sources in one turn — the claim the capability page opens with.
+    """
+    agent = build_agent(COMBINED)
+    used: list[str] = []
+    async for event in agent.stream(
+        "How many days from 2026-01-01 to 2026-08-14, and what is that times 3?"
+    ):
+        if event.type == "tool_call":
+            used.append(event.data["tool"])
+
+    assert "days_between" in used, f"the MCP tool was never called; used {used}"
+    assert "calculator" in used, f"the native tool was never called; used {used}"

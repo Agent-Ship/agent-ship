@@ -1,0 +1,30 @@
+# One agent, two kinds of tool, one turn.
+#
+# `calculator` is a NATIVE tool that ships with AgentShip. `days_between` comes from a LOCAL
+# MCP server (agents/mcp/time_server.py) discovered at build time. The model is handed both in
+# one list and cannot tell them apart — which is the whole claim of the tools+MCP phase, and the
+# thing no demo showed before.
+#
+# Ask it something that needs both and watch the stream: you get a tool_call/tool_result pair
+# for each, from the two different sources.
+#
+#   agentship run agents/mcp/combined.yaml \
+#     --input "How many days from 2026-01-01 to 2026-08-14, and what is that times 3?"
+name: mcp-and-native
+engine: langgraph
+template: single
+model: openai/gpt-4o-mini
+tools:
+  - calculator          # native: ships with the framework
+mcp:
+  time:                 # MCP: discovered from a local stdio server
+    transport: stdio
+    command: python3
+    args:
+      - agents/mcp/time_server.py
+skills:
+  - agents/mcp/skills/date-math
+prompt: >-
+  You are a precise assistant. Use the tools rather than doing arithmetic or date maths
+  yourself: call days_between for date differences and calculator for arithmetic. Answer in
+  one short sentence.
