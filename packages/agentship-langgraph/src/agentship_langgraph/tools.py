@@ -86,6 +86,41 @@ def tool_error_message(name: str, exc: Exception) -> str:
     return f"tool {name!r} failed: {type(exc).__name__}: {exc}"
 
 
+def survive_tool_errors(tool: StructuredTool) -> StructuredTool:
+    """Wrap an already-built LangChain tool so a raise becomes a message, not a crashed turn.
+
+    :func:`to_langchain_tool` gives this protection to tools we build from a core
+    :class:`~agentship.tools.Tool`. Tools discovered from an MCP server never pass through
+    it — they arrive from the MCP client already built — so a failing MCP server used to
+    take the whole turn down. An MCP tool and a native one are meant to be indistinguishable
+    to the agent, and that has to hold when they fail, not just when they work.
+
+    Name, description and args schema are carried over unchanged, so the model still sees
+    exactly one tool. LangGraph's control-flow signals (``interrupt()`` and friends, which
+    subclass ``GraphBubbleUp``) are re-raised untouched so a HITL pause still works.
+    """
+
+    async def run_and_report_failures(**kwargs: object) -> str:
+        """Invoke the wrapped tool, turning any failure into text the model can act on."""
+        from langgraph.errors import GraphBubbleUp
+
+        try:
+            return await tool.ainvoke(kwargs)
+        except GraphBubbleUp:
+            raise
+        except Exception as exc:  # noqa: BLE001 — a remote tool is arbitrary code; any raise
+            # it makes is a tool failure the model should be told about, not a crashed turn.
+            _tool_logger.warning("tool %r failed: %s: %s", tool.name, type(exc).__name__, exc)
+            return tool_error_message(tool.name, exc)
+
+    return StructuredTool.from_function(
+        coroutine=run_and_report_failures,
+        name=tool.name,
+        description=tool.description,
+        args_schema=tool.args_schema,
+    )
+
+
 def to_langchain_tool(tool: Tool, *, confirm_writes: bool = False) -> StructuredTool:
     """Wrap a core :class:`~agentship.tools.Tool` as a LangChain ``StructuredTool``.
 

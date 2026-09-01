@@ -296,7 +296,7 @@ class LangGraphEngine(Engine):
         """
         from agentship.tools import resolve_tool
 
-        from .tools import to_langchain_tool
+        from .tools import survive_tool_errors, to_langchain_tool
 
         confirm = spec.confirm_writes
         tools = [
@@ -306,7 +306,13 @@ class LangGraphEngine(Engine):
         if spec.mcp:
             from .mcp import discover_mcp_tools_sync
 
-            tools.extend(discover_mcp_tools_sync(spec.mcp))
+            # Wrapped, because MCP tools arrive already built from the MCP client and so never
+            # pass through to_langchain_tool's error guard. Without this a failing MCP server
+            # crashes the turn while a failing native tool degrades — the two are meant to be
+            # indistinguishable to the agent, including when they fail.
+            tools.extend(
+                survive_tool_errors(discovered) for discovered in discover_mcp_tools_sync(spec.mcp)
+            )
         if spec.allowed_tools is not None:
             allow = set(spec.allowed_tools)
             before = {t.name for t in tools}
