@@ -175,3 +175,68 @@ async def test_full_trace_serializes_over_otlp_http(otlp_collector, monkeypatch)
     ids = {span.span_id for span in spans}
     roots = [s for s in spans if not s.parent_span_id or s.parent_span_id not in ids]
     assert len(roots) == 1 and roots[0].name == semconv.SPAN_AGENT
+
+
+async def test_a_supervisor_turn_exports_one_connected_trace(otlp_collector, monkeypatch):
+    """A supervisor and its sub-agent reach the wire in ONE trace, with the member's cost.
+
+    The sibling test proves a single agent's tree serializes. This proves the multi-agent tree
+    does too — the thing that was broken until 2026-09-01, when each member ran on its own
+    observer and a supervisor turn arrived at the backend as several unrelated traces with the
+    members' tokens and cost missing entirely.
+
+    Asserts on trace ids rather than span names: names could all be present while belonging to
+    different traces, which is exactly the bug. Two agent spans sharing one trace id is what
+    makes Opik or LangSmith render a single tree.
+    """
+    from agentship.runtime import RunnableAgent
+    from agentship_langgraph.engine import LangGraphEngine
+    from agentship_langgraph.templates.graph_config import GraphConfig
+    from agentship_langgraph.templates.graph_supervisor import SupervisorAgent
+    from langchain_core.language_models.fake_chat_models import FakeListChatModel
+
+    monkeypatch.setattr(
+        models_module, "resolve_model", lambda *a, **k: FakeListChatModel(responses=["billing"])
+    )
+    config = GraphConfig.model_validate(
+        {
+            "classify": {"model": "x", "intents": ["billing"]},
+            "routing": {
+                "billing": {"specialists": ["billing_specialist"], "strategy": "single"},
+                "_default": {"specialists": ["billing_specialist"], "strategy": "single"},
+            },
+            "conflict_resolver": {"priority": ["billing_specialist"]},
+        }
+    )
+    specialists = {
+        "billing_specialist": build_agent(
+            AgentSpec(name="billing_specialist", engine="langgraph", template="single", model="x")
+        )
+    }
+
+    resource = Resource.create({SERVICE_NAME: "agentship-wire-proof"})
+    provider = TracerProvider(resource=resource)
+    provider.add_span_processor(SimpleSpanProcessor(OTLPSpanExporter(endpoint=otlp_collector)))
+    observer = OTelObserver(provider)
+
+    spec = AgentSpec(name="triage", engine="langgraph", model="x")
+    engine = LangGraphEngine()
+    compiled = engine.build(spec, SupervisorAgent(spec, config=config, specialists=specialists))
+    await RunnableAgent(spec, engine, compiled, observer=observer).run("my invoice is wrong")
+    provider.force_flush()
+
+    spans = _decoded_spans(_CollectorHandler.bodies)
+    agents = [s for s in spans if s.name == semconv.SPAN_AGENT]
+    assert len(agents) == 2, (
+        f"expected the supervisor AND its member on the wire, got {len(agents)}"
+    )
+
+    traces = {s.trace_id for s in agents}
+    assert len(traces) == 1, (
+        "the supervisor and its member arrived as separate traces — a backend would render "
+        "them as unrelated turns instead of one tree"
+    )
+
+    models = [s for s in spans if s.name == semconv.SPAN_MODEL]
+    assert len(models) == 2, f"expected 2 model spans (classify + specialist), got {len(models)}"
+    assert all(s.trace_id in traces for s in models), "a model span landed outside the trace"
