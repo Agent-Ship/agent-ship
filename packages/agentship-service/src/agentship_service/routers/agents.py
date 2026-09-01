@@ -50,6 +50,9 @@ def _invoke_response(name: str, session_id: str, result: Result) -> InvokeRespon
         session_id=session_id,
         output=result.output,
         resume_token=result.resume_token.model_dump() if result.resume_token else None,
+        # Decided once, here, so no client has to infer it: a run is waiting on a human only
+        # when it produced no answer AND left a token to continue from.
+        paused=result.resume_token is not None and not result.output,
         trace_id=current_trace_id(),
     )
 

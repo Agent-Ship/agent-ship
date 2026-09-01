@@ -81,7 +81,9 @@ class Usage(BaseModel):
 class InvokeResponse(BaseModel):
     """The result of a non-streaming ``:invoke`` turn.
 
-    ``resume_token`` is present only for a durable run that paused or can be resumed;
+    ``resume_token`` is present for ANY durable run — it is the crash-resume handle, so a
+    run that finished normally carries one too. ``paused`` is the field that says a human is
+    actually being waited on; a client must branch on that, never on the token's presence.
     ``trace_id`` ties the response to its span tree (P07) for debugging.
     """
 
@@ -89,6 +91,7 @@ class InvokeResponse(BaseModel):
     session_id: str
     output: Any = None
     resume_token: dict | None = None
+    paused: bool = False
     usage: Usage | None = None
     trace_id: str | None = None
 

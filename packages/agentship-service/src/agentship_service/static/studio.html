@@ -793,7 +793,7 @@ async function showTurnResult(response) {
   }
   const body = await response.json();
   chat.sessionId = body.session_id || chat.sessionId;
-  chat.resumeToken = body.resume_token || null;
+  chat.resumeToken = body.paused ? body.resume_token : null;
   addFrame("done", "", { output: body.output, usage: body.usage });
   showIds(body.trace_id);
   showPauseHint();
@@ -839,7 +839,7 @@ async function streamTurn(text) {
       addMessage("failed", data.detail || "the stream failed");
       return;
     }
-    if (data.resume_token) {
+    if (data.paused) {
       chat.resumeToken = data.resume_token;
       showIds(data.trace_id);
       showPauseHint();

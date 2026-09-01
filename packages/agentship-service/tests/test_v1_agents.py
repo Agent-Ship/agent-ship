@@ -235,3 +235,21 @@ def test_resume_rejects_a_body_without_a_token() -> None:
         "/v1/agents/support:resume", json={"session_id": "s1"}, headers={"X-API-Key": "full"}
     )
     assert response.status_code == 422
+
+
+def test_a_finished_durable_run_is_not_reported_as_paused() -> None:
+    """A durable run that ANSWERED carries a resume token but must not look paused.
+
+    The token is the crash-resume handle — every durable run gets one, finished or not. A
+    client that treats "token present" as "paused" tells the user their answered turn is
+    waiting for approval, which is what Studio did: saying "hi" to a durable agent replied
+    normally AND claimed the run was paused.
+    """
+    client = _client()
+    body = {"input": "hi", "session_id": "s-done"}
+    reply = client.post(
+        "/v1/agents/support:invoke", json=body, headers={"X-API-Key": "full"}
+    ).json()
+
+    assert reply["output"], "the run answered"
+    assert reply["paused"] is False, "an answered run is not waiting for a human"
