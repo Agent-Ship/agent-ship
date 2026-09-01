@@ -165,9 +165,12 @@ def test_resume_value_maps_yes_no_and_passes_other_text_through():
 
 def test_a_pause_is_only_a_token_with_no_output():
     """A durable turn that *finished* also returns a token, so the token alone is not a pause."""
-    assert service_client.is_paused({"output": None, "resume_token": {"engine": "langgraph"}})
-    assert not service_client.is_paused({"output": "done", "resume_token": {"engine": "langgraph"}})
-    assert not service_client.is_paused({"output": None, "resume_token": None})
+    assert service_client.is_paused({"paused": True, "resume_token": {"engine": "langgraph"}})
+    # A finished durable run carries a token too — the crash-resume handle — and is NOT a pause.
+    assert not service_client.is_paused(
+        {"paused": False, "output": "done", "resume_token": {"engine": "langgraph"}}
+    )
+    assert not service_client.is_paused({"paused": False, "resume_token": None})
 
 
 async def test_a_streamed_turn_renders_frames_and_traces_their_types_and_seq(service):
@@ -228,7 +231,13 @@ async def test_a_paused_turn_is_held_then_resumed_on_the_same_session(service):
     token = {"engine": "langgraph", "blob": {"thread_id": "t1", "interrupt": True}}
     service.routes["/v1/agents/note-taker:invoke"] = httpx.Response(
         200,
-        json={"agent": "note-taker", "session_id": "s1", "output": None, "resume_token": token},
+        json={
+            "agent": "note-taker",
+            "session_id": "s1",
+            "output": None,
+            "resume_token": token,
+            "paused": True,
+        },
     )
     service.routes["/v1/agents/note-taker:resume"] = httpx.Response(
         200,

@@ -207,11 +207,12 @@ PAUSE_NOTE = (
 def is_paused(reply: dict) -> bool:
     """True when an ``InvokeResponse`` describes a run that stopped for a human.
 
-    The engine returns no ``output`` and a ``resume_token`` only when a run interrupted; a
-    durable run that *finished* also returns a token, but with its answer, so the token alone
-    is not the signal.
+    Reads the service's ``paused`` field rather than re-deriving it. Every durable run
+    carries a ``resume_token`` — it is the crash-resume handle — so the token alone is not
+    the signal, and each client inferring that rule independently is how Studio came to
+    announce a pause on a turn that had answered.
     """
-    return reply.get("resume_token") is not None and not reply.get("output")
+    return bool(reply.get("paused"))
 
 
 def pause_message() -> str:
