@@ -281,7 +281,7 @@ main { flex: 1; display: flex; min-height: 0; }
     </div>
     <div class="spacer"></div>
     <span class="stamp" id="buildstamp"></span>
-    <button class="iconbtn" id="streamtoggle" title="Toggle streaming (:stream vs :invoke)">
+    <button class="iconbtn" id="streamtoggle" title="Live: reply appears word by word. Complete: whole reply at once — and the only mode that can show a pause for approval.">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
       <span id="streamlabel">stream</span>
     </button>
@@ -414,8 +414,13 @@ function toggleStreaming() {
 function showStreamingMode() {
   const on = streamingOn();
   el("streamtoggle").classList.toggle("on", on);
-  el("streamlabel").textContent = on ? "stream" : "invoke";
-  el("modehint").textContent = on ? "streaming via :stream" : "non-streaming via :invoke";
+  el("streamlabel").textContent = on ? "Live" : "Complete";
+  // Say what the reader gets, then the endpoint in parentheses for anyone reading the
+  // network tab. "Complete" also carries WHY you would pick it: a paused run only reports
+  // its pause on :invoke, because the SSE frame types cannot carry a resume token.
+  el("modehint").textContent = on
+    ? "Live — reply appears word by word (POST :stream)"
+    : "Complete — whole reply at once; the only mode that can show a pause (POST :invoke)";
 }
 
 // Apply the saved theme (dark unless the user chose light) and set the toggle glyph.
