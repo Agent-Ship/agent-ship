@@ -515,6 +515,9 @@ async function loadAgents() {
   hideBanner();
   chat.agents = await response.json();
   showAgents();
+  // Select the first agent so the composer works immediately. Without this the page
+  // loads with nothing selected and sendTurn() drops every message on the floor.
+  if (!chat.selected && chat.agents.length) selectAgent(chat.agents[0]);
 }
 
 // Render the agent rows, restoring the selection highlight.
@@ -740,7 +743,14 @@ function setBusy(busy) {
 async function sendTurn() {
   const input = el("input");
   const text = input.value.trim();
-  if (!text || chat.busy || !chat.selected) return;
+  if (!text || chat.busy) return;
+  if (!chat.selected) {
+    // Silence here is what made the UI look broken: the message vanished with no reason.
+    addMessage("failed", chat.agents.length
+      ? "Pick an agent in the sidebar first."
+      : "No agents are loaded — check the API key, then press Reload.");
+    return;
+  }
   input.value = "";
   input.style.height = "auto";
   addMessage("user", text);
