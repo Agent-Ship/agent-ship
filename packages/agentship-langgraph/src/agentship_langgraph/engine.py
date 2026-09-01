@@ -342,7 +342,12 @@ class LangGraphEngine(Engine):
                 config={"callbacks": _run_callbacks()},
             )
         except Exception as exc:
-            raise models.map_model_error(compiled.model_id, exc) from exc
+            # Only a genuine provider failure becomes a ModelError. Anything else — a missing
+            # checkpoint table, a tool bug — keeps its own type so the message points at the
+            # system that actually failed.
+            if models.is_provider_error(exc):
+                raise models.map_model_error(compiled.model_id, exc) from exc
+            raise
         answer = state["messages"][-1].content
         return Result(output=answer)
 
@@ -413,7 +418,9 @@ class LangGraphEngine(Engine):
         try:
             state = await graph.ainvoke(invoke_input, config=cfg, durability=_CHECKPOINT_FLUSH_MODE)
         except Exception as exc:
-            raise models.map_model_error(model_id, exc) from exc
+            if models.is_provider_error(exc):
+                raise models.map_model_error(model_id, exc) from exc
+            raise
         payload = self._interrupt_payload(state)
         snapshot = await graph.aget_state(cfg)
         token = self._mint_token(thread_id, snapshot, interrupted=payload is not None)
@@ -542,7 +549,12 @@ class LangGraphEngine(Engine):
                     # for the answer.
                     last_full_content = message.content
         except Exception as exc:
-            raise models.map_model_error(compiled.model_id, exc) from exc
+            # Only a genuine provider failure becomes a ModelError. Anything else — a missing
+            # checkpoint table, a tool bug — keeps its own type so the message points at the
+            # system that actually failed.
+            if models.is_provider_error(exc):
+                raise models.map_model_error(compiled.model_id, exc) from exc
+            raise
         if not streamed_content and last_full_content:
             yield Event(type="content", data=last_full_content)
         yield Event(type="done")

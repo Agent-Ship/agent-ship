@@ -135,6 +135,34 @@ def _is_credential_error(exc: BaseException) -> bool:
     return any(marker in text for marker in _CREDENTIAL_MARKERS)
 
 
+#: Module roots whose exceptions genuinely come from talking to a model provider. Attribution
+#: is by module rather than by class name because every provider names its errors differently
+#: (``AuthenticationError``, ``APIError``, ``PermissionDeniedError``) and those names collide
+#: with unrelated libraries.
+_PROVIDER_MODULES = frozenset(
+    {"litellm", "openai", "anthropic", "google", "cohere", "mistralai", "groq", "httpx", "httpcore"}
+)
+
+#: Transport failures raised as plain builtins when the provider endpoint is unreachable (a dead
+#: ``api_base``, a hung host). These are provider failures too, even though nothing in the type
+#: says so. Postgres does not surface as these — psycopg raises its own ``OperationalError`` — so
+#: including them does not re-capture the database errors this attribution exists to separate.
+_PROVIDER_TRANSPORT_ERRORS = (ConnectionError, TimeoutError)
+
+
+def is_provider_error(exc: BaseException) -> bool:
+    """True when ``exc`` came from a model provider, rather than from our own stack.
+
+    The engine wraps provider failures as an actionable :class:`ModelError` naming the model
+    and the env var to set. Everything else — a missing database table, a tool bug, a
+    checkpointer fault — must keep its own type and message: reporting a Postgres error as
+    "Model call failed for 'openai/gpt-4o-mini'" sends a reader to debug the wrong system.
+    """
+    if isinstance(exc, _PROVIDER_TRANSPORT_ERRORS):
+        return True
+    return type(exc).__module__.split(".")[0] in _PROVIDER_MODULES
+
+
 def map_model_error(model: str, exc: Exception) -> ModelError:
     """Turn a provider/LiteLLM exception into an actionable :class:`ModelError`.
 

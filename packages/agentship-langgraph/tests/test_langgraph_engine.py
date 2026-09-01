@@ -251,3 +251,34 @@ async def test_dead_api_base_surfaces_clean_model_error(monkeypatch):
     # The generic branch names the model and carries the cause — no credential demand.
     assert "ollama/llama3" in str(exc.value)
     assert "OPENAI_API_KEY" not in str(exc.value)
+
+
+# ---- error attribution: only provider failures are ModelErrors ---------------------------------
+
+
+def test_a_non_provider_failure_is_not_reported_as_a_model_error():
+    """A database (or any non-provider) failure keeps its own type and message.
+
+    Wrapping every exception from the graph as ``ModelError`` sent readers to debug the
+    wrong system: a missing checkpoint table surfaced as
+    ``ModelError: Model call failed for 'openai/gpt-4o-mini': relation "checkpoints" does
+    not exist``, which reads as an OpenAI problem and is a Postgres one.
+    """
+    from agentship_langgraph import models
+
+    class UndefinedTable(Exception):
+        """Stands in for psycopg's error — the point is that it is not a provider error."""
+
+    original = UndefinedTable('relation "checkpoints" does not exist')
+    assert models.is_provider_error(original) is False
+
+
+def test_a_provider_failure_is_still_a_model_error():
+    """A litellm/provider exception still maps to the actionable ModelError."""
+    from agentship_langgraph import models
+
+    class AuthenticationError(Exception):
+        """Stands in for a litellm exception; attribution is by module, not by name."""
+
+    AuthenticationError.__module__ = "litellm.exceptions"
+    assert models.is_provider_error(AuthenticationError("bad key")) is True
