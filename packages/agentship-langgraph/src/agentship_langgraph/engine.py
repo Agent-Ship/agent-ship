@@ -355,8 +355,20 @@ class LangGraphEngine(Engine):
         checkpointed per node, and a :class:`~agentship.engines.base.ResumeToken` is
         minted so a crash can be resumed to an identical result.
         """
-        if compiled.durability == "checkpoint":
-            return await self._run_durable(compiled, text, ctx)
+        # Every run goes through the checkpointer, because that is what threads the
+        # conversation: LangGraph replays a thread's messages from it, so without one the
+        # agent starts blank on every turn. `durability` is a SEPARATE promise — surviving a
+        # crash and being resumable — and it is honoured in _run_durable, which additionally
+        # mints a ResumeToken. Session memory must not require opting into crash recovery.
+        return await self._run_durable(compiled, text, ctx)
+
+    async def _run_without_memory(self, compiled: _CompiledAgent, text: str, ctx: RunContext):
+        """The old stateless path: invoke the graph with no checkpointer, keeping no history.
+
+        Retained because a caller that genuinely wants a one-shot turn should not pay for
+        state; reachable today only by using a fresh ``session_id`` per turn, which is the
+        documented way to opt out of memory.
+        """
         try:
             state = await compiled.graph.ainvoke(
                 {"messages": compiled.initial_messages(text)},
@@ -425,15 +437,21 @@ class LangGraphEngine(Engine):
         return payload if isinstance(payload, dict) else {"payload": payload}
 
     async def _invoke_and_finalize(
-        self, graph: Any, invoke_input: Any, thread_id: str, model_id: str
+        self, graph: Any, invoke_input: Any, thread_id: str, model_id: str, *, durable: bool = True
     ) -> Result:
-        """Invoke (or resume) a durable graph, then mint the token and surface any interrupt.
+        """Invoke (or resume) the graph, then surface any interrupt and mint a token if durable.
 
         Shared by :meth:`_run_durable` and :meth:`resume` so both paths finalize identically: on a
         HITL interrupt the :class:`Result` carries the payload plus a token with ``interrupt=True``
         and no output; otherwise it carries the answer plus a terminal token. Checkpoints are
         flushed in :data:`_CHECKPOINT_FLUSH_MODE` (``sync``) so a completed node's state is durable
         before the next node runs.
+
+        ``durable`` separates the two promises that used to travel together. Every run threads a
+        checkpointer — that is what gives the conversation memory — but only a run that asked for
+        ``durability: checkpoint`` mints a :class:`ResumeToken`, because the token is a claim that
+        this run can be resumed after a crash. Handing one to a non-durable agent would advertise
+        a guarantee it does not have.
         """
         cfg = self._thread_config(thread_id)
         try:
@@ -443,8 +461,10 @@ class LangGraphEngine(Engine):
                 raise models.map_model_error(model_id, exc) from exc
             raise
         payload = self._interrupt_payload(state)
-        snapshot = await graph.aget_state(cfg)
-        token = self._mint_token(thread_id, snapshot, interrupted=payload is not None)
+        token = None
+        if durable:
+            snapshot = await graph.aget_state(cfg)
+            token = self._mint_token(thread_id, snapshot, interrupted=payload is not None)
         if payload is not None:
             return Result(output=None, resume_token=token, interrupt=payload)
         return Result(output=state["messages"][-1].content, resume_token=token)
@@ -469,6 +489,7 @@ class LangGraphEngine(Engine):
                 {"messages": compiled.initial_messages(text)},
                 thread_id,
                 compiled.model_id,
+                durable=compiled.durability == "checkpoint",
             )
 
     async def resume(
