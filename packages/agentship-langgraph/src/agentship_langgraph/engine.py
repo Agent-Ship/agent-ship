@@ -28,7 +28,13 @@ from agentship.engines.base import Engine, EngineCapabilities, Event, Result, Re
 from agentship.errors import CapabilityError, ResumeError
 from agentship.observability import NoOpObserver, get_observer
 from agentship.thread_lock import resolve_thread_lock
-from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, SystemMessage
+from langchain_core.messages import (
+    AIMessage,
+    AIMessageChunk,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
@@ -64,6 +70,7 @@ def _run_callbacks() -> list:
         capture = bool(getattr(observer, "capture_content", False))
         callbacks.append(ObservabilityCallback(observer, capture_content=capture))
     return callbacks
+
 
 if TYPE_CHECKING:
     from agentship.context import RunContext
@@ -220,15 +227,20 @@ class LangGraphEngine(Engine):
             # writes its own messages, so it owns the prompt.
             from .templates.graph_supervisor import build_declarative_supervisor
 
-            _engine_logger.debug("build path=multi-agent members=%d model=%s",
-                                 len(spec.members), spec.model)
+            _engine_logger.debug(
+                "build path=multi-agent members=%d model=%s", len(spec.members), spec.model
+            )
             graph, members = build_declarative_supervisor(spec, model)
             prompt_owned_by_graph = True
         else:
             template_body = resolve_template(spec)
             if template_body is not None:
-                _engine_logger.debug("build path=template template=%s model=%s tools=%d",
-                                     spec.template, spec.model, len(tools))
+                _engine_logger.debug(
+                    "build path=template template=%s model=%s tools=%d",
+                    spec.template,
+                    spec.model,
+                    len(tools),
+                )
                 graph = template_body(model, tools)
                 prompt_owned_by_graph = True
             else:
@@ -287,8 +299,10 @@ class LangGraphEngine(Engine):
         from .tools import to_langchain_tool
 
         confirm = spec.confirm_writes
-        tools = [to_langchain_tool(resolve_tool(ref), confirm_writes=confirm)
-                 for ref in (spec.tools or [])]
+        tools = [
+            to_langchain_tool(resolve_tool(ref), confirm_writes=confirm)
+            for ref in (spec.tools or [])
+        ]
         if spec.mcp:
             from .mcp import discover_mcp_tools_sync
 
@@ -301,7 +315,8 @@ class LangGraphEngine(Engine):
             if dropped:
                 _engine_logger.warning(
                     "allowed_tools dropped %d tool(s) the model will not see: %s",
-                    len(dropped), ", ".join(sorted(dropped)),
+                    len(dropped),
+                    ", ".join(sorted(dropped)),
                 )
         return tools
 
@@ -438,8 +453,9 @@ class LangGraphEngine(Engine):
         thread_id = ctx.session_id
         conninfo = self._conninfo()
         store = "postgres" if conninfo else "in-memory"
-        _engine_logger.info("checkpoint store=%s thread=%s flush=%s",
-                            store, thread_id, _CHECKPOINT_FLUSH_MODE)
+        _engine_logger.info(
+            "checkpoint store=%s thread=%s flush=%s", store, thread_id, _CHECKPOINT_FLUSH_MODE
+        )
         async with open_checkpointer(conninfo) as saver:
             graph = compiled.builder.compile(checkpointer=saver)
             return await self._invoke_and_finalize(
@@ -529,15 +545,41 @@ class LangGraphEngine(Engine):
         never silently yields nothing. When real chunks did arrive, no fallback is
         emitted (no double-emit): the token stream is authoritative.
         """
+        # Two modes, because they carry different things: "messages" gives the model's
+        # token stream, "updates" gives each node's state update — which is the only place
+        # the tool node's ToolMessage appears. Listening on messages alone is why tool
+        # results were invisible to a streaming client.
         stream = compiled.graph.astream(
             {"messages": compiled.initial_messages(text)},
-            stream_mode="messages",
+            stream_mode=["messages", "updates"],
             config={"callbacks": _run_callbacks()},
         )
         streamed_content = False
         last_full_content: Any = None
         try:
-            async for message, _metadata in stream:
+            async for mode, payload in stream:
+                if mode == "updates":
+                    # Each node's completed state update. Tool events come from here rather
+                    # than from the token stream because a streaming chunk carries only a
+                    # PARTIAL tool call — the name in one chunk, the arguments dribbling in
+                    # over later ones — which emitted a duplicate with an empty name.
+                    for update in (payload or {}).values():
+                        for produced in (update or {}).get("messages", []) or []:
+                            if isinstance(produced, ToolMessage):
+                                yield Event(
+                                    type="tool_result",
+                                    data={"tool": produced.name, "result": produced.content},
+                                )
+                            for call in getattr(produced, "tool_calls", None) or []:
+                                yield Event(
+                                    type="tool_call",
+                                    data={
+                                        "tool": call.get("name"),
+                                        "args": call.get("args") or {},
+                                    },
+                                )
+                    continue
+                message, _metadata = payload
                 if isinstance(message, AIMessageChunk):
                     if message.content:
                         streamed_content = True
