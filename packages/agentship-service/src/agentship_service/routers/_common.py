@@ -68,18 +68,20 @@ def agent_card(agent: RunnableAgent) -> AgentCard:
     had not asked for — and a UI rendering that as a badge told users an agent remembered
     conversations when it kept no state at all.
 
-    So a capability the spec opts into is reported as the spec set it; everything else is the
-    engine's, because the agent makes no claim either way.
+    Only a capability the agent OPTS INTO is overridden. ``durability`` is one: an agent
+    checkpoints only if its spec asks to. ``streaming`` is NOT — it is a capability, and
+    ``spec.streaming`` is a build-time request the gate checks, not a refusal to stream. I
+    briefly reported `spec.streaming and caps.streaming`, which made every agent omitting the
+    field advertise streaming: false, and clients fell back to non-streaming calls.
     """
     spec = agent.spec
     caps = agent.engine.capabilities.model_dump(mode="json")
     # Opt-in per agent: report the spec's answer, not the engine's ceiling.
     caps["durability"] = spec.durability
-    caps["streaming"] = bool(spec.streaming and agent.engine.capabilities.streaming)
     return AgentCard(
         name=spec.name,
         description=spec.prompt,
-        streaming=caps["streaming"],
+        streaming=agent.engine.capabilities.streaming,
         capabilities=caps,
         input_schema=None,
         output_schema=None,

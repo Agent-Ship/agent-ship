@@ -363,3 +363,21 @@ def test_the_agent_card_reports_the_AGENT_not_the_engine() -> None:
         "an agent that declares durability: none must not advertise checkpointing"
     )
     assert by_name["remembers"]["capabilities"]["durability"] == "checkpoint"
+
+
+def test_an_agent_can_stream_even_when_its_yaml_does_not_say_streaming() -> None:
+    """``streaming`` on the card is a CAPABILITY, not an opt-in like ``durability``.
+
+    ``spec.streaming`` is a build-time request the capability gate checks; it is not a
+    statement that the agent must not stream. Reporting `spec.streaming and caps.streaming`
+    made every agent that omitted the field advertise streaming: false, so Studio silently
+    fell back to :invoke and token streaming stopped working for 7 of 8 demo agents.
+    """
+    agents = AgentRegistry([build_agent(AgentSpec(name="quiet", engine="echo"))])
+    auth = ApiKeyAuthProvider(EnvApiKeyStore(raw=_KEYS))
+    card = TestClient(create_app(auth=auth, agents=agents)).get(
+        "/v1/agents/quiet", headers={"X-API-Key": "full"}
+    ).json()
+
+    assert card["streaming"] is True, "an agent on a streaming engine can be streamed"
+    assert card["capabilities"]["streaming"] is True
