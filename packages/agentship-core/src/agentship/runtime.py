@@ -72,6 +72,21 @@ async def _run_error_hooks(
             )
 
 
+def _observer_for_this_run(own: Observer) -> Observer:
+    """The observer a run should use: the surrounding run's, if there is one.
+
+    A sub-agent dispatched by a supervisor is part of the SAME interaction, so its spans belong
+    under the supervisor's span. Each agent used to trace through its own observer — usually a
+    no-op, since a member's YAML rarely declares an observability block — so a supervisor turn
+    produced several disconnected traces and the members' work was invisible.
+
+    An ambient observer therefore wins: it means we are nested inside another run, and one tree
+    is what a reader needs. A top-level run finds none and uses its own.
+    """
+    ambient = current_observer.get()
+    return ambient if ambient is not None else own
+
+
 class RunnableAgent:
     """A built agent, ready to serve turns.
 
@@ -169,7 +184,8 @@ class RunnableAgent:
         token = current_run.set(ctx)
         # Expose this agent's observer to the engine so it can attach its span-emitting callback to
         # the same observer whose root ``agent`` span is open — the inner tree then nests under it.
-        observer_token = current_observer.set(self.observer)
+        observer = _observer_for_this_run(self.observer)
+        observer_token = current_observer.set(observer)
         try:
             # The ``route`` step: stamp the chosen model id on the context before the
             # engine runs, so the adapter reads it and never routes itself (§13.5).
@@ -177,10 +193,10 @@ class RunnableAgent:
             # Open the root ``agent`` span around the whole pipeline so every guard/
             # memory/engine span nests under it, and stamp the trace id on the context
             # so middleware, the engine, and the service (X-Trace-Id) can read it.
-            with self.observer.span(
+            with observer.span(
                 semconv.SPAN_AGENT, SpanKind.AGENT, self._root_attrs(ctx)
             ) as root:
-                ctx.trace_id = self.observer.current_trace_id()
+                ctx.trace_id = observer.current_trace_id()
                 try:
                     for mw in pipeline:
                         await mw.on_request(ctx)
