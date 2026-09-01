@@ -9,6 +9,7 @@
 # Until the framework is published to PyPI, `make install` installs it editable from
 # the sibling monorepo checkout (../agentship/packages/*).
 
+STUDIO_URL ?= http://localhost:7005/studio
 VENV := .venv
 PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
@@ -107,13 +108,12 @@ INPUT ?=
 run:
 	$(VENV)/bin/agentship run agents/assistant.yaml --input "$(if $(INPUT),$(INPUT),Give one productivity tip.)"
 
-## ui: open a browser chat that drives the RUNNING SERVICE over HTTP — nothing runs in-process.
-##   The agent picker is the service's own `GET /v1/agents`; a turn is `:stream` or `:invoke`;
-##   a paused run is continued with `:resume`; a 401/403 is shown as its problem+json.
-##   REQUIRES the service to be up first: `make docker-up` (http://localhost:7005).
-##   Override with AGENTSHIP_BASE_URL / AGENTSHIP_API_KEY (defaults: that URL and the `dev` key).
+## ui: open AgentShip Studio — the branded chat/debug UI the SERVICE serves at /studio.
+##   Needs the service running (`make docker-up`). There is no UI in this repo: Studio ships
+##   with agentship-service, so the demo never maintains its own.
 ui:
-	$(PY) demos/chat_ui.py
+	@echo "Opening AgentShip Studio at $(STUDIO_URL) (API key: dev)"
+	@python3 -c "import webbrowser,sys; webbrowser.open(sys.argv[1])" $(STUDIO_URL)
 
 ## clean: remove the venv and caches
 clean:

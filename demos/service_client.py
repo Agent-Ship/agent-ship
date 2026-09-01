@@ -1,29 +1,18 @@
-"""A browser chat that drives a RUNNING AgentShip service over HTTP — nothing runs in-process.
+"""Call a running AgentShip service from Python — the client the demo's tests drive.
 
-This UI builds no agents. Every turn is an HTTP call to the ``/v1`` surface of a service you
-started separately, so what you see in the browser is exactly what any other caller gets:
+This is the "how do I talk to the service" example: list agents, take a turn (streamed or
+not), and continue a run that paused for a human. It speaks only the public ``/v1`` surface
+over HTTP, exactly as any client would, so nothing here depends on the framework being
+importable in the same process.
 
-* the agent picker is ``GET /v1/agents`` — the service's own catalog, not a list in this file;
-* a turn is ``POST /v1/agents/{name}:stream`` (SSE frames rendered as they arrive) or
-  ``POST /v1/agents/{name}:invoke`` (one JSON reply);
-* a run that paused for a human is continued with ``POST /v1/agents/{name}:resume``, echoing the
-  ``resume_token`` back on the *same* ``session_id``;
-* an auth or validation failure comes back as ``application/problem+json`` and is shown in the
-  chat as its ``detail`` and ``code`` — the service's real answer, not a stack trace;
-* the Trace panel shows what the wire actually carried: the SSE frame types and ``seq`` numbers,
-  plus the ``session_id``, ``trace_id`` and ``resume_token``.
+The browser UI is **AgentShip Studio**, served by the service itself at ``/studio`` — run
+``make ui`` to open it. This module is the programmatic equivalent, and the thing the demo's
+service tests exercise.
 
-There is deliberately **no in-process fallback**. If the service is unreachable the UI says so
-and stops, because a UI that quietly runs agents locally proves nothing about the deployment.
+    from service_client import fetch_agent_names, invoke_turn, resume_turn, stream_frames
 
-Run it (the service must already be up)::
-
-    make docker-up                # the service, on http://localhost:7005
-    make ui                       # this UI, on http://127.0.0.1:7860
-
-Point it elsewhere with ``AGENTSHIP_BASE_URL`` / ``AGENTSHIP_API_KEY``.
+Point it at another deployment with ``AGENTSHIP_BASE_URL`` / ``AGENTSHIP_API_KEY``.
 """
-
 from __future__ import annotations
 
 import json
@@ -31,7 +20,6 @@ import os
 import uuid
 from typing import Any
 
-import gradio as gr
 import httpx
 
 #: Defaults match ``docker-compose.yml``: the demo service listens on 7005 and ships a ``dev``
@@ -322,50 +310,3 @@ def reload_agents():
     names, error = fetch_agent_names()
     chat = [{"role": "assistant", "content": error}] if error else []
     return gr.Dropdown(choices=names, value=names[0] if names else None), chat, new_state()
-
-
-def build_ui() -> gr.Blocks:
-    """Assemble the chat: an agent picker fed by the service, a transcript, and a wire trace."""
-    names, error = fetch_agent_names()
-    with gr.Blocks(title="AgentShip chat") as ui:
-        gr.Markdown(
-            "# AgentShip — chat over the running service\n"
-            f"Every turn is an HTTP call to `{base_url()}/v1` with your API key — the same "
-            "surface any caller uses. Nothing runs in this process. Pick an agent (listed by "
-            "`GET /v1/agents`), send input, and watch the frames in **Trace**. If the run "
-            "pauses, reply **yes**/**no** and the UI continues it with `:resume`."
-        )
-        state = gr.State(new_state())
-        with gr.Row():
-            agent = gr.Dropdown(
-                choices=names, value=names[0] if names else None, label="Agent", scale=4
-            )
-            live_tokens = gr.Checkbox(value=True, label=":stream (live tokens)", scale=1)
-            new_chat_btn = gr.Button("New chat", scale=1)
-            reload_btn = gr.Button("Reload agents", scale=1)
-        chatbot = gr.Chatbot(
-            type="messages",
-            height=460,
-            label="Conversation",
-            value=[{"role": "assistant", "content": error}] if error else None,
-        )
-        box = gr.Textbox(
-            placeholder="Send input, or reply yes/no when the run pauses…", label="Message"
-        )
-        gr.Markdown(
-            "_Uncheck `:stream` to use `:invoke` — the only endpoint that reports a pause, "
-            "because the SSE contract has no `resume_token` frame._"
-        )
-        with gr.Accordion("Trace (what came over the wire this turn)", open=False):
-            trace = gr.Code(value=trace_text([]), label="endpoint · SSE frames · ids")
-
-        box.submit(respond, [box, chatbot, agent, live_tokens, state], [chatbot, box, state, trace])
-        # Switching agent or clicking "New chat" starts a fresh session_id, so memory resets too.
-        new_chat_btn.click(start_new_chat, [agent], [chatbot, state, trace])
-        agent.change(start_new_chat, [agent], [chatbot, state, trace])
-        reload_btn.click(reload_agents, None, [agent, chatbot, state])
-    return ui
-
-
-if __name__ == "__main__":
-    build_ui().launch()

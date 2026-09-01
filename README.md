@@ -3,7 +3,7 @@
 A small, **forkable** app built on [AgentShip](../agentship) that shows every
 feature shipped so far. One runnable slice per feature, a test per slice, and a
 single `make demo` that runs them all and prints a real result for each. You can also
-**drive every agent from one browser chat** (`make ui`) — pick an agent, send input,
+**drive every agent from AgentShip Studio** (`make ui`), the branded UI the service serves at `/studio` — pick an agent, send input,
 and watch it work: the multi-agent supervisors show their classify → route → dispatch
 path in a Trace panel, and the durable note-taker agent pauses to ask for write approval
 and resumes from its checkpoint, all in the conversation.
@@ -50,7 +50,7 @@ pip install -r requirements-dev.txt   # or: make install
 make demo
 
 # ...or open one browser chat to drive EVERY agent (routing trace + note-taker pause/resume):
-make ui   # http://127.0.0.1:7860
+make ui   # opens AgentShip Studio at http://localhost:7005/studio
 ```
 
 ---
@@ -534,7 +534,7 @@ agentship-demo/
     test_chat_ui.py             # slice 8: the UI's /v1 plumbing — catalog, stream, resume, problem+json (offline, stubbed HTTP)
     test_hitl_write.py          # slice 6: note-taker pauses → approve → write fires once (live)
   pyproject.toml                # pins agentship[starter]==0.0.1 (future PyPI install)
-  requirements-dev.txt          # editable-local install of the framework + gradio (dev mode)
+  requirements-dev.txt          # editable-local install of the framework (dev mode)
   Makefile                      # install / test / demo / ui / run shortcuts
   .env.example                  # credentials template — copy to .env and set OPENAI_API_KEY
   .github/workflows/ci.yml      # runs the live tests (needs the OPENAI_API_KEY repo secret)

@@ -16,6 +16,11 @@
 # Phase 07 observability slice: the OTel span-tree + exporters (console/Opik/LangFuse/LangSmith).
 # The pinned form is `agentship[starter,observability]`; editable-local it's this sibling package.
 -e ../agentship/packages/agentship-observability
+# Phases 06-09 service slices: the /v1 REST/SSE/WS surface, auth providers, tenant
+# isolation and HTTP posture. The pinned form is `agentship[starter,observability,service]`;
+# editable-local it's this sibling package. `[serve]` adds uvicorn, which the service demo
+# needs because it boots a real server on a loopback port rather than using TestClient alone.
+-e ../agentship/packages/agentship-service[serve]
 
 pytest>=8
 pytest-asyncio>=0.24
@@ -30,15 +35,9 @@ pytest-recording>=0.13
 # the LangSmith SDK the read-back uses.
 langsmith>=0.1
 
-# The generic chat UI (demos/chat_ui.py, `make ui`) — a browser chat to drive any agent,
-# including the deep-research agent's pause→resume, without a per-demo script.
-#
-# Note: gradio caps pydantic (<=2.12.3) below the floor a framework transitive dep
-# (google-genai) prefers (>=2.12.5), so `pip` prints a harmless conflict warning and
-# settles on 2.12.3. The demo's LangGraph→LiteLLM path never touches google-genai, so
-# every slice runs green at that version. If you don't want the UI, this line is the
-# only thing to drop.
-gradio>=4
+# gradio was REMOVED. The browser UI is now AgentShip Studio, served by the service
+# itself at /studio (`make ui` opens it), so this repo no longer ships a UI of its
+# own. Dropping gradio also unpins pydantic, which it held at <=2.12.3.
 
 # Firecrawl backs the built-in web_search + scrape_url tools when FIRECRAWL_API_KEY is set (free
 # tier at https://firecrawl.dev). It's what lets the deep-research agent actually search the web
