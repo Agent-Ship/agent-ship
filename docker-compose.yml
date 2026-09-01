@@ -39,6 +39,11 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      # Web access for the research agents' web_search / scrape_url tools. Without these the
+      # tools return a configuration error and the agent silently falls back to its own
+      # knowledge — which reads to a user as "I can't browse the web", not as a missing key.
+      - FIRECRAWL_API_KEY=${FIRECRAWL_API_KEY:-}
+      - BRAVE_API_KEY=${BRAVE_API_KEY:-}
     # Create the checkpoint tables before serving. Without this the first turn against any
     # durable agent fails with `relation "checkpoints" does not exist`. Every migration is
     # idempotent, so running it on each start is a no-op once applied.

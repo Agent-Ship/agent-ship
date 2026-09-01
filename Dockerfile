@@ -36,6 +36,13 @@ RUN pip install --no-cache-dir --upgrade pip \
         /tmp/agentship/agentship-observability \
     && rm -rf /tmp/agentship
 
+# The demo's own agents' tool dependencies. agents/deep_research.yaml and
+# agents/quick_search.yaml call web_search / scrape_url, whose Firecrawl backend needs this
+# package — without it the tools return {"error": "needs the 'firecrawl-py' package"} and the
+# agent quietly answers from its own knowledge, which reads to a user as "I can't browse the
+# web" rather than as a missing dependency.
+RUN pip install --no-cache-dir 'firecrawl-py>=4'
+
 # --- The demo app itself ------------------------------------------------------------------
 # Only what the running service needs: the agent specs and the Python `code:` factories they
 # reference. Tests, cassettes and demo scripts stay out of the image.
