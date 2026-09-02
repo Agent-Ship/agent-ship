@@ -32,8 +32,9 @@ def test_served_agent_with_a_block_is_traced(tmp_path) -> None:
     assert not isinstance(registry.get("traced").observer, NoOpObserver)
 
 
-def test_served_agent_without_a_block_stays_untraced(tmp_path) -> None:
+def test_served_agent_without_a_block_is_traced(tmp_path) -> None:
     """A spec with no ``observability`` block keeps the no-op observer — tracing is opt-in."""
     (tmp_path / "plain.yaml").write_text(_PLAIN_YAML)
     registry = load_agents(tmp_path)
-    assert isinstance(registry.get("plain").observer, NoOpObserver)
+    # Traced by default: a served agent you cannot see is a served agent you cannot debug.
+    assert not isinstance(registry.get("plain").observer, NoOpObserver)

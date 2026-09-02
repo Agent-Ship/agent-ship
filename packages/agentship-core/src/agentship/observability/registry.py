@@ -14,6 +14,7 @@ pipeline sitting unreachable behind a manual ``build_observer`` call.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
@@ -33,6 +34,48 @@ ObserverFactory = Callable[["ObservabilitySpec"], Observer]
 OBSERVERS: Registry[ObserverFactory] = Registry("agentship.observers", label="observer")
 
 
+
+#: Env var naming the backends every agent's spans ship to, comma-separated (e.g.
+#: ``opik`` or ``opik,langsmith``). It lives in the environment, not in each agent's YAML,
+#: because WHERE traces go is a property of the deployment: the same agent ships to Opik in
+#: production, to console on a laptop, and nowhere in an offline test run. Hardcoding a backend
+#: per agent also makes a keyless suite dial out to it.
+EXPORTERS_ENV = "AGENTSHIP_OTEL_EXPORTERS"
+
+
+def default_exporters() -> list[str]:
+    """Backends named by :data:`EXPORTERS_ENV`, or none.
+
+    Empty by default on purpose: the span tree is still built and can be asserted on
+    in-process, but nothing is shipped, so an offline run never reaches for a network backend.
+    """
+    raw = os.getenv(EXPORTERS_ENV, "")
+    return [name.strip() for name in raw.split(",") if name.strip()]
+
+
+#: Env var allowing exporters that ship spans off-box, deployment-wide. The per-agent
+#: ``allow_saas_exporter`` flag stops one agent's YAML from quietly exfiltrating; this is its
+#: operator-level counterpart, so pointing every agent at a hosted backend is one deliberate
+#: decision in one place rather than an edit to every spec file. An explicit ``false`` in a
+#: spec still wins.
+ALLOW_SAAS_ENV = "AGENTSHIP_OTEL_ALLOW_SAAS"
+
+
+def saas_egress_allowed() -> bool:
+    """Whether the deployment has consented to off-box exporters. Off unless explicitly set."""
+    return os.getenv(ALLOW_SAAS_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def tracing_is_on(observability: ObservabilitySpec | None) -> bool:
+    """Whether this agent is traced. Absent block means YES — tracing is on by default.
+
+    An agent that emitted nothing unless its YAML opted in was the reason most agents were
+    invisible, and the reason a supervisor's members produced no spans at all. ``provider:
+    none`` remains the explicit off switch.
+    """
+    return observability is None or observability.provider != "none"
+
+
 def resolve_observer(observability: ObservabilitySpec | None) -> Observer | None:
     """Build the observer an agent's ``observability`` block asks for, or ``None`` when off.
 
@@ -43,8 +86,13 @@ def resolve_observer(observability: ObservabilitySpec | None) -> Observer | None
     silently untraced run — the operator asked for tracing and should hear that the adapter is
     missing.
     """
-    if observability is None or observability.provider == "none":
+    if not tracing_is_on(observability):
         return None
+    # No block at all still means traced — with whatever backends the environment names.
+    if observability is None:
+        from ..spec import ObservabilitySpec  # imported here: spec imports this module
+
+        observability = ObservabilitySpec(exporters=default_exporters())
     factory = OBSERVERS.get(observability.provider)
     if factory is None:
         raise CapabilityError(
@@ -55,4 +103,13 @@ def resolve_observer(observability: ObservabilitySpec | None) -> Observer | None
     return factory(observability)
 
 
-__all__ = ["OBSERVERS", "ObserverFactory", "resolve_observer"]
+__all__ = [
+    "ALLOW_SAAS_ENV",
+    "EXPORTERS_ENV",
+    "OBSERVERS",
+    "ObserverFactory",
+    "default_exporters",
+    "saas_egress_allowed",
+    "resolve_observer",
+    "tracing_is_on",
+]

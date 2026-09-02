@@ -214,14 +214,27 @@ class ObservabilitySpec(BaseModel):
     #: Observer implementation: ``otel`` (default) builds the OpenTelemetry observer; ``none`` is
     #: the explicit off switch — a present block that still leaves the agent untraced.
     provider: Literal["otel", "none"] = "otel"
-    #: Backends the span tree fans out to. Default ``console`` needs no running collector.
-    exporters: list[str] = Field(default_factory=lambda: ["console"])
+    #: Backends the span tree fans out to. Defaults to whatever ``AGENTSHIP_OTEL_EXPORTERS``
+    #: names, and to none at all when it is unset — the tree is still built, it just ships
+    #: nowhere, so an offline run never dials out. Naming exporters here overrides the
+    #: environment for this one agent.
+    exporters: list[str] = Field(
+        default_factory=lambda: __import__(
+            "agentship.observability.registry", fromlist=["default_exporters"]
+        ).default_exporters()
+    )
     #: PHI gate — when false (default), prompt/response content is never put on a span.
     capture_content: bool = False
     #: Fraction of traces kept, 0.0–1.0. A root's keep/drop decision is inherited by its children.
     sample_ratio: float = 1.0
     #: Opt-in for exporters that ship spans off-box (e.g. LangSmith); false blocks that egress.
-    allow_saas_exporter: bool = False
+    #: Defaults to ``AGENTSHIP_OTEL_ALLOW_SAAS`` so an operator consents once for the whole
+    #: deployment instead of editing every spec; an explicit ``false`` here still wins.
+    allow_saas_exporter: bool = Field(
+        default_factory=lambda: __import__(
+            "agentship.observability.registry", fromlist=["saas_egress_allowed"]
+        ).saas_egress_allowed()
+    )
 
     @field_validator("sample_ratio")
     @classmethod

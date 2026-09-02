@@ -52,9 +52,19 @@ def no_otel():
         OBSERVERS._providers["otel"] = saved
 
 
-def test_resolve_observer_returns_none_when_no_block() -> None:
+def test_resolve_observer_traces_when_there_is_no_block() -> None:
+    """No block means TRACED — every agent is observable without opting in.
+
+    An agent that emitted nothing unless its YAML said so is why most agents were invisible,
+    and why a supervisor's members produced no spans at all. ``provider: none`` is still the
+    explicit off switch (next test).
+    """
+    assert resolve_observer(None) is not None
+
+
+def _unused_returns_none_when_no_block() -> None:
     """No ``observability`` block means leave the agent on its default (no-op) observer."""
-    assert resolve_observer(None) is None
+    return None
 
 
 def test_resolve_observer_returns_none_when_provider_is_none() -> None:
@@ -81,10 +91,12 @@ def test_build_agent_attaches_the_spec_observer(stub_otel) -> None:
     assert isinstance(agent.observer, _MarkerObserver)
 
 
-def test_build_agent_keeps_noop_without_a_block() -> None:
+def test_build_agent_traces_without_a_block() -> None:
     """No block, no explicit observer → the agent stays on the no-op observer."""
     agent = build_agent(AgentSpec(name="a", engine="echo"))
-    assert isinstance(agent.observer, NoOpObserver)
+    assert not isinstance(agent.observer, NoOpObserver), (
+        'an agent with no observability block is still traced'
+    )
 
 
 def test_explicit_observer_wins_over_the_spec_block(stub_otel) -> None:

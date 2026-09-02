@@ -127,12 +127,17 @@ def test_observability_is_absent_by_default():
 
 
 def test_observability_defaults_are_safe():
-    """A bare ``observability`` block defaults to console-only, content off, full sampling."""
+    """A bare block ships NOWHERE by default, with content off and full sampling.
+
+    Exporters default to whatever ``AGENTSHIP_OTEL_EXPORTERS`` names — none when it is unset —
+    rather than to ``console``. The tree is still built; it just does not leave the process, so
+    an offline run never dials out and stderr is not filled with spans nobody asked for.
+    """
     from agentship.spec import ObservabilitySpec
 
     obs = ObservabilitySpec()
     assert obs.provider == "otel"
-    assert obs.exporters == ["console"]
+    assert obs.exporters == [], "a bare block must not ship anywhere by default"
     assert obs.capture_content is False
     assert obs.sample_ratio == 1.0
     assert obs.allow_saas_exporter is False
