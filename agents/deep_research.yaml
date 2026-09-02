@@ -49,3 +49,19 @@ prompt: >-
   isn't configured and answer from your own knowledge instead. If the question is genuinely
   ambiguous, ask one short clarifying question first. Prefer depth and accuracy over speed — this
   is the deep path.
+
+
+# Tracing needs no block at all — every agent is traced by default, and
+# AGENTSHIP_OTEL_EXPORTERS decides where the spans go (unset = built but shipped nowhere,
+# so an offline run never dials out):
+#
+#   AGENTSHIP_OTEL_EXPORTERS=opik            # or langsmith, langfuse, phoenix, console
+#   AGENTSHIP_OTEL_EXPORTERS=opik,langsmith  # fan out to both
+#
+# The only reason this block exists is capture_content: this agent's spans are worth reading
+# in full — the search queries it ran and the pages it scraped — and content is off by default
+# because it is the PHI gate.
+observability:
+  capture_content: true
+  # Opik Cloud is off-box, so egress must be opted into. Harmless when shipping nowhere.
+  allow_saas_exporter: true
