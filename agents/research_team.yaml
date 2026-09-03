@@ -1,0 +1,60 @@
+# The end-to-end slice: one question, sub-agents, native tools and a real MCP server.
+#
+# Ask it something that needs research AND arithmetic. The supervisor classifies the request,
+# dispatches the specialist that fits, and answers — while its own MCP tools let it read and
+# write notes on disk through the official filesystem MCP server.
+#
+# What you should see in ONE trace (Studio, or AGENTSHIP_OTEL_EXPORTERS=opik):
+#
+#   agent  (research-team)
+#     node.classify   -> model            which specialist does this need?
+#     node.dispatch
+#       agent  (web_researcher)           a real sub-agent, its own turn
+#         tool.web_search                 finds sources
+#         tool.scrape_url                 reads them
+#         model                           writes the finding
+#     tool.write_file                     MCP: saves the note
+#     node.resolve / node.safety_gate
+#
+# It lives at the TOP LEVEL of agents/ on purpose: `agentship serve` only discovers specs
+# directly in the agents directory, so a supervisor nested in a folder would not appear in
+# Studio. Its specialists are `ref:`s into a subfolder, which resolve fine.
+#
+#   agentship run agents/research_team.yaml \
+#     --input "What is the latest stable Python version, and how many months ago was it released?"
+name: research-team
+engine: langgraph
+model: openai/gpt-4o-mini
+
+# Sub-agents. Each is a complete agent in its own right and runs as its own turn, nested in
+# this one's trace. `description` is load-bearing: it is what classify matches against.
+members:
+  - name: web_researcher
+    ref: research_team/specialists/web_researcher.yaml
+    description: >-
+      questions needing current facts, sources, documentation or anything from the open web
+  - name: analyst
+    ref: research_team/specialists/analyst.yaml
+    description: arithmetic, dates, comparisons and any calculation over known numbers
+  - name: note_keeper
+    ref: research_team/specialists/note_keeper.yaml
+    description: >-
+      saving a finding to disk, writing it down, or reading back what has already been
+      recorded — backed by a real filesystem MCP server
+
+# Content on the spans so the trace shows the searches it ran and the sources it read. Where
+# the trace ships is AGENTSHIP_OTEL_EXPORTERS, not this file.
+observability:
+  capture_content: true
+  allow_saas_exporter: true
+
+prompt: >-
+  You coordinate a small research team and keep a written record of what it finds.
+
+  Route each request to the specialist that fits: the web researcher for anything needing
+  current facts or sources, the analyst for arithmetic. When a question needs both, use the
+  researcher first and the analyst second.
+
+  Route anything about saving, writing down or reading back a finding to the note keeper,
+  which is backed by a real filesystem MCP server. Answer in a few clear sentences, citing any
+  sources your researcher read.

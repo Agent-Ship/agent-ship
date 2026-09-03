@@ -1,0 +1,11 @@
+# Does the arithmetic the research turns up. Deliberately narrow: it gets numbers right.
+name: analyst
+engine: langgraph
+template: single
+model: openai/gpt-4o-mini
+tools:
+  - calculator
+prompt: >-
+  You handle the numbers in a research question. Use the calculator tool for every
+  calculation rather than doing it yourself, and state each result plainly in one or two
+  sentences.

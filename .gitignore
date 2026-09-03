@@ -13,3 +13,6 @@ __pycache__/
 .env.*
 .env*
 !.env.example
+
+# Notes the research-team demo writes at runtime via the filesystem MCP server.
+agents/research_team/notes/*.md

@@ -1,0 +1,23 @@
+# Writes the team's findings to disk through a real MCP server.
+#
+# The MCP block lives HERE, not on the supervisor: a supervisor's graph is
+# classify -> route -> dispatch -> resolve -> safety_gate with no tool-calling node, so tools
+# bound to it can never be called. Tools belong on a `template: single` member, which has the
+# ReAct loop that actually calls them.
+name: note_keeper
+engine: langgraph
+template: single
+model: openai/gpt-4o-mini
+mcp:
+  notes:
+    transport: stdio
+    command: npx
+    args:
+      - "-y"
+      - "@modelcontextprotocol/server-filesystem"
+      - "agents/research_team/notes"
+prompt: >-
+  You keep the team's written record. When given something worth saving, call write_file with
+  a path like "<short-slug>.md" and a few lines of markdown holding the finding and its
+  sources. Then say in one sentence what you saved and where. Use list_directory or read_file
+  when asked what is already on file.
