@@ -122,6 +122,11 @@ def _forward_text(result: SpecialistResult) -> str:
     return value if isinstance(value, str) else str(value)
 
 
+#: The dispatch strategies a supervisor may ask for. Named once so the guard that rejects an
+#: unknown one and the branches that implement them cannot drift apart.
+STRATEGIES = frozenset({"single", "parallel", "sequential"})
+
+
 async def dispatch(
     strategy: Strategy,
     refs: list[AgentRef],
@@ -140,6 +145,18 @@ async def dispatch(
     specialist is run through :func:`_run_safely`, so a failure or timeout is an ``error`` result,
     never a crash. An unknown ``strategy`` fails fast with :class:`CapabilityError`.
     """
+    if strategy not in STRATEGIES:
+        raise CapabilityError(
+            f"unknown dispatch strategy {strategy!r} — use 'single', 'parallel', or 'sequential'"
+        )
+    if not refs:
+        # Nothing to dispatch is a legitimate state, not an error: the dispatch node computes
+        # its specialists from the retry helper on a later pass, and that list is empty when
+        # nothing is retryable. Returning no results lets the resolver merge nothing and the
+        # turn finish; `refs[0]` used to raise IndexError and took the whole run down.
+        #
+        # Checked AFTER the strategy, so an empty list cannot mask a misconfigured one.
+        return []
     if strategy == "single":
         return [await _run_safely(refs[0], message, ctx, timeout_s)]
     if strategy == "parallel":
@@ -152,6 +169,5 @@ async def dispatch(
             results.append(result)
             text = _forward_text(result)
         return results
-    raise CapabilityError(
-        f"unknown dispatch strategy {strategy!r} — use 'single', 'parallel', or 'sequential'"
-    )
+    # pragma: no cover - unreachable: STRATEGIES was checked above
+    raise AssertionError(f"unreachable strategy {strategy!r}")
