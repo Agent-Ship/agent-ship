@@ -34,7 +34,7 @@ async def test_run_opens_one_root_agent_span_with_identity_attrs() -> None:
     agent = build_agent(AgentSpec(name="support", engine="echo"), observer=obs)
     await agent.run("hi", user_id="u1")
     (root,) = obs.roots
-    assert root.name == semconv.SPAN_AGENT
+    assert root.name.startswith(semconv.SPAN_AGENT)
     assert root.status == "ok"
     assert root.attrs[semconv.AS_STATUS] == "ok"
     assert root.attrs[semconv.AS_AGENT_NAME] == "support"
@@ -77,7 +77,7 @@ async def test_stream_opens_one_root_span_over_the_whole_generator() -> None:
     events = [event async for event in agent.stream("hi")]
     assert [e.type for e in events] == ["content", "done"]
     (root,) = obs.roots
-    assert root.name == semconv.SPAN_AGENT
+    assert root.name.startswith(semconv.SPAN_AGENT)
     assert root.status == "ok"
     assert root.attrs[semconv.AS_RUN_MODE] == "stream"
 

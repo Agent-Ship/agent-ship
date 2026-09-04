@@ -93,7 +93,7 @@ async def test_real_run_emits_model_tool_and_node_spans_under_the_root(tool_call
     assert "4" in result.output
 
     view = observer.trace_view()
-    assert view.root.name == semconv.SPAN_AGENT
+    assert view.root.name.startswith(semconv.SPAN_AGENT)
 
     model_spans = list(view.model_spans())
     assert len(model_spans) == 2, "both ReAct model calls should be traced"

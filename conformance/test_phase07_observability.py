@@ -45,7 +45,7 @@ async def test_conf_obs_1_one_root_agent_span_per_run() -> None:
     agent = build_agent(AgentSpec(name="support", engine="echo"), observer=obs)
     await agent.run("hi", user_id="u1")
     assert len(obs.roots) == 1
-    assert obs.roots[0].name == semconv.SPAN_AGENT
+    assert obs.roots[0].name.startswith(semconv.SPAN_AGENT)
     assert obs.roots[0].kind is SpanKind.AGENT
 
 

@@ -128,6 +128,8 @@ class RunnableAgent:
         return {
             semconv.AS_AGENT_NAME: ctx.agent_name,
             semconv.AS_SESSION_ID: ctx.session_id,
+            # The same value under the key trace backends group threads by.
+            semconv.THREAD_ID: ctx.session_id,
             semconv.AS_RUN_ID: ctx.run_id,
             semconv.AS_TENANT_ID: ctx.tenant_id,
             semconv.AS_USER_ID: hashed_user_id(ctx.user_id),
@@ -202,7 +204,9 @@ class RunnableAgent:
             # Open the root ``agent`` span around the whole pipeline so every guard/
             # memory/engine span nests under it, and stamp the trace id on the context
             # so middleware, the engine, and the service (X-Trace-Id) can read it.
-            with observer.span(semconv.SPAN_AGENT, SpanKind.AGENT, self._root_attrs(ctx)) as root:
+            with observer.span(
+                semconv.agent_span(ctx.agent_name), SpanKind.AGENT, self._root_attrs(ctx)
+            ) as root:
                 ctx.trace_id = observer.current_trace_id()
                 try:
                     for mw in pipeline:
@@ -267,7 +271,7 @@ class RunnableAgent:
         observer_token = current_observer.set(self.observer)
         try:
             with self.observer.span(
-                semconv.SPAN_AGENT, SpanKind.AGENT, self._root_attrs(ctx)
+                semconv.agent_span(ctx.agent_name), SpanKind.AGENT, self._root_attrs(ctx)
             ) as root:
                 ctx.trace_id = self.observer.current_trace_id()
                 try:
@@ -319,7 +323,7 @@ class RunnableAgent:
             # The root span spans the whole generator — opened here, ended when the
             # ``with`` exits (clean finish, mid-stream error, or early disconnect).
             with self.observer.span(
-                semconv.SPAN_AGENT, SpanKind.AGENT, self._root_attrs(ctx)
+                semconv.agent_span(ctx.agent_name), SpanKind.AGENT, self._root_attrs(ctx)
             ) as root:
                 ctx.trace_id = self.observer.current_trace_id()
                 try:

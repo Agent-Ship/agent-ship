@@ -159,7 +159,9 @@ async def test_full_trace_serializes_over_otlp_http(otlp_collector, monkeypatch)
     spans = _decoded_spans(_CollectorHandler.bodies)
     names = sorted(span.name for span in spans)
 
-    assert semconv.SPAN_AGENT in names, "the root agent span must reach the wire"
+    assert any(n.startswith(semconv.SPAN_AGENT) for n in names), (
+        "the root agent span must reach the wire"
+    )
     assert names.count(semconv.SPAN_MODEL) == 2, "both ReAct model calls must serialize"
     assert semconv.tool_span("calculator") in names, "the tool span must serialize"
     assert any(n.startswith(semconv.NODE_PREFIX) for n in names), "the node boundary must serialize"
@@ -174,7 +176,7 @@ async def test_full_trace_serializes_over_otlp_http(otlp_collector, monkeypatch)
     # Nesting survives serialization: every non-root span carries a parent, and exactly one root.
     ids = {span.span_id for span in spans}
     roots = [s for s in spans if not s.parent_span_id or s.parent_span_id not in ids]
-    assert len(roots) == 1 and roots[0].name == semconv.SPAN_AGENT
+    assert len(roots) == 1 and roots[0].name.startswith(semconv.SPAN_AGENT)
 
 
 async def test_a_supervisor_turn_exports_one_connected_trace(otlp_collector, monkeypatch):
@@ -226,7 +228,7 @@ async def test_a_supervisor_turn_exports_one_connected_trace(otlp_collector, mon
     provider.force_flush()
 
     spans = _decoded_spans(_CollectorHandler.bodies)
-    agents = [s for s in spans if s.name == semconv.SPAN_AGENT]
+    agents = [s for s in spans if s.name.startswith(semconv.SPAN_AGENT)]
     assert len(agents) == 2, (
         f"expected the supervisor AND its member on the wire, got {len(agents)}"
     )

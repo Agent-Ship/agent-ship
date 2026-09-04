@@ -28,7 +28,21 @@ from __future__ import annotations
 SEMCONV_VERSION = "0.1.0"
 
 # --- Span names (§4.1) -------------------------------------------------------------------------
-SPAN_AGENT = "agent"  # the root span, one per interaction
+SPAN_AGENT = "agent"  # the root span's PREFIX; see agent_span() for the name actually emitted
+
+
+def agent_span(agent_name: str) -> str:
+    """The root span's name: ``agent <name>``, e.g. ``agent research-team``.
+
+    Named after the agent because the span name is what a trace UI lists. Every root span used
+    to be called just "agent", so a supervisor and its three specialists appeared as four
+    identical rows in Opik and the one detail telling them apart lived in an attribute the UI
+    does not surface. The ``agent `` prefix keeps them greppable and sorted together, and
+    matches OTel's GenAI convention of naming an agent span after its agent.
+    """
+    return f"{SPAN_AGENT} {agent_name}" if agent_name else SPAN_AGENT
+
+
 SPAN_MODEL = "model"  # one per LLM call; the LiteLLM callback stamps usage here
 SPAN_GUARDRAIL_INPUT = "guardrail.input"
 SPAN_GUARDRAIL_OUTPUT = "guardrail.output"
@@ -79,6 +93,12 @@ AS_STATUS = "agentship.status"  # "ok" | "error" on the root agent span
 AS_RUN_MODE = "agentship.run.mode"  # "invoke" | "stream" on the root agent span
 AS_TENANT_ID = "agentship.tenant.id"
 AS_SESSION_ID = "agentship.session.id"
+
+#: The conversation this turn belongs to, under the bare key backends read. Opik groups traces
+#: into threads by an attribute named exactly ``thread_id``; without it a ten-turn conversation
+#: shows up as ten unrelated traces. Deliberately un-namespaced for that reason — our own
+#: ``agentship.session.id`` carries the same value for anything querying our namespace.
+THREAD_ID = "thread_id"
 AS_RUN_ID = "agentship.run.id"
 AS_AGENT_NAME = "agentship.agent.name"
 #: Caller id on the root span — always the salted hash, never the raw id (PHI gate, §4.6).
