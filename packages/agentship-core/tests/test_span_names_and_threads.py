@@ -51,3 +51,36 @@ async def test_the_session_is_exposed_as_thread_id_for_backends():
     root = await _root("research-team")
     assert root.attrs.get(semconv.THREAD_ID) == "s-thread-1"
     assert root.attrs[semconv.AS_SESSION_ID] == "s-thread-1"
+
+
+# ---- readable model spans, and no bookkeeping noise --------------------------------------------
+
+
+def test_a_model_span_says_which_model_ran():
+    """``chat gpt-4o-mini`` rather than ``model``.
+
+    A trace of a supervisor showed several rows all called "model" and no way to tell which
+    ran on the cheap classifier and which on the expensive specialist without opening each
+    one. OTel's GenAI convention names a model span ``{operation} {model}`` for this reason.
+    """
+    assert semconv.model_span("openai/gpt-4o-mini") == "chat openai/gpt-4o-mini"
+
+
+def test_a_model_span_falls_back_when_the_model_is_unknown():
+    """Never emit a dangling ``chat `` — an unnamed model keeps the bare span name."""
+    assert semconv.model_span("") == semconv.SPAN_MODEL
+    assert semconv.model_span(None) == semconv.SPAN_MODEL
+
+
+def test_bookkeeping_nodes_are_named_as_untraced():
+    """A supervisor declares which of its nodes do no work worth a span.
+
+    ``lookup_route``, ``resolve`` and ``safety_gate`` are pure functions — no model call, no
+    tool, no I/O. Emitting a span each buries the three that matter (classify, dispatch, and
+    the sub-agent) in bookkeeping.
+    """
+    from agentship_langgraph.templates.graph_supervisor import UNTRACED_NODES
+
+    assert {"lookup_route", "resolve", "safety_gate"} <= UNTRACED_NODES
+    assert "classify" not in UNTRACED_NODES, "classify holds the routing model call"
+    assert "dispatch" not in UNTRACED_NODES, "dispatch holds the sub-agent"

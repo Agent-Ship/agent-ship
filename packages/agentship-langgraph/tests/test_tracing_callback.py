@@ -50,7 +50,7 @@ async def test_model_call_records_tokens_cost_and_identity() -> None:
     await callback.on_llm_end(_llm_result(), run_id=run_id)
 
     model = observer.roots[0]
-    assert model.name == semconv.SPAN_MODEL
+    assert model.name.startswith(semconv.MODEL_SPAN_PREFIX)
     assert model.attrs[semconv.GEN_AI_REQUEST_MODEL] == "openai/gpt-4o-mini"
     assert model.attrs[semconv.GEN_AI_SYSTEM] == "openai"
     assert model.attrs[semconv.GEN_AI_USAGE_INPUT_TOKENS] == 11
@@ -68,7 +68,10 @@ async def test_tree_nests_model_and_tool_under_node_under_agent() -> None:
     # The runtime's root agent span; the callback nests everything under whatever it is given.
     await callback.on_chain_start({"name": "agent"}, {}, run_id=agent_id)  # not a node: no span
     await callback.on_chain_start(
-        {"name": "agent"}, {}, run_id=node_id, parent_run_id=agent_id,
+        {"name": "agent"},
+        {},
+        run_id=node_id,
+        parent_run_id=agent_id,
         metadata={"langgraph_node": "agent"},
     )
     await callback.on_chat_model_start(
@@ -79,16 +82,17 @@ async def test_tree_nests_model_and_tool_under_node_under_agent() -> None:
         invocation_params={"model": "openai/gpt-4o-mini"},
     )
     await callback.on_llm_end(_llm_result(), run_id=model_id)
-    await callback.on_tool_start(
-        {"name": "search"}, "{}", run_id=tool_id, parent_run_id=node_id
-    )
+    await callback.on_tool_start({"name": "search"}, "{}", run_id=tool_id, parent_run_id=node_id)
     await callback.on_tool_end("result", run_id=tool_id)
     await callback.on_chain_end({}, run_id=node_id)
 
     node = observer.roots[0]
     assert node.name == semconv.node_span("agent")
     child_names = sorted(child.name for child in node.children)
-    assert child_names == [semconv.SPAN_MODEL, semconv.tool_span("search")]
+    assert child_names == [
+        semconv.model_span("openai/gpt-4o-mini"),
+        semconv.tool_span("search"),
+    ]
 
 
 async def test_mcp_tool_span_is_tagged_with_its_server() -> None:
@@ -110,9 +114,7 @@ async def test_content_is_withheld_by_default_and_redacted_when_enabled() -> Non
     withheld = RecordingObserver()
     off = ObservabilityCallback(withheld)
     run_id = uuid4()
-    await off.on_tool_start(
-        {"name": "email"}, "reach me at jane@example.com", run_id=run_id
-    )
+    await off.on_tool_start({"name": "email"}, "reach me at jane@example.com", run_id=run_id)
     await off.on_tool_end("sent to jane@example.com", run_id=run_id)
     assert semconv.GEN_AI_INPUT_MESSAGES not in withheld.roots[0].attrs
     assert semconv.GEN_AI_OUTPUT_MESSAGES not in withheld.roots[0].attrs
@@ -120,9 +122,7 @@ async def test_content_is_withheld_by_default_and_redacted_when_enabled() -> Non
     captured = RecordingObserver()
     on = ObservabilityCallback(captured, capture_content=True)
     run_id = uuid4()
-    await on.on_tool_start(
-        {"name": "email"}, "reach me at jane@example.com", run_id=run_id
-    )
+    await on.on_tool_start({"name": "email"}, "reach me at jane@example.com", run_id=run_id)
     await on.on_tool_end("sent to jane@example.com", run_id=run_id)
     tool = captured.roots[0]
     assert "jane@example.com" not in tool.attrs[semconv.GEN_AI_INPUT_MESSAGES]

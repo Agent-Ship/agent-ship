@@ -15,7 +15,7 @@ from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from .semconv import SPAN_MODEL, TOOL_PREFIX
+from .semconv import TOOL_PREFIX, is_model_span
 from .types import SpanKind
 
 
@@ -65,7 +65,11 @@ class TraceView:
 
     def model_spans(self) -> Iterable[SpanNode]:
         """Yield every ``model`` span — the LLM calls, each carrying ``gen_ai.usage.*`` + cost."""
-        return self.spans(SPAN_MODEL)
+        # Prefix, not equality: a model span is named "chat <model>" so a reader can tell one
+        # model call from another, and this lookup must keep finding all of them.
+        for node in self._walk(self.root):
+            if is_model_span(node.name):
+                yield node
 
     def tool_calls(self) -> Iterable[SpanNode]:
         """Yield every ``tool.<name>`` span — one per tool invocation, in execution order."""

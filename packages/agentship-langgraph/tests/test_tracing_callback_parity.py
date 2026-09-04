@@ -127,7 +127,9 @@ async def test_callback_model_attributes_match_across_observers() -> None:
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(exporter))
     await _drive(OTelObserver(provider))
-    otel_model = next(s for s in exporter.get_finished_spans() if s.name == semconv.SPAN_MODEL)
+    otel_model = next(
+        s for s in exporter.get_finished_spans() if s.name.startswith(semconv.MODEL_SPAN_PREFIX)
+    )
 
     for key in _MODEL_ATTR_KEYS:
         assert key in rec_model.attrs, f"RecordingObserver dropped {key}"

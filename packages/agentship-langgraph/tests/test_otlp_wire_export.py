@@ -162,11 +162,13 @@ async def test_full_trace_serializes_over_otlp_http(otlp_collector, monkeypatch)
     assert any(n.startswith(semconv.SPAN_AGENT) for n in names), (
         "the root agent span must reach the wire"
     )
-    assert names.count(semconv.SPAN_MODEL) == 2, "both ReAct model calls must serialize"
+    assert sum(1 for n in names if semconv.is_model_span(n)) == 2, (
+        "both ReAct model calls must serialize"
+    )
     assert semconv.tool_span("calculator") in names, "the tool span must serialize"
     assert any(n.startswith(semconv.NODE_PREFIX) for n in names), "the node boundary must serialize"
 
-    model_spans = [s for s in spans if s.name == semconv.SPAN_MODEL]
+    model_spans = [s for s in spans if semconv.is_model_span(s.name)]
     first = model_spans[0]
     assert _attr(first, semconv.GEN_AI_USAGE_INPUT_TOKENS) == 5
     assert _attr(first, semconv.GEN_AI_USAGE_OUTPUT_TOKENS) == 2
@@ -239,6 +241,6 @@ async def test_a_supervisor_turn_exports_one_connected_trace(otlp_collector, mon
         "them as unrelated turns instead of one tree"
     )
 
-    models = [s for s in spans if s.name == semconv.SPAN_MODEL]
+    models = [s for s in spans if semconv.is_model_span(s.name)]
     assert len(models) == 2, f"expected 2 model spans (classify + specialist), got {len(models)}"
     assert all(s.trace_id in traces for s in models), "a model span landed outside the trace"

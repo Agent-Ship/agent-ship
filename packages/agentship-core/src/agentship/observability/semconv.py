@@ -43,7 +43,36 @@ def agent_span(agent_name: str) -> str:
     return f"{SPAN_AGENT} {agent_name}" if agent_name else SPAN_AGENT
 
 
-SPAN_MODEL = "model"  # one per LLM call; the LiteLLM callback stamps usage here
+SPAN_MODEL = "model"  # the model span's PREFIX; see model_span() for the name actually emitted
+
+
+#: What a model span's name starts with once it carries the model id.
+MODEL_SPAN_PREFIX = "chat "
+
+
+def is_model_span(name: str) -> bool:
+    """Whether ``name`` is a model span, under either form it can take.
+
+    A model span is normally ``chat <model>``, but falls back to the bare ``model`` when the
+    model id is unknown — which a fake or offline model produces. Both are model spans, so
+    every place that looks for them goes through here rather than repeating the two-way check
+    and getting it half right.
+    """
+    return name == SPAN_MODEL or name.startswith(MODEL_SPAN_PREFIX)
+
+
+def model_span(model_id: str | None) -> str:
+    """A model span's name: ``chat <model>``, e.g. ``chat openai/gpt-4o-mini``.
+
+    Every LLM call used to produce a span called just "model", so a supervisor's trace showed
+    several identical rows with no way to see which ran on the cheap classifier and which on
+    the expensive specialist without opening each one. OTel's GenAI convention names a model
+    span ``{operation} {model}`` for exactly this. Falls back to the bare name when the model
+    is unknown, rather than emitting a dangling "chat ".
+    """
+    return f"{MODEL_SPAN_PREFIX}{model_id}" if model_id else SPAN_MODEL
+
+
 SPAN_GUARDRAIL_INPUT = "guardrail.input"
 SPAN_GUARDRAIL_OUTPUT = "guardrail.output"
 SPAN_MEMORY_RECALL = "memory.recall"

@@ -105,9 +105,11 @@ def _usage_from_result(response: LLMResult, model_id: str, latency_ms: float) ->
     input_tokens = int(usage_metadata.get("input_tokens") or 0)
     output_tokens = int(usage_metadata.get("output_tokens") or 0)
     if not (input_tokens or output_tokens):
-        token_usage = (response.llm_output or {}).get("token_usage") or (
-            response.llm_output or {}
-        ).get("usage") or {}
+        token_usage = (
+            (response.llm_output or {}).get("token_usage")
+            or (response.llm_output or {}).get("usage")
+            or {}
+        )
         input_tokens = int(token_usage.get("prompt_tokens") or 0)
         output_tokens = int(token_usage.get("completion_tokens") or 0)
 
@@ -236,7 +238,13 @@ class ObservabilityCallback(AsyncCallbackHandler):
             attrs[semconv.GEN_AI_REQUEST_MAX_TOKENS] = max_tokens
         if self._capture_content:
             attrs[semconv.GEN_AI_INPUT_MESSAGES] = redact_pii(_json(flat))
-        self._open(run_id, parent_run_id, semconv.SPAN_MODEL, SpanKind.LLM, attrs)
+        self._open(
+            run_id,
+            parent_run_id,
+            semconv.model_span(attrs.get(semconv.GEN_AI_REQUEST_MODEL)),
+            SpanKind.LLM,
+            attrs,
+        )
         self._model_ids[run_id] = model_id
 
     async def on_llm_start(
@@ -260,7 +268,13 @@ class ObservabilityCallback(AsyncCallbackHandler):
         }
         if self._capture_content:
             attrs[semconv.GEN_AI_INPUT_MESSAGES] = redact_pii(_json(list(prompts)))
-        self._open(run_id, parent_run_id, semconv.SPAN_MODEL, SpanKind.LLM, attrs)
+        self._open(
+            run_id,
+            parent_run_id,
+            semconv.model_span(attrs.get(semconv.GEN_AI_REQUEST_MODEL)),
+            SpanKind.LLM,
+            attrs,
+        )
         self._model_ids[run_id] = model_id
 
     async def on_llm_end(self, response: LLMResult, *, run_id: UUID, **kwargs: Any) -> None:
@@ -336,6 +350,14 @@ class ObservabilityCallback(AsyncCallbackHandler):
         node = (metadata or {}).get("langgraph_node")
         name = (serialized or {}).get("name") or kwargs.get("name")
         if not node or name != node:
+            return
+        # Pure-function nodes (route lookup, conflict resolution, the final write) do no model
+        # call, no tool and no I/O. A span each buried the steps that matter in bookkeeping.
+        # Imported here, not at module scope: graph_supervisor pulls in the agent module, and a
+        # top-level import would make tracing and the templates import each other.
+        from .templates.graph_supervisor import UNTRACED_NODES
+
+        if str(node) in UNTRACED_NODES:
             return
         self._open(run_id, parent_run_id, semconv.node_span(str(node)), SpanKind.INTERNAL, {})
 

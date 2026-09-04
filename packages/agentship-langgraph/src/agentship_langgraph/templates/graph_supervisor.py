@@ -339,6 +339,14 @@ def build_declarative_supervisor(
     return graph, list(specialists)
 
 
+#: Supervisor nodes that do no work worth a span: pure functions with no model call, no tool
+#: and no I/O. `lookup_route` is a dict lookup, `resolve` is the ConflictResolver, and
+#: `safety_gate` writes the final message. A span each buried the three that matter — classify,
+#: dispatch, and the sub-agent under it — in bookkeeping, which is what made a supervisor trace
+#: hard to read. Distinct from INTERNAL_NODES: `classify` is not traced away, because it holds
+#: a real model call; it is only kept out of the answer STREAM.
+UNTRACED_NODES = frozenset({"lookup_route", "resolve", "safety_gate"})
+
 #: Supervisor nodes whose model output is bookkeeping, not the reply. ``classify`` emits the
 #: routing label ("web_researcher"), and streaming it prefixed the answer with that label. Read
 #: by the engine when it compiles, and declared here because the supervisor is what knows.
