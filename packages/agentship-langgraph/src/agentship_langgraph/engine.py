@@ -118,8 +118,15 @@ class _CompiledAgent:
         durability: str = "none",
         members: list[str] | None = None,
         bound_tools: list[str] | None = None,
+        internal_nodes: frozenset[str] = frozenset(),
     ) -> None:
         """Bind the compiled graph, the optional system prompt, model id, and durability.
+
+        ``internal_nodes`` names nodes whose model output is bookkeeping rather than part of the
+        reply. A supervisor's ``classify`` node emits the routing label ("web_researcher"), and
+        streaming every node's tokens sent that label to the client glued to the front of the
+        answer — "web_researcherHello! How can I assist you today?". A single-agent loop names
+        none: there every token IS the reply.
 
         ``model_id`` is the LiteLLM model string (e.g. ``"openai/gpt-4o-mini"``);
         it is kept so a provider failure at run time can be turned into an
@@ -139,6 +146,7 @@ class _CompiledAgent:
         #: Names of the tools bound into this agent (empty when none declared) — makes the
         #: ``tool_calling`` capability inspectable on the built artifact.
         self.bound_tools = bound_tools or []
+        self.internal_nodes = internal_nodes
 
     @property
     def builder(self) -> Any:
@@ -265,6 +273,10 @@ class LangGraphEngine(Engine):
             durability=spec.durability,
             members=members,
             bound_tools=[t.name for t in tools],
+            # Asked of the authored agent rather than inferred: a code-authored supervisor has
+            # no `spec.members`, so keying on that silently skipped exactly the case a user
+            # hits first. The declarative path builds a SupervisorAgent too, so both are covered.
+            internal_nodes=getattr(authored, "internal_nodes", frozenset()),
         )
 
     def _resolve_model(self, spec: AgentSpec) -> BaseChatModel:
@@ -612,7 +624,11 @@ class LangGraphEngine(Engine):
                                     },
                                 )
                     continue
-                message, _metadata = payload
+                message, metadata = payload
+                # A supervisor's classify node emits the routing label, which is bookkeeping,
+                # not the reply. Streaming it prefixed the answer with "web_researcher".
+                if (metadata or {}).get("langgraph_node") in compiled.internal_nodes:
+                    continue
                 if isinstance(message, AIMessageChunk):
                     if message.content:
                         streamed_content = True

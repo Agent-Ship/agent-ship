@@ -339,6 +339,12 @@ def build_declarative_supervisor(
     return graph, list(specialists)
 
 
+#: Supervisor nodes whose model output is bookkeeping, not the reply. ``classify`` emits the
+#: routing label ("web_researcher"), and streaming it prefixed the answer with that label. Read
+#: by the engine when it compiles, and declared here because the supervisor is what knows.
+INTERNAL_NODES = frozenset({"classify"})
+
+
 class SupervisorAgent(LangGraphAgent):
     """A durable, config-driven multi-agent supervisor authored via a ``code:`` factory.
 
@@ -354,6 +360,9 @@ class SupervisorAgent(LangGraphAgent):
         super().__init__(spec)
         self._config = config
         self._specialists = specialists
+
+    #: See :data:`INTERNAL_NODES` — the engine reads this off the authored agent.
+    internal_nodes = INTERNAL_NODES
 
     def build_graph(self, model: BaseChatModel, tools: list[BaseTool]) -> StateGraph:
         """Assemble the supervisor ``StateGraph`` per design §4 C1."""
