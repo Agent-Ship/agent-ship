@@ -13,9 +13,10 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import logging
+import os
 from typing import TYPE_CHECKING, Any
 
-from agentship.errors import CapabilityError
+from agentship.errors import AgentShipError, CapabilityError
 
 if TYPE_CHECKING:
     from agentship.spec import McpServerSpec
@@ -96,17 +97,58 @@ async def discover_mcp_tools(mcp: dict[str, McpServerSpec]) -> list[BaseTool]:
     return tools
 
 
+#: How long to wait for an MCP server to list its tools before giving up, in seconds.
+#: Override with ``AGENTSHIP_MCP_DISCOVERY_TIMEOUT``.
+#:
+#: Bounded because discovery happens while the agent is BUILT, which for ``agentship serve`` is
+#: before the socket binds: an unresponsive server used to leave every agent in the deployment
+#: unstartable. A real container sat at "connecting to 1 server(s)" for five minutes with nine
+#: agents behind it and no port open. Failing one spec loudly is strictly better — the doctor
+#: gate then names it and serves the rest.
+DISCOVERY_TIMEOUT_S = float(os.getenv("AGENTSHIP_MCP_DISCOVERY_TIMEOUT", "45"))
+
+
+def _discovery_timed_out(mcp: dict[str, McpServerSpec], seconds: float) -> AgentShipError:
+    """The actionable error for a server that accepted the connection and then went quiet."""
+    return AgentShipError(
+        f"MCP discovery timed out after {seconds:g}s for server(s): {', '.join(mcp)} — "
+        f"the server started but never listed its tools. Check the command/url in the `mcp:` "
+        f"block, run it by hand to see its output, or raise "
+        f"AGENTSHIP_MCP_DISCOVERY_TIMEOUT if it is merely slow to start."
+    )
+
+
 def discover_mcp_tools_sync(mcp: dict[str, McpServerSpec]) -> list[BaseTool]:
     """Run :func:`discover_mcp_tools` from sync code (the engine's ``build`` is synchronous).
 
     Uses :func:`asyncio.run` when no event loop is running; when one is (e.g. discovery triggered
     from inside an async request), the coroutine runs to completion on a dedicated worker thread so
     it never conflicts with the caller's loop.
+
+    Bounded by :data:`DISCOVERY_TIMEOUT_S` on both paths: a server that never answers fails this
+    one agent instead of hanging the process that is building it.
     """
     try:
         asyncio.get_running_loop()
     except RuntimeError:
-        return asyncio.run(discover_mcp_tools(mcp))
+        async def bounded() -> list[BaseTool]:
+            """Await discovery under the timeout, inside the loop asyncio.run creates."""
+            return await asyncio.wait_for(discover_mcp_tools(mcp), timeout=DISCOVERY_TIMEOUT_S)
+
+        try:
+            return asyncio.run(bounded())
+        except TimeoutError as exc:
+            raise _discovery_timed_out(mcp, DISCOVERY_TIMEOUT_S) from exc
     _mcp_logger.debug("event loop already running — using thread-pool bridge for discovery")
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        return pool.submit(lambda: asyncio.run(discover_mcp_tools(mcp))).result()
+    # daemon threads: a wedged discovery must not keep the interpreter alive at shutdown.
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    try:
+        future = pool.submit(lambda: asyncio.run(discover_mcp_tools(mcp)))
+        try:
+            return future.result(timeout=DISCOVERY_TIMEOUT_S)
+        except concurrent.futures.TimeoutError as exc:
+            future.cancel()
+            raise _discovery_timed_out(mcp, DISCOVERY_TIMEOUT_S) from exc
+    finally:
+        # wait=False: never block shutdown on a thread that is already stuck.
+        pool.shutdown(wait=False)
