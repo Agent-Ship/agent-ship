@@ -57,6 +57,9 @@ services:
       - LANGSMITH_API_KEY=${LANGSMITH_API_KEY:-}
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      # Self-hosted LangFuse. Unset means cloud.langfuse.com — without forwarding this, a
+      # self-hosted deployment would silently ship its spans to the cloud instead.
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-}
     # Create the checkpoint tables before serving. Without this the first turn against any
     # durable agent fails with `relation "checkpoints" does not exist`. Every migration is
     # idempotent, so running it on each start is a no-op once applied.
