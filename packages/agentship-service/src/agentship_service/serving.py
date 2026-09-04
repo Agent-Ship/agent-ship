@@ -14,6 +14,7 @@ identically.
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
@@ -34,6 +35,10 @@ ENV_RATE_LIMIT = "AGENTSHIP_RATE_LIMIT"
 ENV_TRUST_FORWARDED_FROM = "AGENTSHIP_TRUST_FORWARDED_FROM"
 
 
+#: Startup failures are reported here: which spec could not be built, and why.
+_log = logging.getLogger("agentship.service")
+
+
 def load_agents(agents_dir: Path) -> AgentRegistry:
     """Build every ``*.yaml``/``*.yml`` spec directly under ``agents_dir`` into a registry.
 
@@ -46,7 +51,15 @@ def load_agents(agents_dir: Path) -> AgentRegistry:
     if not agents_dir.is_dir():
         return registry
     for path in sorted(p for p in agents_dir.iterdir() if p.suffix in (".yaml", ".yml")):
-        registry.add(build_agent(str(path)))
+        try:
+            registry.add(build_agent(str(path)))
+        except Exception:  # noqa: BLE001 - one bad spec must not cost us the other agents
+            # Building happens at startup, so an exception here used to escape the app factory:
+            # uvicorn never bound a port and EVERY agent became unreachable because one of them
+            # could not reach its MCP server. A deployment is more useful degraded than dead —
+            # the failure is logged with its traceback and the agent is left out of the
+            # catalogue, so `GET /v1/agents` shows exactly what is servable.
+            _log.exception("agent %s could not be built and will not be served", path.name)
     return registry
 
 
