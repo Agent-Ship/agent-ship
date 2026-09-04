@@ -44,6 +44,7 @@ from . import models
 from .agent import LangGraphAgent
 from .durability import open_checkpointer
 from .templates import resolve_template
+from .templates.graph_supervisor import INTERNAL_NODES as SUPERVISOR_INTERNAL_NODES
 from .tools import ToolCallLogger
 from .tracing import ObservabilityCallback
 
@@ -273,10 +274,15 @@ class LangGraphEngine(Engine):
             durability=spec.durability,
             members=members,
             bound_tools=[t.name for t in tools],
-            # Asked of the authored agent rather than inferred: a code-authored supervisor has
-            # no `spec.members`, so keying on that silently skipped exactly the case a user
-            # hits first. The declarative path builds a SupervisorAgent too, so both are covered.
-            internal_nodes=getattr(authored, "internal_nodes", frozenset()),
+            # BOTH supervisor paths, which is the bit I got wrong twice. A code-authored
+            # supervisor declares `internal_nodes` on itself but has no `spec.members`; a
+            # declarative one has `spec.members` but never constructs a SupervisorAgent, so
+            # there is nothing to ask. Checking only one silently leaves the other leaking the
+            # routing label into the answer.
+            internal_nodes=(
+                getattr(authored, "internal_nodes", None)
+                or (SUPERVISOR_INTERNAL_NODES if spec.members else frozenset())
+            ),
         )
 
     def _resolve_model(self, spec: AgentSpec) -> BaseChatModel:
