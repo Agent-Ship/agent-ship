@@ -44,6 +44,19 @@ services:
       # knowledge — which reads to a user as "I can't browse the web", not as a missing key.
       - FIRECRAWL_API_KEY=${FIRECRAWL_API_KEY:-}
       - BRAVE_API_KEY=${BRAVE_API_KEY:-}
+      # Where traces go. Every agent is traced; with no exporter named the tree is built and
+      # shipped nowhere — which is why Studio turns produced nothing in Opik until this block
+      # existed. Set AGENTSHIP_OTEL_EXPORTERS=opik in .env to send them.
+      - AGENTSHIP_OTEL_EXPORTERS=${AGENTSHIP_OTEL_EXPORTERS:-}
+      - AGENTSHIP_OTEL_ALLOW_SAAS=${AGENTSHIP_OTEL_ALLOW_SAAS:-}
+      # Backend credentials stay in .env and are only forwarded — never baked into the image.
+      - OPIK_API_KEY=${OPIK_API_KEY:-}
+      - OPIK_WORKSPACE=${OPIK_WORKSPACE:-}
+      - OPIK_PROJECT_NAME=${OPIK_PROJECT_NAME:-}
+      - OPIK_OTEL_ENDPOINT=${OPIK_OTEL_ENDPOINT:-}
+      - LANGSMITH_API_KEY=${LANGSMITH_API_KEY:-}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
     # Create the checkpoint tables before serving. Without this the first turn against any
     # durable agent fails with `relation "checkpoints" does not exist`. Every migration is
     # idempotent, so running it on each start is a no-op once applied.
