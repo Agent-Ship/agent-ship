@@ -1,20 +1,31 @@
 name: JOSS paper draft
 
-on:
-  push:
-    paths:
-      - paper.md
-      - paper.bib
-      - figures/**
-      - .github/workflows/joss-paper.yml
-  pull_request:
-    paths:
-      - paper.md
-      - paper.bib
-      - figures/**
-      - .github/workflows/joss-paper.yml
-  workflow_dispatch:
+# ---------------------------------------------------------------------------------------
+# PAUSED. Automatic triggers are commented out below; this runs only when you start it by
+# hand (Actions -> JOSS paper draft -> Run workflow).
+#
+# To re-enable: uncomment the `on:` block and delete this banner. Nothing else changed, so
+# it resumes exactly as it was.
+# ---------------------------------------------------------------------------------------
+# on:
+#   push:
+#     paths:
+#       - paper.md
+#       - paper.bib
+#       - figures/**
+#       - .github/workflows/joss-paper.yml
+#   pull_request:
+#     paths:
+#       - paper.md
+#       - paper.bib
+#       - figures/**
+#       - .github/workflows/joss-paper.yml
+#   workflow_dispatch:
 
+
+# Manual-only while paused:
+on:
+  workflow_dispatch:
 jobs:
   paper:
     name: Build draft PDF

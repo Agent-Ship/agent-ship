@@ -14,12 +14,23 @@
 
 name: Daily real-API tests
 
-on:
-  schedule:
+# ---------------------------------------------------------------------------------------
+# PAUSED. Automatic triggers are commented out below; this runs only when you start it by
+# hand (Actions -> Daily real-API tests -> Run workflow).
+#
+# To re-enable: uncomment the `on:` block and delete this banner. Nothing else changed, so
+# it resumes exactly as it was.
+# ---------------------------------------------------------------------------------------
+# on:
+#   schedule:
     # Once a day, 07:00 UTC.
-    - cron: "0 7 * * *"
-  workflow_dispatch: {}
+#     - cron: "0 7 * * *"
+#   workflow_dispatch: {}
 
+
+# Manual-only while paused:
+on:
+  workflow_dispatch:
 jobs:
   real-api:
     runs-on: ubuntu-latest

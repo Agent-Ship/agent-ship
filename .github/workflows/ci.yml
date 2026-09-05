@@ -5,11 +5,22 @@ name: CI
 # This used to list `[main, "feat/**"]`, so no push to v1 was ever tested — which is how
 # three modules that eleven tracked files import were absent from HEAD for weeks while the
 # local tree stayed green. A gate that does not run on the branch you work on is not a gate.
+# ---------------------------------------------------------------------------------------
+# PAUSED. Automatic triggers are commented out below; this runs only when you start it by
+# hand (Actions -> CI -> Run workflow).
+#
+# To re-enable: uncomment the `on:` block and delete this banner. Nothing else changed, so
+# it resumes exactly as it was.
+# ---------------------------------------------------------------------------------------
+# on:
+#   push:
+#     branches: ["**"]
+#   pull_request:
+#     branches: ["**"]
+
+# Manual-only while paused:
 on:
-  push:
-    branches: ["**"]
-  pull_request:
-    branches: ["**"]
+  workflow_dispatch:
 
 # A new push to the same branch cancels the previous run: nobody needs CI results for a
 # commit that has already been replaced.

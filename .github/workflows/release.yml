@@ -13,12 +13,23 @@ name: Release
 # Publishing uses Trusted Publishing (OIDC): no API token is stored in this repository.
 # Configure each project once at https://pypi.org/manage/account/publishing/ with:
 #   owner Agent-Ship · repo agent-ship · workflow release.yml · environment pypi (or testpypi)
-on:
-  push:
-    tags: ["v*"]
+# ---------------------------------------------------------------------------------------
+# PAUSED. Automatic triggers are commented out below; this runs only when you start it by
+# hand (Actions -> Release -> Run workflow).
+#
+# To re-enable: uncomment the `on:` block and delete this banner. Nothing else changed, so
+# it resumes exactly as it was.
+# ---------------------------------------------------------------------------------------
+# on:
+#   push:
+#     tags: ["v*"]
   # Lets you rehearse the whole thing against TestPyPI without cutting a tag.
-  workflow_dispatch:
+#   workflow_dispatch:
 
+
+# Manual-only while paused:
+on:
+  workflow_dispatch:
 jobs:
   build:
     name: Build and verify distributions

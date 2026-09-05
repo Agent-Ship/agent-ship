@@ -1,5 +1,9 @@
 # Releasing
 
+> **CI and the release pipeline are currently PAUSED.** Every workflow runs
+> manual-only (Actions → the workflow → Run workflow). To resume, uncomment the `on:`
+> block at the top of the workflow file and delete the PAUSED banner above it.
+
 AgentShip ships as **six distributions released together**: `agentship` (the meta-package)
 plus `agentship-core`, `-langgraph`, `-service`, `-observability` and `-cli`.
 
