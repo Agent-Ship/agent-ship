@@ -1,0 +1,43 @@
+%% Figure 1 — C4 Context: AgentShip in its environment (full-vision harness).
+%% Render:  mmdc -i figures/architecture.mmd -o figures/architecture.png -b white -s 3 -c figures/mermaid-config.json
+flowchart TB
+  classDef person   fill:#fef3c7,stroke:#b45309,stroke-width:2px,color:#7c2d12
+  classDef system   fill:#ccfbf1,stroke:#0f766e,stroke-width:2.5px,color:#134e4a
+  classDef ext      fill:#f1f5f9,stroke:#64748b,stroke-width:1.5px,color:#334155
+  classDef voice    fill:#ede9fe,stroke:#6d28d9,stroke-width:1.5px,color:#4c1d95
+  classDef mem      fill:#dcfce7,stroke:#15803d,stroke-width:1.5px,color:#14532d
+  classDef obs      fill:#dbeafe,stroke:#1e40af,stroke-width:1.5px,color:#1e3a8a
+
+  P1["<b>Practitioner / Researcher</b><br/><i>[Person]</i><br/>Authors an AgentSpec"]:::person
+  P2["<b>End User</b><br/><i>[Person]</i><br/>Voice or HTTP caller"]:::person
+  P3["<b>Evaluator / Reviewer</b><br/><i>[Person]</i><br/>Runs eval suites, reads traces"]:::person
+
+  SYS["<b>AgentShip</b><br/><i>[Software System]</i><br/>Declarative integration layer<br/>for the agentic harness"]:::system
+
+  V1["<b>ASR Provider</b><br/><i>[External, streaming]</i><br/>Deepgram / Whisper"]:::voice
+  V2["<b>TTS Provider</b><br/><i>[External, streaming]</i><br/>ElevenLabs / Cartesia"]:::voice
+
+  E1["<b>LLM Providers</b><br/><i>[External, via LiteLLM]</i>"]:::ext
+  E2["<b>MCP Servers</b><br/><i>[External]</i>"]:::ext
+  E3["<b>Identity Provider</b><br/><i>[External, OIDC]</i>"]:::ext
+  E4["<b>Remote A2A Agents</b><br/><i>[External]</i>"]:::ext
+
+  M1["<b>Short-term Memory</b><br/><i>[Checkpoint store]</i><br/>Postgres / in-memory"]:::mem
+  M2["<b>Long-term Memory</b><br/><i>[Vector + KV store]</i><br/>pgvector / mem0 / Redis"]:::mem
+  M3["<b>Eval Store</b><br/><i>[Dataset + results]</i><br/>Ragas / Braintrust / local"]:::mem
+
+  O1["<b>Observability Backends</b><br/><i>[External, OTLP]</i><br/>Phoenix / Langfuse / Opik"]:::obs
+
+  P1 -->|declares harness in YAML| SYS
+  P2 -->|voice or HTTP| SYS
+  P3 -->|agentship eval, reads traces| SYS
+  SYS -->|streams audio in| V1
+  SYS -->|streams audio out| V2
+  SYS -->|routes model calls| E1
+  SYS -->|binds tools| E2
+  SYS -->|validates identity| E3
+  SYS -->|consults specialists| E4
+  SYS -->|persists checkpoints in| M1
+  SYS -->|recalls / writes facts to| M2
+  SYS -->|runs eval scenarios against| M3
+  SYS -->|emits OTel spans + traces| O1

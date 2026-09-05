@@ -1,0 +1,38 @@
+%% Figure 3 — C4 Dynamic: one voice turn end to end (full-vision harness).
+%% Render:  mmdc -i figures/turn-lifecycle.mmd -o figures/turn-lifecycle.png -b white -s 3 -c figures/mermaid-config.json
+sequenceDiagram
+  autonumber
+  actor Caller as End User
+  participant VOICE as agentship-voice<br/>[ASR + TTS + VAD]
+  participant SVC as agentship-service<br/>[FastAPI /v1]
+  participant ENG as agentship-langgraph<br/>[reference engine]
+  participant MEM as agentship-memory<br/>[short + long term]
+  participant LLM as LLM Provider<br/>[LiteLLM]
+  participant TOOL as Tool / MCP server
+  participant CKPT as Checkpointer<br/>[Postgres]
+  participant OBS as agentship-observability<br/>[OTel exporter]
+
+  Caller->>VOICE: audio stream (mic)
+  VOICE->>VOICE: VAD endpoint, barge-in check
+  VOICE->>SVC: text input + trace_id
+  SVC->>SVC: AuthProvider → Caller<br/>TenantScope binds contextvar
+  SVC->>ENG: engine.run(spec, input, ctx)
+  ENG->>MEM: recall(short_term + long_term)
+  MEM-->>ENG: prior turns + relevant facts
+  ENG->>OBS: span memory.read
+  ENG->>LLM: model.invoke(messages)
+  LLM-->>ENG: reply (with tool_call)
+  ENG->>OBS: span model
+  ENG->>TOOL: tool.invoke(args)
+  TOOL-->>ENG: result
+  ENG->>OBS: span tool.<name>
+  opt confirm_writes: true
+    ENG->>SVC: interrupt() → ResumeToken
+  end
+  ENG->>MEM: writeback(new facts, summary)
+  ENG->>OBS: span memory.write
+  ENG->>CKPT: save state
+  ENG-->>SVC: Result (text + trace_id)
+  SVC->>VOICE: stream text to TTS
+  VOICE->>Caller: audio out (streaming)
+  OBS->>OBS: export agent → node → model →<br/>tool → memory spans<br/>to Phoenix / Langfuse / Opik

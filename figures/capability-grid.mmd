@@ -1,0 +1,59 @@
+%% Figure 2 — C4 Container: AgentShip full-vision harness.
+%% Render:  mmdc -i figures/capability-grid.mmd -o figures/capability-grid.png -b white -s 3 -c figures/mermaid-config.json
+flowchart TB
+  classDef person    fill:#fef3c7,stroke:#b45309,stroke-width:2px,color:#7c2d12
+  classDef container fill:#dbeafe,stroke:#1e40af,stroke-width:2px,color:#1e3a8a
+  classDef kernel    fill:#ccfbf1,stroke:#0f766e,stroke-width:2.5px,color:#134e4a
+  classDef voice_c   fill:#ede9fe,stroke:#6d28d9,stroke-width:2px,color:#4c1d95
+  classDef mem_c     fill:#dcfce7,stroke:#15803d,stroke-width:2px,color:#14532d
+  classDef ext       fill:#f1f5f9,stroke:#64748b,stroke-width:1.5px,color:#334155
+
+  P1["<b>Practitioner</b><br/><i>[Person]</i>"]:::person
+  P2["<b>End User</b><br/><i>[Person or System]</i>"]:::person
+  P3["<b>Evaluator</b><br/><i>[Person]</i>"]:::person
+
+  subgraph BOUND["AgentShip [Software System]"]
+    direction TB
+    CLI["<b>agentship-cli</b><br/><i>[Container]</i><br/>run / serve / verify / eval"]:::container
+    SVC["<b>agentship-service</b><br/><i>[Container: FastAPI]</i><br/>REST + SSE + WebSocket,<br/>auth, tenant scope"]:::container
+    VOICE["<b>agentship-voice</b><br/><i>[Container: streaming ASR+TTS]</i><br/>VAD, barge-in, endpointing"]:::voice_c
+    ENG["<b>agentship-langgraph</b><br/><i>[Container: reference engine]</i><br/>Compiles AgentSpec to StateGraph"]:::container
+    MEM["<b>agentship-memory</b><br/><i>[Container]</i><br/>Short-term (checkpoint) +<br/>Long-term (Store) recall/writeback"]:::mem_c
+    EVAL["<b>agentship-eval</b><br/><i>[Container]</i><br/>Scenario + regression eval,<br/>golden traces, replay"]:::container
+    OBS["<b>agentship-observability</b><br/><i>[Container: OTel pipeline]</i><br/>agent → node → model → tool →<br/>memory → guardrail spans"]:::container
+    CORE["<b>agentship-core</b><br/><i>[Container: vendor-neutral kernel]</i><br/>AgentSpec, Engine ABC + EngineCapabilities,<br/>Tool, RunContext, Middleware, Observer seam"]:::kernel
+  end
+
+  V1["<b>Deepgram / Whisper</b><br/><i>[External ASR]</i>"]:::ext
+  V2["<b>ElevenLabs / Cartesia</b><br/><i>[External TTS]</i>"]:::ext
+  E1["<b>LangGraph + LiteLLM</b><br/><i>[External libraries]</i>"]:::ext
+  E2["<b>langchain-mcp-adapters</b><br/><i>[External library]</i>"]:::ext
+  E3["<b>Phoenix / Langfuse / Opik</b><br/><i>[External, OTLP]</i>"]:::ext
+  E4["<b>Postgres (checkpoint)</b><br/><i>[External]</i>"]:::ext
+  E5["<b>pgvector / mem0 / Redis</b><br/><i>[External, long-term]</i>"]:::ext
+  E6["<b>Ragas / Braintrust</b><br/><i>[External eval backends]</i>"]:::ext
+  E7["<b>OIDC IdP (PyJWT)</b><br/><i>[External]</i>"]:::ext
+
+  P1 -->|run / serve / verify / eval| CLI
+  P2 -->|voice or HTTPS| SVC
+  P3 -->|agentship eval| CLI
+  SVC -->|streams audio via| VOICE
+  VOICE -->|ASR frames from| V1
+  VOICE -->|TTS chunks to| V2
+  CLI -->|loads spec, drives engine| CORE
+  SVC -->|delegates turn to engine| ENG
+  SVC -->|authenticates against| E7
+  ENG -->|implements Engine ABC from| CORE
+  ENG -->|routes models via| E1
+  ENG -->|binds MCP tools via| E2
+  ENG -->|persists checkpoints via| MEM
+  MEM -->|short-term to| E4
+  MEM -->|long-term to| E5
+  ENG -->|recalls context via| MEM
+  EVAL -->|drives spec + replay through| ENG
+  EVAL -->|logs runs to| E6
+  OBS -->|implements Observer from| CORE
+  OBS -->|exports traces to| E3
+  ENG -->|emits spans via| OBS
+  VOICE -->|emits ASR / TTS spans via| OBS
+  MEM -->|emits memory.read/.write spans via| OBS
