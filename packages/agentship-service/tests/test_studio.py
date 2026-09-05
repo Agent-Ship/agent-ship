@@ -136,3 +136,31 @@ def test_the_status_line_names_the_tool_being_called() -> None:
     status = page[page.index("function statusFor") :]
     status = status[: status.index("\n}")]
     assert "data.tool" in status, "the tool name in the frame is not used in the status"
+
+
+def test_studio_is_never_served_from_a_stale_browser_cache() -> None:
+    """``GET /studio`` forbids caching, so a rebuilt image is what you actually see.
+
+    The page carries no version in its URL, so with no cache headers a browser is free to
+    heuristically cache it — and did. A user who rebuilt the container kept being served
+    the previous UI and reasonably concluded the change had not shipped. The handler
+    already re-reads the file per request for exactly this reason; without the header that
+    only defeats the server's cache, not the browser's.
+    """
+    resp = _client().get("/studio")
+
+    assert "no-store" in resp.headers.get("cache-control", "")
+
+
+def test_a_non_streaming_turn_also_says_it_is_working() -> None:
+    """With streaming off there are no frames — and so, previously, no status at all.
+
+    The status was driven entirely by stream frames, so turning streaming off in Studio
+    took the whole feature with it: the request sat there with a caret and nothing else,
+    which is the exact complaint the status line exists to answer.
+    """
+    page = STUDIO_PAGE.read_text()
+
+    invoke = page[page.index("async function invokeTurn") :]
+    invoke = invoke[: invoke.index("\n}\n")]
+    assert "showStatus" in invoke, "the non-streaming path shows no status"

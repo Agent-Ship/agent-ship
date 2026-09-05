@@ -30,7 +30,14 @@ async def studio() -> HTMLResponse:
     Kept out of the OpenAPI schema: it is a human UI, not part of the ``v1`` contract a
     generated client should see.
     """
-    return HTMLResponse(STUDIO_PAGE.read_text(encoding="utf-8"))
+    return HTMLResponse(
+        STUDIO_PAGE.read_text(encoding="utf-8"),
+        # The URL carries no version, so with no header a browser heuristically caches the
+        # page — and a user who rebuilt the container kept being served the previous UI and
+        # reasonably concluded the change had not shipped. Re-reading the file per request
+        # (above) only defeats the server's cache; this defeats the browser's.
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @router.get("/", include_in_schema=False)

@@ -807,11 +807,22 @@ async function sendTurn() {
 
 // One non-streaming turn through :invoke.
 async function invokeTurn(text) {
-  const response = await callApi("/v1/agents/" + encodeURIComponent(chat.selected.name) + ":invoke", {
-    method: "POST",
-    body: JSON.stringify({ input: text, session_id: chat.sessionId }),
-  });
-  await showTurnResult(response);
+  // :invoke returns once, at the end, so there are no frames to derive a status from. Say
+  // "Working…" for the duration anyway: without it, turning streaming off removed the
+  // status feature entirely and left the same silent wait it exists to fix.
+  const waiting = addMessage("agent", "");
+  waiting.classList.add("caret");
+  showStatus(waiting, "Working\u2026");
+  try {
+    const response = await callApi("/v1/agents/" + encodeURIComponent(chat.selected.name) + ":invoke", {
+      method: "POST",
+      body: JSON.stringify({ input: text, session_id: chat.sessionId }),
+    });
+    await showTurnResult(response);
+  } finally {
+    // The placeholder has done its job; showTurnResult renders the real message.
+    waiting.parentElement.parentElement.remove();
+  }
 }
 
 // Continue a paused run through :resume, echoing the token back unchanged.
