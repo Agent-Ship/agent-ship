@@ -14,7 +14,21 @@ VENV := .venv
 PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
 
-.PHONY: install test test-live record demo demo-multiagent demo-observability demo-service ask run ui docker-build docker-up docker-down docker-logs docker-reload clean
+.PHONY: help install test test-live test-docker record demo demo-multiagent demo-observability demo-service ask run ui docker-setup docker-build docker-build-clean docker-up docker-down docker-restart docker-logs docker-reload clean
+
+## help: list every target with what it does (also what you get by running plain `make`).
+##   Every target already carried a `## name: description` line; nothing printed them, so
+##   the only way to find a target was to read the file.
+.DEFAULT_GOAL := help
+help:
+	@echo "AgentShip demo — available targets:"
+	@echo ""
+	@grep -E '^## [a-z][a-z0-9-]*:' $(MAKEFILE_LIST) \
+		| sed -e 's/^## //' -e 's/:/§/' \
+		| awk -F'§' '{printf "  \033[1m%-20s\033[0m%s\n", $$1, $$2}'
+	@echo ""
+	@echo "  Start here:  make docker-setup   (first run)"
+	@echo "               make docker-up      (thereafter)"
 
 ## install: create .venv and install the framework editable-local + test tooling
 install:
@@ -71,6 +85,7 @@ demo-service:
 docker-up:
 	AGENTSHIP_BUILD=$$(date +%Y%m%d-%H%M%S) docker compose up -d --build
 	@echo ""
+	@echo "  Studio   $(STUDIO_URL)   <- the UI; API key is 'dev'"
 	@echo "  API      http://localhost:7005"
 	@echo "  Swagger  http://localhost:7005/docs"
 	@echo "  Health   curl http://localhost:7005/healthz"
@@ -94,6 +109,41 @@ docker-reload:
 	docker compose down
 	DOCKER_BUILDKIT=1 docker compose build
 	docker compose up -d
+	@echo ""
+	@echo "  Studio   $(STUDIO_URL)   (hard-refresh once: the browser caches it)"
+
+## docker-setup: first run — create .env if missing, then build and start.
+##   Separate from docker-up because it is the only target that writes a file into your
+##   checkout; everything else is safe to run repeatedly without thinking about it.
+docker-setup:
+	@if [ ! -f .env ]; then \
+		cp .env.example .env; \
+		echo "Created .env from .env.example — put your OPENAI_API_KEY in it."; \
+	else \
+		echo "Keeping the .env you already have."; \
+	fi
+	@$(MAKE) docker-up
+
+## docker-restart: restart the containers WITHOUT rebuilding.
+##   Use after changing an env var in docker-compose.yml or .env. If you changed Python
+##   or a Studio file, you need docker-reload — the image bakes those in at build time.
+docker-restart:
+	docker compose restart
+	@echo "Restarted. Code changes need 'make docker-reload' instead — this reuses the image."
+
+## docker-build-clean: rebuild from scratch, ignoring every cached layer.
+##   Slow, and only needed when a cached layer is the problem — a dependency that
+##   resolved differently, or a stale package copied into the image.
+docker-build-clean:
+	DOCKER_BUILDKIT=1 docker compose build --no-cache
+
+## test-docker: run the service tests against the CONTAINER, not an in-process app.
+##   Proves the built image actually serves: it boots, binds, authenticates and streams.
+##   A green `make test` cannot tell you that — it never builds the image.
+test-docker:
+	@curl -fsS http://localhost:7005/healthz >/dev/null 2>&1 || { \
+		echo "Nothing is serving on :7005 — run 'make docker-up' first."; exit 1; }
+	AGENTSHIP_BASE_URL=http://localhost:7005 $(VENV)/bin/pytest -q tests/test_container_smoke.py
 
 ## ask: give the multi-agent panel YOUR OWN task; watch each sub-agent get called live
 ##   and see the final merged response. Needs a real OPENAI_API_KEY.
