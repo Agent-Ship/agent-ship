@@ -67,10 +67,26 @@ worked" into "a user can install this".
 **There is no API token in this repository.** Publishing uses PyPI Trusted Publishing
 (OIDC): GitHub proves the workflow's identity and PyPI issues a short-lived credential.
 
-Configure once per project at <https://pypi.org/manage/account/publishing/>:
+Configure once per project at <https://pypi.org/manage/account/publishing/>. All six use
+the same owner/repo/workflow and differ only by **environment**:
 
-- owner `Agent-Ship`, repository `agent-ship`, workflow `release.yml`
-- environment `pypi` (and the same on TestPyPI with environment `testpypi`)
+| PyPI project | Environment (PyPI) | Environment (TestPyPI) |
+|---|---|---|
+| `agentship-core` | `pypi-agentship-core` | `testpypi-agentship-core` |
+| `agentship-langgraph` | `pypi-agentship-langgraph` | `testpypi-agentship-langgraph` |
+| `agentship-service` | `pypi-agentship-service` | `testpypi-agentship-service` |
+| `agentship-observability` | `pypi-agentship-observability` | `testpypi-agentship-observability` |
+| `agentship-cli` | `pypi-agentship-cli` | `testpypi-agentship-cli` |
+| `agentship-sdk` | `pypi-agentship-sdk` | `testpypi-agentship-sdk` |
+
+Owner `Agent-Ship`, repository `agent-ship`, workflow `release.yml` for every row.
+
+**Why an environment per package.** PyPI allows only ONE pending publisher per
+`(owner, repository, workflow, environment)` combination. With a single shared
+environment, the first project registers and the second fails with *"a pending trusted
+publisher matching this configuration has already been registered for a different project
+name"*. That is also why the workflow publishes each package in its own matrix job: a job
+may only publish the project its OIDC token is scoped to.
 
 Until that exists the publish steps fail — deliberately, rather than falling back to a
 stored secret.

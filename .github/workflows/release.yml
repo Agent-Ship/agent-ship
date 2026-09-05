@@ -78,12 +78,35 @@ jobs:
           path: dist/
 
   testpypi:
-    name: Publish to TestPyPI
+    # One job per package, each with its OWN environment name.
+    #
+    # PyPI allows only one PENDING trusted publisher per
+    # (owner, repository, workflow, environment) combination. A single publish job means
+    # all six projects would share one identical config, and PyPI rejects the second with
+    # "already been registered for a different project name". Distinct environments make
+    # each project's publisher unique.
+    #
+    # Each job uploads ONLY its own package's files: pypa/gh-action-pypi-publish uploads
+    # everything in packages-dir, and a job may only publish the project its OIDC token
+    # is scoped to.
+    name: TestPyPI ${{ matrix.package }}
     needs: build
     runs-on: ubuntu-latest
+    strategy:
+      # Do not cancel the other five because one failed — a half-published release is
+      # easier to reason about when you can see exactly which packages made it.
+      fail-fast: false
+      matrix:
+        package:
+          - agentship-core
+          - agentship-langgraph
+          - agentship-service
+          - agentship-observability
+          - agentship-cli
+          - agentship-sdk
     environment:
-      name: testpypi
-      url: https://test.pypi.org/p/agentship
+      name: testpypi-${{ matrix.package }}
+      url: https://test.pypi.org/p/${{ matrix.package }}
     permissions:
       id-token: write        # required for Trusted Publishing; no token needed
     steps:
@@ -92,9 +115,19 @@ jobs:
           name: distributions
           path: dist/
 
+      # Wheel filenames normalise hyphens to underscores (agentship-core ->
+      # agentship_core-0.1.0-py3-none-any.whl), so match on the underscored prefix.
+      - name: Isolate this package's distributions
+        run: |
+          mkdir -p upload
+          prefix="$(echo '${{ matrix.package }}' | tr '-' '_')"
+          cp "dist/$prefix-"* upload/
+          echo "publishing:"; ls -1 upload
+
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
+          packages-dir: upload/
           # A re-run of the same tag should not fail the release on an already-uploaded file.
           skip-existing: true
 
@@ -139,14 +172,24 @@ jobs:
           EOF
 
   pypi:
-    name: Publish to PyPI
+    name: PyPI ${{ matrix.package }}
     needs: verify-testpypi
     # Only a real tag publishes to PyPI. A workflow_dispatch rehearsal stops at TestPyPI.
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - agentship-core
+          - agentship-langgraph
+          - agentship-service
+          - agentship-observability
+          - agentship-cli
+          - agentship-sdk
     environment:
-      name: pypi
-      url: https://pypi.org/p/agentship
+      name: pypi-${{ matrix.package }}
+      url: https://pypi.org/p/${{ matrix.package }}
     permissions:
       id-token: write
     steps:
@@ -155,7 +198,16 @@ jobs:
           name: distributions
           path: dist/
 
+      - name: Isolate this package's distributions
+        run: |
+          mkdir -p upload
+          prefix="$(echo '${{ matrix.package }}' | tr '-' '_')"
+          cp "dist/$prefix-"* upload/
+          echo "publishing:"; ls -1 upload
+
       - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: upload/
 
   github-release:
     name: Create the GitHub release
