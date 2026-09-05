@@ -58,3 +58,74 @@ jobs:
       # entire job is to fail the build when an engine over-declares a capability.
       - name: Test
         run: pytest -q
+
+  package:
+    name: Build wheels and test what ships
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install build tooling
+        run: python -m pip install --upgrade pip build twine
+
+      - name: Build every wheel and sdist
+        run: |
+          for pkg in agentship-core agentship-langgraph agentship-service \
+                     agentship-observability agentship-cli agentship; do
+            python -m build --outdir dist "packages/$pkg"
+          done
+          ls -l dist
+
+      # Catches metadata a package index would reject — a malformed classifier, a
+      # description that will not render — before a release does, not after.
+      - name: Check distribution metadata
+        run: twine check dist/*
+
+      # The point of this job. The `test` job installs editable from the source tree, so
+      # it passes whether or not a file was ever committed: that is how three modules
+      # imported by eleven tracked files stayed missing from HEAD. Here nothing is
+      # editable and nothing is on the path but what the wheels contain.
+      - name: Install the built wheels into a clean environment
+        run: |
+          python -m venv /tmp/clean
+          /tmp/clean/bin/pip install --upgrade pip
+          /tmp/clean/bin/pip install \
+            "dist/agentship_core-"*.whl"[postgres,jwt]" \
+            "dist/agentship_langgraph-"*.whl"[autonomous,mcp,postgres]" \
+            "dist/agentship_service-"*.whl"[serve,a2a]" \
+            "dist/agentship_observability-"*.whl"[phoenix]" \
+            dist/agentship_cli-*.whl \
+            dist/agentship-*.whl
+          /tmp/clean/bin/pip install 'pytest>=8' 'pytest-asyncio>=0.23' 'pytest-recording>=0.13'
+
+      # Without this the job could pass by importing the source tree and prove nothing.
+      # The src/ layout should make that impossible; this asserts it rather than trusting it.
+      - name: Assert the tests will import the INSTALLED package
+        run: |
+          /tmp/clean/bin/python - <<'EOF'
+          import agentship, agentship.conformance, agentship_cli.verify, agentship_langgraph.testing
+          assert "site-packages" in agentship.__file__, (
+              f"importing the source tree, not the wheel: {agentship.__file__}"
+          )
+          print("importing from the wheel:", agentship.__file__)
+          EOF
+
+      - name: Test against the installed wheels
+        run: /tmp/clean/bin/python -m pytest -q
+
+      - name: Check the CLI entry point actually runs
+        run: |
+          /tmp/clean/bin/agentship --help > /dev/null
+          /tmp/clean/bin/agentship verify --help > /dev/null
+
+      - name: Keep the distributions for inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: distributions
+          path: dist/
