@@ -52,3 +52,14 @@ Please do not open a public issue. Email the maintainer directly (address in
 
 By participating in this project you agree to abide by the
 [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Releasing
+
+Six distributions, one version, released together. See [docs/RELEASING.md](docs/RELEASING.md).
+
+```bash
+python scripts/versions.py --check   # never hand-edit a version
+```
+
+While AgentShip is on `0.x` the API can break between minor versions. Pin exactly if that
+matters to you.
