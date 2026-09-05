@@ -14,7 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import APIRouter
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 router = APIRouter()
 
@@ -31,3 +31,16 @@ async def studio() -> HTMLResponse:
     generated client should see.
     """
     return HTMLResponse(STUDIO_PAGE.read_text(encoding="utf-8"))
+
+
+@router.get("/", include_in_schema=False)
+async def root() -> RedirectResponse:
+    """Send a browser at the bare host to Studio.
+
+    Typing the host with no path is the first thing anyone does with a running service.
+    There was no route here, and auth runs ahead of routing, so ``/`` answered with a "no
+    API key" problem document — telling the user they were unauthenticated when the real
+    answer was that the UI lives at /studio. Public for the same reason /studio is: a
+    redirect that demanded a credential would just move the wall one hop.
+    """
+    return RedirectResponse("/studio")

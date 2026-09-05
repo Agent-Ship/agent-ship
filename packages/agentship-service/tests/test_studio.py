@@ -55,3 +55,53 @@ def test_studio_drives_the_real_v1_surface() -> None:
     page = STUDIO_PAGE.read_text(encoding="utf-8")
     for path in ('"/healthz"', '"/v1/agents"', '":invoke"', '":stream"', '":resume"'):
         assert path in page
+
+
+def test_studio_does_not_call_the_api_before_it_has_a_key() -> None:
+    """Opening Studio with no key saved must not fire a call it knows will 401.
+
+    ``start()`` used to call ``loadAgents()`` unconditionally and only then open the key
+    dialog. With an empty localStorage — a fresh browser, a private window, or the other
+    of ``localhost``/``127.0.0.1`` (separate origins, separate storage) — that call went
+    out with no Authorization header, so the first thing Studio painted was a raw
+    RFC-9457 problem document about a missing API key. The user had done nothing wrong
+    and the fix was already on screen behind the banner.
+
+    The catalog load is now conditional on having a key.
+    """
+    page = STUDIO_PAGE.read_text()
+
+    start = page[page.index("function start()") :]
+    assert "if (apiKey()) {" in start, "the catalog load must be gated on having a key"
+    unconditional = "\n  loadAgents();\n  if (!apiKey()) openKeyDialog();"
+    assert unconditional not in start, "loadAgents() is still called before a key exists"
+
+
+def test_studio_explains_a_401_instead_of_showing_the_problem_json() -> None:
+    """A missing/rejected key reads as an instruction, not as a wire-format error body.
+
+    ``{"type": "about:blank", "title": "Unauthorized", ...}`` is the right thing to send a
+    client and the wrong thing to show a person. When the cause is the key, Studio says so
+    in words and reopens the dialog that fixes it.
+    """
+    page = STUDIO_PAGE.read_text()
+
+    assert "needs your API key" in page or "Enter your API key" in page
+
+
+def test_the_bare_root_sends_a_browser_to_studio() -> None:
+    """``GET /`` redirects to ``/studio`` instead of answering 401.
+
+    Typing the host with no path is the first thing anyone does with a running service.
+    There was no ``/`` route, and the auth middleware runs ahead of routing, so the root
+    came back as an RFC-9457 "no API key" document rather than a 404 — telling the user
+    they were unauthenticated when the real answer was "the UI is over here". That is the
+    401 people kept hitting without ever having called an API.
+
+    Unauthenticated on purpose: it is a redirect to a public page, and a redirect that
+    demanded a credential would put the same wall back one hop later.
+    """
+    resp = _client().get("/", follow_redirects=False)
+
+    assert resp.status_code in (302, 307)
+    assert resp.headers["location"] == "/studio"

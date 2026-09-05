@@ -25,7 +25,10 @@ from ..errors import problem_dict
 #: Paths that skip authentication entirely: liveness, the API's own schema/docs, and the
 #: Studio page. ``/studio`` is markup and script only — it holds no tenant data, and every
 #: ``/v1`` call it makes carries the user's own key, so the data path stays authenticated.
-_DEFAULT_PUBLIC_PATHS = frozenset({"/healthz", "/openapi.json", "/docs", "/redoc", "/studio"})
+# "/" is here for the same reason "/studio" is: it only redirects there. Without it the
+# bare host answered "no API key", which is what a browser gets before it has called any
+# API at all — an auth error for a navigation the user never authenticated for.
+_DEFAULT_PUBLIC_PATHS = frozenset({"/", "/healthz", "/openapi.json", "/docs", "/redoc", "/studio"})
 
 
 class AuthMiddleware:

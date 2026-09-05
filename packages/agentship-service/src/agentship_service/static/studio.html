@@ -509,7 +509,18 @@ async function loadAgents() {
   if (!response.ok) {
     list.innerHTML = "";
     const problem = await readProblem(response);
-    showBanner(problem, response.status === 401 || response.status === 403);
+    const isKeyProblem = response.status === 401 || response.status === 403;
+    if (isKeyProblem) {
+      // The wire body ("no API key — send it in the 'x-api-key' header…") is correct for a
+      // client and useless to a person sitting in front of the UI that holds the key.
+      const what = response.status === 401
+        ? "Studio needs your API key to load agents."
+        : "That key is valid but is not allowed to use this service.";
+      showBanner({ detail: what, code: problem.code }, true);
+      openKeyDialog();
+    } else {
+      showBanner(problem, false);
+    }
     return;
   }
   hideBanner();
@@ -994,8 +1005,15 @@ function start() {
   };
 
   loadBuildStamp();
-  loadAgents();
-  if (!apiKey()) openKeyDialog();
+  // Only load the catalog once there is a key to load it with. Calling /v1/agents first
+  // and opening the dialog second meant a fresh browser's very first sight of Studio was
+  // a raw 401 problem document, with the dialog that fixes it hidden behind the banner.
+  if (apiKey()) {
+    loadAgents();
+  } else {
+    el("agentlist").innerHTML = '<div class="empty">Enter your API key to load agents.</div>';
+    openKeyDialog();
+  }
 }
 
 start();
