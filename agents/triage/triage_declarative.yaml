@@ -18,6 +18,22 @@ name: triage-declarative
 engine: langgraph
 model: openai/gpt-4o-mini
 durability: checkpoint
+# Trace the whole supervisor turn as ONE tree: the root agent span, the classify model call
+# with its tokens and cost, and each member nested underneath as its own `agent <name>` span
+# with the member's model and tool spans beneath it. Verified on a real turn:
+#
+#   agent triage-declarative
+#     node.classify -> chat openai/gpt-4o-mini
+#     node.dispatch
+#     agent billing_specialist -> chat openai/gpt-4o-mini
+#
+# Members borrow the parent run's observer, so a member needs no observability block of its
+# own to appear here. `console` prints to STDERR (keyless); swap for opik/langfuse/langsmith.
+observability:
+  provider: otel
+  exporters:
+    - console
+  capture_content: true
 members:
   - name: billing_specialist
     ref: specialists/billing.yaml

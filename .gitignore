@@ -16,3 +16,7 @@ __pycache__/
 
 # Notes the research-team demo writes at runtime via the filesystem MCP server.
 agents/research_team/notes/*.md
+
+# Runtime logs from `make run`/demos — never part of the repo.
+tools.log
+*.log

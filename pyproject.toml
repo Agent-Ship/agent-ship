@@ -34,8 +34,9 @@ license = "Apache-2.0"
 # sibling monorepo checkout at ../agentship/packages/*.
 dependencies = [
     # [starter] is the default stack; [observability] adds the OTel span-tree + exporters that
-    # the Phase 07 slice (agents/observability.yaml) exports to Opik / LangFuse / LangSmith.
-    "agentship[starter,observability]==0.0.1",
+    # the Phase 07 slice (agents/observability.yaml) exports to Opik / LangFuse / LangSmith;
+    # [service] adds the /v1 REST/SSE/WS surface the Phase 06-09 slices call.
+    "agentship[starter,observability,service]==0.0.1",
 ]
 
 [project.optional-dependencies]
