@@ -113,9 +113,7 @@ def test_assert_spec_supported_wrapper_still_delegates():
     engine = EchoEngine()
     assert_spec_supported(engine, AgentSpec(name="a", engine="echo", streaming=True))
     with pytest.raises(CapabilityError):
-        assert_spec_supported(
-            engine, AgentSpec(name="a", engine="echo", output_schema="mypkg:M")
-        )
+        assert_spec_supported(engine, AgentSpec(name="a", engine="echo", output_schema="mypkg:M"))
 
 
 def test_concrete_engine_without_capabilities_raises_at_import():

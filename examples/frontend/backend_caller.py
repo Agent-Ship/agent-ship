@@ -45,7 +45,7 @@ def stream(base_url: str, api_key: str, agent: str, text: str) -> None:
         resp.raise_for_status()
         for line in resp.iter_lines():
             if line.startswith("data:"):
-                print("  ", line[len("data:"):].strip())
+                print("  ", line[len("data:") :].strip())
 
 
 def main() -> None:

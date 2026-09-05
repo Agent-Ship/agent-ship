@@ -64,14 +64,18 @@ with a local `ref:` becomes a `LocalSpecialist`; both expose `send`:
 
 ```python
 from agentship.a2a import (
-    AgentRef, RemoteSpec, HttpxTransport, RemoteA2aAgent, RemoteSpecialist,
+    AgentRef,
+    RemoteSpec,
+    HttpxTransport,
+    RemoteA2aAgent,
+    RemoteSpecialist,
 )
 
 remote = RemoteSpec(url="https://rad.internal/a2a/radiology")
 agent = RemoteA2aAgent(remote, transport=HttpxTransport(timeout_seconds=60))
-radiology = RemoteSpecialist("radiology", agent, ctx)   # ctx = the current RunContext
+radiology = RemoteSpecialist("radiology", agent, ctx)  # ctx = the current RunContext
 
-finding = await radiology.send("read this chest x-ray")   # → message/send over the wire
+finding = await radiology.send("read this chest x-ray")  # → message/send over the wire
 ```
 
 `RemoteA2aAgent.send` builds the `message/send` JSON-RPC envelope, layers the

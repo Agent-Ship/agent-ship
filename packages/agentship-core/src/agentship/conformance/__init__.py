@@ -423,11 +423,17 @@ def _run_reject_cell(engine_name: str, capability: Capability) -> CellResult:
         return CellResult(engine_name, capability.name, "reject", True, str(exc))
     except Exception as exc:  # noqa: BLE001 - a non-CapabilityError is a failure, recorded
         return CellResult(
-            engine_name, capability.name, "reject", False,
+            engine_name,
+            capability.name,
+            "reject",
+            False,
             f"expected CapabilityError, got {type(exc).__name__}: {exc}",
         )
     return CellResult(
-        engine_name, capability.name, "reject", False,
+        engine_name,
+        capability.name,
+        "reject",
+        False,
         "requesting an undeclared capability did not raise CapabilityError (silent degrade)",
     )
 

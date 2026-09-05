@@ -45,9 +45,7 @@ LIVE_PROVIDERS: list[Provider] = [
         model="anthropic/claude-3-5-haiku-latest",
         env_var="ANTHROPIC_API_KEY",
     ),
-    Provider(
-        name="gemini", model="gemini/gemini-2.0-flash-lite", env_var="GEMINI_API_KEY"
-    ),
+    Provider(name="gemini", model="gemini/gemini-2.0-flash-lite", env_var="GEMINI_API_KEY"),
     # To add a provider: append an entry, record its cassette (see module
     # docstring / examples/README.md), grep for key leakage, and commit. The two
     # below are wired but have no cassette yet — add a key to record them:

@@ -27,14 +27,16 @@ spec = AgentSpec(
     prompt="You are a helpful assistant.",
 )
 
-async def main() -> None:
-    agent = build_agent(spec)                      # RunnableAgent
 
-    result = await agent.run("What is 2 + 2?")     # -> Result
+async def main() -> None:
+    agent = build_agent(spec)  # RunnableAgent
+
+    result = await agent.run("What is 2 + 2?")  # -> Result
     print(result.output)
 
     async for event in agent.stream("Tell me a joke."):
-        print(event.type, event.data)              # token / content / done ...
+        print(event.type, event.data)  # token / content / done ...
+
 
 asyncio.run(main())
 ```
@@ -46,13 +48,15 @@ from agentship_langgraph import LangGraphAgent
 from langgraph.graph import END, START, StateGraph
 from typing_extensions import TypedDict
 
+
 class _State(TypedDict):
     messages: list
+
 
 class MyAgent(LangGraphAgent):
     def build_graph(self, model, tools) -> StateGraph:
         def answer(state: _State) -> dict:
-            reply = model.invoke(state["messages"])   # the wired, cost-traced model
+            reply = model.invoke(state["messages"])  # the wired, cost-traced model
             return {"messages": [*state["messages"], reply]}
 
         g = StateGraph(_State)

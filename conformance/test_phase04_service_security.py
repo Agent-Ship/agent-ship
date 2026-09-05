@@ -41,9 +41,7 @@ _KEYS = json.dumps(
 
 def _client() -> TestClient:
     """A client over an app serving one streaming ``support`` agent under the shared key table."""
-    agents = AgentRegistry(
-        [build_agent(AgentSpec(name="support", engine="echo", streaming=True))]
-    )
+    agents = AgentRegistry([build_agent(AgentSpec(name="support", engine="echo", streaming=True))])
     auth = ApiKeyAuthProvider(EnvApiKeyStore(raw=_KEYS))
     return TestClient(create_app(auth=auth, agents=agents))
 
@@ -51,48 +49,51 @@ def _client() -> TestClient:
 def test_auth_apikey_roundtrip() -> None:
     """Cell ``auth_apikey_roundtrip``: a valid key authenticates; missing/unknown → 401."""
     client = _client()
-    ok = client.post("/v1/agents/support:invoke", headers={"x-api-key": "acme"},
-                     json={"input": "hi"})
+    ok = client.post(
+        "/v1/agents/support:invoke", headers={"x-api-key": "acme"}, json={"input": "hi"}
+    )
     assert ok.status_code == 200
 
     missing = client.post("/v1/agents/support:invoke", json={"input": "hi"})
     assert missing.status_code == 401
 
-    unknown = client.post("/v1/agents/support:invoke", headers={"x-api-key": "nope"},
-                          json={"input": "hi"})
+    unknown = client.post(
+        "/v1/agents/support:invoke", headers={"x-api-key": "nope"}, json={"input": "hi"}
+    )
     assert unknown.status_code == 401
 
 
 def test_authz_scope_enforced() -> None:
     """Cell ``authz_scope_enforced``: without ``agent:support:invoke`` → 403; with it → 200."""
     client = _client()
-    denied = client.post("/v1/agents/support:invoke", headers={"x-api-key": "narrow"},
-                         json={"input": "hi"})
+    denied = client.post(
+        "/v1/agents/support:invoke", headers={"x-api-key": "narrow"}, json={"input": "hi"}
+    )
     assert denied.status_code == 403
 
-    allowed = client.post("/v1/agents/support:invoke", headers={"x-api-key": "acme"},
-                          json={"input": "hi"})
+    allowed = client.post(
+        "/v1/agents/support:invoke", headers={"x-api-key": "acme"}, json={"input": "hi"}
+    )
     assert allowed.status_code == 200
 
 
 def test_tenant_isolation_task() -> None:
     """Cell ``tenant_isolation_task``: tenant B cannot read (404) or cancel (403) A's task."""
     client = _client()
-    created = client.post("/v1/tasks", headers={"x-api-key": "acme"},
-                          json={"agent": "support", "input": "do it"})
+    created = client.post(
+        "/v1/tasks", headers={"x-api-key": "acme"}, json={"agent": "support", "input": "do it"}
+    )
     assert created.status_code == 202
     task_id = created.json()["id"]
 
     assert client.get(f"/v1/tasks/{task_id}", headers={"x-api-key": "beta"}).status_code == 404
     assert (
-        client.post(f"/v1/tasks/{task_id}:cancel", headers={"x-api-key": "beta"}).status_code
-        == 403
+        client.post(f"/v1/tasks/{task_id}:cancel", headers={"x-api-key": "beta"}).status_code == 403
     )
     # The owner still reads and cancels it.
     assert client.get(f"/v1/tasks/{task_id}", headers={"x-api-key": "acme"}).status_code == 200
     assert (
-        client.post(f"/v1/tasks/{task_id}:cancel", headers={"x-api-key": "acme"}).status_code
-        == 200
+        client.post(f"/v1/tasks/{task_id}:cancel", headers={"x-api-key": "acme"}).status_code == 200
     )
 
 
@@ -101,13 +102,15 @@ def test_stream_event_contract() -> None:
     client = _client()
     seqs: list[int] = []
     with client.stream(
-        "POST", "/v1/agents/support:stream", headers={"x-api-key": "acme"},
+        "POST",
+        "/v1/agents/support:stream",
+        headers={"x-api-key": "acme"},
         json={"input": "hi"},
     ) as resp:
         assert resp.status_code == 200
         for line in resp.iter_lines():
             if line.startswith("data:"):
-                frame = json.loads(line[len("data:"):].strip())
+                frame = json.loads(line[len("data:") :].strip())
                 assert frame["type"] in _STREAM_EVENT_TYPES
                 seqs.append(frame["seq"])
     assert seqs == list(range(len(seqs)))

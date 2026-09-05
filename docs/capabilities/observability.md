@@ -51,7 +51,7 @@ observability:
 ```python
 from agentship import build_agent
 
-agent = build_agent("assistant.yaml")   # observability: block → live OTel observer
+agent = build_agent("assistant.yaml")  # observability: block → live OTel observer
 result = await agent.run("What is 21 * 2? Use the calculator.")
 print(result.output)
 ```
@@ -72,7 +72,7 @@ with observer.span("agent", SpanKind.AGENT):
         with observer.span("model", SpanKind.LLM):
             pass
 
-trace = observer.trace_view()                 # frozen TraceView
+trace = observer.trace_view()  # frozen TraceView
 assert trace.root.name == "agent"
 assert [s.name for s in trace.model_spans()] == ["model"]
 ```

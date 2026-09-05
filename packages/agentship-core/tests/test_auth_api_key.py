@@ -61,16 +61,12 @@ def test_store_keeps_no_plaintext_keys() -> None:
 async def test_valid_key_via_x_api_key_header() -> None:
     """A known key in ``X-API-Key`` authenticates to its mapped caller."""
     caller = await _provider().authenticate(_request({"x-api-key": "sk-admin"}))
-    assert caller == Caller(
-        tenant_id="acme", user_id="admin", scopes={"*"}, auth_method="api_key"
-    )
+    assert caller == Caller(tenant_id="acme", user_id="admin", scopes={"*"}, auth_method="api_key")
 
 
 async def test_valid_key_via_authorization_bearer() -> None:
     """A known key presented as ``Authorization: Bearer <key>`` also works."""
-    caller = await _provider().authenticate(
-        _request({"authorization": "Bearer sk-support"})
-    )
+    caller = await _provider().authenticate(_request({"authorization": "Bearer sk-support"}))
     assert caller.user_id == "agent-7"
     assert caller.scopes == frozenset({"agent:support:invoke"})
     assert caller.auth_method == "api_key"

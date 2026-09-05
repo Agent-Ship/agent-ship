@@ -109,8 +109,14 @@ def test_on_model_off_a_model_span_is_a_noop(recorded) -> None:
     obs, exporter = recorded
     with obs.span("agent", SpanKind.AGENT):
         obs.on_model(
-            Usage(model="m", provider="p", input_tokens=1, output_tokens=1, cost_usd=None,
-                  latency_ms=1.0)
+            Usage(
+                model="m",
+                provider="p",
+                input_tokens=1,
+                output_tokens=1,
+                cost_usd=None,
+                latency_ms=1.0,
+            )
         )
     agent = _by_name(exporter)["agent"]
     assert semconv.GEN_AI_USAGE_INPUT_TOKENS not in (agent.attributes or {})

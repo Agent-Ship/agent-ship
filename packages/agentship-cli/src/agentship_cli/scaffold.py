@@ -80,8 +80,7 @@ def new_agent_yaml(name: str, engine: str) -> str:
     omit the model line (they may not need one) and leave a comment pointing at it.
     """
     header = (
-        f"# Agent {name!r}. Run it with:\n"
-        f"#   agentship run agents/{name}.yaml --input \"hello\"\n"
+        f'# Agent {name!r}. Run it with:\n#   agentship run agents/{name}.yaml --input "hello"\n'
     )
     if engine == "langgraph":
         return (
@@ -110,7 +109,7 @@ def single_template_yaml(name: str) -> str:
     """
     return (
         f"# Agent {name!r} — the `single` template (one model, zero author Python).\n"
-        f"#   agentship run agents/{name}.yaml --input \"hello\"\n"
+        f'#   agentship run agents/{name}.yaml --input "hello"\n'
         f"name: {name}\n"
         f"engine: langgraph\n"
         f"template: single\n"
@@ -130,7 +129,7 @@ def autonomous_template_yaml(name: str) -> str:
     return (
         f"# Agent {name!r} — the `autonomous` template (a single self-directing agent).\n"
         f"# Needs the optional extra:  pip install 'agentship-langgraph[autonomous]'\n"
-        f"#   agentship run agents/{name}.yaml --input \"hello\"\n"
+        f'#   agentship run agents/{name}.yaml --input "hello"\n'
         f"name: {name}\n"
         f"engine: langgraph\n"
         f"template: autonomous\n"
@@ -153,7 +152,7 @@ def graph_template_yaml(name: str, code_ref: str) -> str:
     return (
         f"# Agent {name!r} — the `graph` template (a fillable supervisor scaffold).\n"
         f"# Open {name}/agent.py and follow the `# TODO(author)` markers.\n"
-        f"#   agentship run agents/{name}.yaml --input \"hello\"\n"
+        f'#   agentship run agents/{name}.yaml --input "hello"\n'
         f"name: {name}\n"
         f"engine: langgraph\n"
         f"code: {code_ref}\n"

@@ -46,9 +46,7 @@ class EchoEngine(Engine):
         """Return ``echo: <input>`` as the turn's output."""
         return Result(output=f"echo: {text}")
 
-    async def stream(
-        self, compiled: AgentSpec, text: str, ctx: RunContext
-    ) -> AsyncIterator[Event]:
+    async def stream(self, compiled: AgentSpec, text: str, ctx: RunContext) -> AsyncIterator[Event]:
         """Yield one content chunk (``echo: <input>``), then a terminal ``done`` event."""
         yield Event(type="content", data=f"echo: {text}")
         yield Event(type="done")

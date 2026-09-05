@@ -99,17 +99,19 @@ verifiers run offline. **`SpanNode` is frozen** (P12's `Verifier` depends on the
 ```python
 @dataclass(frozen=True)
 class SpanNode:
-    name: str                            # a §1 span name, e.g. "model", "tool.search"
+    name: str  # a §1 span name, e.g. "model", "tool.search"
     kind: SpanKind
-    attrs: Mapping[str, Any]             # the §2 keys
-    status: str                          # "ok" | "error"
+    attrs: Mapping[str, Any]  # the §2 keys
+    status: str  # "ok" | "error"
     children: tuple["SpanNode", ...]
+
 
 class TraceView:
     root: SpanNode
+
     def spans(self, name: str | None = None) -> Iterable[SpanNode]: ...
-    def model_spans(self) -> Iterable[SpanNode]: ...   # name == "model"
-    def tool_calls(self) -> Iterable[SpanNode]: ...     # name startswith "tool."
+    def model_spans(self) -> Iterable[SpanNode]: ...  # name == "model"
+    def tool_calls(self) -> Iterable[SpanNode]: ...  # name startswith "tool."
 ```
 
 ## 4. PHI gate (§4.6)

@@ -61,7 +61,7 @@ def test_run_without_observability_block_is_traced(tmp_path, monkeypatch) -> Non
     """A spec with no block runs on the no-op observer — tracing is opt-in, never forced."""
     result, observer = _run_and_capture_observer(tmp_path, monkeypatch, _PLAIN_YAML)
     assert result.exit_code == 0, result.output
-    assert not isinstance(observer, NoOpObserver), 'tracing is on by default'
+    assert not isinstance(observer, NoOpObserver), "tracing is on by default"
 
 
 def test_committed_example_runs_traced_and_keyless(monkeypatch) -> None:

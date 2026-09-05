@@ -47,9 +47,7 @@ def test_new_agent_honors_agents_dir(tmp_path):
     """`--agents-dir` controls where the spec is written."""
     dest = tmp_path / "specs"
     runner = CliRunner()
-    result = runner.invoke(
-        main, ["new-agent", "helper", "--agents-dir", str(dest)]
-    )
+    result = runner.invoke(main, ["new-agent", "helper", "--agents-dir", str(dest)])
     assert result.exit_code == 0, result.output
     assert (dest / "helper.yaml").is_file()
 

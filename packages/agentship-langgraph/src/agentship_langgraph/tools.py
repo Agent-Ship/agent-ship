@@ -47,6 +47,7 @@ class ToolCallLogger(AsyncCallbackHandler):
         """Log the tool's result."""
         _tool_logger.info("  = %s", _short(getattr(output, "content", output)))
 
+
 #: The write-ahead intent ledger for side-effecting tool calls (Phase 03 · C4). A process-shared
 #: in-memory ledger — like the InMemorySaver singleton, it lets an in-process run→resume see the
 #: recorded "done" entry so a resumed run never re-fires a tool's side effect. A durable
@@ -72,8 +73,9 @@ class _ToolInvocation:
         A tool that can check whether its effect landed can supply a richer verify later; the safe
         default is to not repeat a write whose outcome is unknown.
         """
-        _tool_logger.warning("idempotency: skipping replay of %r — prior run may have completed",
-                             self._tool.name)
+        _tool_logger.warning(
+            "idempotency: skipping replay of %r — prior run may have completed", self._tool.name
+        )
         return f"(idempotency) a prior '{self._tool.name}' call may have completed; not re-run"
 
 
@@ -160,14 +162,14 @@ def to_langchain_tool(tool: Tool, *, confirm_writes: bool = False) -> Structured
                 if not (isinstance(decision, dict) and decision.get("approved")):
                     _tool_logger.warning("HITL: write %r rejected — not executed", tool.name)
                     return (
-                        f"the write to {tool.name!r} was rejected by the human "
-                        f"and was not executed"
+                        f"the write to {tool.name!r} was rejected by the human and was not executed"
                     )
             thread_id = get_run_context().session_id
             key = idem_key(thread_id, "tool", tool.name, kwargs)
             _tool_logger.debug("running %r with idempotency guard (key=%s)", tool.name, key)
-            return await call_once(_TOOL_LEDGER, key, _ToolInvocation(tool, dict(kwargs)),
-                                   idempotent=False)
+            return await call_once(
+                _TOOL_LEDGER, key, _ToolInvocation(tool, dict(kwargs)), idempotent=False
+            )
         except GraphBubbleUp:
             raise
         except Exception as exc:  # noqa: BLE001 — a tool is arbitrary code; any raise it makes

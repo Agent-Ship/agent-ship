@@ -47,9 +47,7 @@ def test_every_provider_has_an_example_file():
         )
 
 
-@pytest.mark.parametrize(
-    "provider", LIVE_PROVIDERS, ids=[p.name for p in LIVE_PROVIDERS]
-)
+@pytest.mark.parametrize("provider", LIVE_PROVIDERS, ids=[p.name for p in LIVE_PROVIDERS])
 async def test_provider_example_runs_offline_with_fake_model(provider, monkeypatch):
     """Each provider example builds and runs, returning the injected fake's answer."""
     fake = FakeListChatModel(responses=["pong"])

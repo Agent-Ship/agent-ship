@@ -103,8 +103,14 @@ def test_on_model_is_a_noop_off_a_model_span() -> None:
     obs = RecordingObserver()
     with obs.span("agent", SpanKind.AGENT):
         obs.on_model(
-            Usage(model="m", provider="p", input_tokens=1, output_tokens=1, cost_usd=None,
-                  latency_ms=1.0)
+            Usage(
+                model="m",
+                provider="p",
+                input_tokens=1,
+                output_tokens=1,
+                cost_usd=None,
+                latency_ms=1.0,
+            )
         )
     root = obs.trace_view().root
     assert semconv.GEN_AI_USAGE_INPUT_TOKENS not in root.attrs
@@ -187,8 +193,15 @@ def test_usage_attributes_maps_every_model_span_key() -> None:
 def test_usage_attributes_omits_absent_cost_and_response_model() -> None:
     """A local model reports no price/echoed id — those keys stay off rather than write ``None``."""
     attrs = usage_attributes(
-        Usage(model="ollama/llama3", provider="ollama", input_tokens=2, output_tokens=3,
-              cost_usd=None, latency_ms=9.0, finish_reasons=[])
+        Usage(
+            model="ollama/llama3",
+            provider="ollama",
+            input_tokens=2,
+            output_tokens=3,
+            cost_usd=None,
+            latency_ms=9.0,
+            finish_reasons=[],
+        )
     )
     assert semconv.AS_COST_USD not in attrs
     assert semconv.GEN_AI_RESPONSE_MODEL not in attrs

@@ -171,8 +171,9 @@ class OTelObserver(Observer):
             )
             return _OTelSpan(otel_span)
         except Exception:  # noqa: BLE001 - tracing must never break the run
-            _log.warning("observability.start_span.failed name=%s (tracing skipped)", name,
-                         exc_info=True)
+            _log.warning(
+                "observability.start_span.failed name=%s (tracing skipped)", name, exc_info=True
+            )
             return _NoOpSpan()
 
     def _is_model_span(self, span: OTelSpanType) -> bool:

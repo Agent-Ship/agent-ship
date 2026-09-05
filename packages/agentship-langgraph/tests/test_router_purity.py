@@ -90,9 +90,7 @@ def test_adapter_never_calls_model_router_pick(capture_resolve, monkeypatch):
         from agentship_langgraph.engine import LangGraphEngine
 
         engine = LangGraphEngine()
-        compiled = engine.build(
-            AgentSpec(name="a", engine="langgraph", model="openai/spec-model")
-        )
+        compiled = engine.build(AgentSpec(name="a", engine="langgraph", model="openai/spec-model"))
         # build resolves the model reading routed_model; pick must not have fired.
     finally:
         current_run.reset(token)

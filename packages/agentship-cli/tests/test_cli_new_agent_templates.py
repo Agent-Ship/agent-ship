@@ -126,9 +126,7 @@ def test_invalid_name_is_rejected(tmp_path):
     """A NAME that is not a valid spec identifier is refused before any file is written."""
     dest = tmp_path / "agents"
     runner = CliRunner()
-    result = runner.invoke(
-        main, ["new-agent", "Bad Name!", "--agents-dir", str(dest)]
-    )
+    result = runner.invoke(main, ["new-agent", "Bad Name!", "--agents-dir", str(dest)])
     assert result.exit_code != 0
     assert not dest.exists() or not any(dest.iterdir())
 
@@ -155,9 +153,7 @@ def test_force_overwrites(tmp_path, fake_model):
     runner = CliRunner()
     runner.invoke(main, ["new-agent", "over", "--agents-dir", str(dest)])
     (dest / "over.yaml").write_text("name: stale\nengine: echo\n")
-    result = runner.invoke(
-        main, ["new-agent", "over", "--force", "--agents-dir", str(dest)]
-    )
+    result = runner.invoke(main, ["new-agent", "over", "--force", "--agents-dir", str(dest)])
     assert result.exit_code == 0, result.output
     spec = load_spec(dest / "over.yaml")
     assert spec.name == "over"

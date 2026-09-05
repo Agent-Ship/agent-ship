@@ -32,9 +32,7 @@ class _SpyMigration:
 
     def __init__(self, version: str = "0001_test", description: str = "test table"):
         self.calls: list[str] = []
-        self.migration = Migration(
-            version=version, description=description, apply=self._apply
-        )
+        self.migration = Migration(version=version, description=description, apply=self._apply)
 
     def _apply(self, database_url: str) -> None:
         self.calls.append(database_url)
@@ -122,9 +120,7 @@ def test_migrations_applied_in_version_order(monkeypatch):
     first.migration = Migration("0001_a", "first", lambda url: order.append("0001_a"))
     second.migration = Migration("0002_b", "second", lambda url: order.append("0002_b"))
     # Register in reverse to prove the runner sorts.
-    monkeypatch.setattr(
-        cli_main, "REGISTERED_MIGRATIONS", [second.migration, first.migration]
-    )
+    monkeypatch.setattr(cli_main, "REGISTERED_MIGRATIONS", [second.migration, first.migration])
 
     result = CliRunner().invoke(
         main,

@@ -88,9 +88,7 @@ def test_requires_a_key_source() -> None:
 async def test_valid_token_maps_claims_to_caller() -> None:
     """A well-signed token maps its tenant/sub/scope claims to a Caller."""
     token = _token({"tenant": "acme", "scope": "agent:support:invoke agent:support:stream"})
-    caller = await _static_provider().authenticate(
-        _request({"authorization": f"Bearer {token}"})
-    )
+    caller = await _static_provider().authenticate(_request({"authorization": f"Bearer {token}"}))
     assert caller.tenant_id == "acme"
     assert caller.user_id == "u-1"
     assert caller.scopes == frozenset({"agent:support:invoke", "agent:support:stream"})
@@ -100,9 +98,7 @@ async def test_valid_token_maps_claims_to_caller() -> None:
 async def test_scope_claim_may_be_a_list() -> None:
     """The scopes claim is accepted as a JSON array as well as a space-delimited string."""
     token = _token({"scope": ["a:b:c", "d:e:f"]})
-    caller = await _static_provider().authenticate(
-        _request({"authorization": f"Bearer {token}"})
-    )
+    caller = await _static_provider().authenticate(_request({"authorization": f"Bearer {token}"}))
     assert caller.scopes == frozenset({"a:b:c", "d:e:f"})
 
 

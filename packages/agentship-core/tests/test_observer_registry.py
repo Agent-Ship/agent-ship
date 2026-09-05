@@ -95,7 +95,7 @@ def test_build_agent_traces_without_a_block() -> None:
     """No block, no explicit observer → the agent stays on the no-op observer."""
     agent = build_agent(AgentSpec(name="a", engine="echo"))
     assert not isinstance(agent.observer, NoOpObserver), (
-        'an agent with no observability block is still traced'
+        "an agent with no observability block is still traced"
     )
 
 

@@ -56,9 +56,7 @@ def build_graph_template(spec: AgentSpec):
     uncompiled — the fillable seam an author edits.
     """
 
-    def build_graph(
-        model: BaseChatModel, tools: list[BaseTool]
-    ) -> StateGraph:
+    def build_graph(model: BaseChatModel, tools: list[BaseTool]) -> StateGraph:
         """Build the coordinator→worker supervisor scaffold over the wired pieces."""
 
         def coordinator(state: SupervisorState) -> dict:

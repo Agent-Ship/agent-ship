@@ -73,8 +73,7 @@ _FAIL_FAST_GRID = [
     (engine_name, capability)
     for engine_name in REGISTERED_ENGINE_NAMES
     for capability in CAPABILITIES
-    if capability.request_spec is not None
-    and not capability.declared(_capabilities(engine_name))
+    if capability.request_spec is not None and not capability.declared(_capabilities(engine_name))
 ]
 
 
@@ -111,9 +110,7 @@ def test_capability_fail_fast_grid_is_non_empty() -> None:
 # --------------------------------------------------------------------------- #
 
 _STREAMING_ENGINES = [
-    engine_name
-    for engine_name in REGISTERED_ENGINE_NAMES
-    if _capabilities(engine_name).streaming
+    engine_name for engine_name in REGISTERED_ENGINE_NAMES if _capabilities(engine_name).streaming
 ]
 
 

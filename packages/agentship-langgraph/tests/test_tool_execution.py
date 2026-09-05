@@ -94,8 +94,9 @@ async def test_side_effecting_tool_fires_exactly_once_on_replay():
         calls["n"] += 1
         return f"bumped {label} (call #{calls['n']})"
 
-    lc = to_langchain_tool(Tool("bump", "increments a counter", bump, args_schema=_BumpArgs,
-                                side_effecting=True))
+    lc = to_langchain_tool(
+        Tool("bump", "increments a counter", bump, args_schema=_BumpArgs, side_effecting=True)
+    )
     token = current_run.set(_ctx("idem-thread"))
     try:
         first = await lc.ainvoke({"label": "x"})
@@ -164,8 +165,13 @@ async def test_rejected_write_is_never_executed():
 
     sent: list[str] = []
     wrapped = to_langchain_tool(
-        Tool("send_email", "sends", lambda label: sent.append(label) or "ok",
-             args_schema=_BumpArgs, side_effecting=True),
+        Tool(
+            "send_email",
+            "sends",
+            lambda label: sent.append(label) or "ok",
+            args_schema=_BumpArgs,
+            side_effecting=True,
+        ),
         confirm_writes=True,
     )
 

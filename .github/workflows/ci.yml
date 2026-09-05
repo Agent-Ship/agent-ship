@@ -48,6 +48,11 @@ jobs:
       - name: Lint
         run: ruff check .
 
+      # Enforced so formatting is never a review topic again: the tool decides, and a
+      # diff that is only whitespace can no longer hide a real change inside it.
+      - name: Format check
+        run: ruff format --check .
+
       # Bare `pytest` honours testpaths = ["packages", "conformance"]. The old
       # `pytest packages` silently skipped the whole conformance matrix — the suite whose
       # entire job is to fail the build when an engine over-declares a capability.

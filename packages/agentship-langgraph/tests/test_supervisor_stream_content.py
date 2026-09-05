@@ -41,9 +41,7 @@ async def test_the_routing_label_is_not_streamed_as_the_answer(monkeypatch):
         models_module, "resolve_model", lambda *a, **k: FakeListChatModel(responses=["billing"])
     )
     specialists = {
-        "billing_specialist": build_agent(
-            AgentSpec(name="billing_specialist", engine="echo")
-        )
+        "billing_specialist": build_agent(AgentSpec(name="billing_specialist", engine="echo"))
     }
     spec = AgentSpec(name="triage", engine="langgraph", model="x", streaming=True)
     engine = LangGraphEngine()

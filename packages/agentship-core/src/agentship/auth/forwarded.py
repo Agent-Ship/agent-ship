@@ -102,9 +102,7 @@ class ForwardedHeaderAuthProvider(AuthProvider):
             )
         tenant_id = request.headers.get(self._tenant_header) or "default"
         scopes = _parse_scopes(request.headers.get(self._scopes_header, ""))
-        return Caller(
-            tenant_id=tenant_id, user_id=user_id, scopes=scopes, auth_method="forwarded"
-        )
+        return Caller(tenant_id=tenant_id, user_id=user_id, scopes=scopes, auth_method="forwarded")
 
 
 def _parse_scopes(raw: str) -> frozenset[str]:

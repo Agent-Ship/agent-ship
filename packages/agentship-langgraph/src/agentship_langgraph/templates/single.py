@@ -30,9 +30,7 @@ def build_single(spec: AgentSpec):
     model and tools are supplied by the engine at build time.
     """
 
-    def build_graph(
-        model: BaseChatModel, tools: list[BaseTool]
-    ) -> CompiledStateGraph:
+    def build_graph(model: BaseChatModel, tools: list[BaseTool]) -> CompiledStateGraph:
         """Build the prebuilt ReAct graph over the model, tools, and skill-augmented prompt."""
         from agentship.skills import render_agent_prompt
 

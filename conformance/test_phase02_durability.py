@@ -116,8 +116,13 @@ async def test_cell_replay_idempotency():
 
     fired: list[str] = []
     tool = to_langchain_tool(
-        Tool("charge", "charges once", lambda label: fired.append(label) or "charged",
-             args_schema=_Args, side_effecting=True)
+        Tool(
+            "charge",
+            "charges once",
+            lambda label: fired.append(label) or "charged",
+            args_schema=_Args,
+            side_effecting=True,
+        )
     )
     token = current_run.set(_ctx("cell-idem"))
     try:

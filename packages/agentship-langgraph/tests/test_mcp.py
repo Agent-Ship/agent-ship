@@ -26,6 +26,7 @@ def test_mcp_version_guard_accepts_the_installed_pin():
     assert ok is True
     assert installed is not None and installed.startswith("1.")
 
+
 _FIXTURE = str(Path(__file__).parent / "fixtures" / "mcp_echo_server.py")
 
 

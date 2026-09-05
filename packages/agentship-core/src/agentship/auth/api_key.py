@@ -141,8 +141,7 @@ def _parse_key_table(source: str) -> dict[str, Caller]:
     for entry in entries:
         if not isinstance(entry, dict) or "key" not in entry or "user" not in entry:
             raise AgentShipError(
-                "each API key entry needs at least 'key' and 'user' fields "
-                f"(got {entry!r})"
+                f"each API key entry needs at least 'key' and 'user' fields (got {entry!r})"
             )
         caller = Caller(
             tenant_id=entry.get("tenant", "default"),

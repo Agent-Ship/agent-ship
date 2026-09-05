@@ -34,7 +34,6 @@ ObserverFactory = Callable[["ObservabilitySpec"], Observer]
 OBSERVERS: Registry[ObserverFactory] = Registry("agentship.observers", label="observer")
 
 
-
 #: Env var naming the backends every agent's spans ship to, comma-separated (e.g.
 #: ``opik`` or ``opik,langsmith``). It lives in the environment, not in each agent's YAML,
 #: because WHERE traces go is a property of the deployment: the same agent ships to Opik in

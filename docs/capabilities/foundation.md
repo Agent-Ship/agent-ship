@@ -18,12 +18,13 @@ Define a spec, build it against its engine, and run a turn. `build_agent` resolv
 from agentship import AgentSpec, build_agent
 
 spec = AgentSpec(name="hello", engine="echo", prompt="You are a helpful assistant.")
-agent = build_agent(spec)                 # resolves engine via the ENGINES registry
-result = await agent.run("hi there")      # RunnableAgent.run → a Result
+agent = build_agent(spec)  # resolves engine via the ENGINES registry
+result = await agent.run("hi there")  # RunnableAgent.run → a Result
 
 # Look up which engines are installed via the registry directly:
 from agentship.engines.base import ENGINES
-print(ENGINES.names())                     # e.g. ["echo"] (+ "langgraph" when installed)
+
+print(ENGINES.names())  # e.g. ["echo"] (+ "langgraph" when installed)
 ```
 
 Specs can also be loaded from YAML with `load_spec`, or authored in Python via a `code: "module:function"` reference resolved by `resolve_code`.
@@ -43,10 +44,12 @@ prompt: You are a helpful assistant.
 import asyncio
 from agentship import build_agent, load_spec
 
+
 async def main() -> None:
     agent = build_agent(load_spec("examples/hello.yaml"))
     result = await agent.run("hello", user_id="demo")
     print(result)
+
 
 asyncio.run(main())
 ```

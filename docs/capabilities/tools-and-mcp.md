@@ -62,7 +62,7 @@ prompt: Prefer the available tools over doing the work yourself.
 ```python
 from agentship import build_agent
 
-agent = build_agent("assistant.yaml")           # resolves native tools + MCP
+agent = build_agent("assistant.yaml")  # resolves native tools + MCP
 result = await agent.run("How many days from 2026-01-01 to 2026-08-14?")
 print(result.output)
 ```

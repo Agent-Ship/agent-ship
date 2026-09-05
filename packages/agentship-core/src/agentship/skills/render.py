@@ -38,7 +38,8 @@ def render_agent_prompt(prompt: str | None, skills: list[str] | None) -> str | N
         resolved_names.append(skill.name)
         body = f"## Skill: {skill.name}\n{skill.description}\n\n{skill.instructions}".rstrip()
         blocks.append(body)
-    _skills_logger.info("injecting %d skill(s) into prompt: %s",
-                        len(resolved_names), ", ".join(resolved_names))
+    _skills_logger.info(
+        "injecting %d skill(s) into prompt: %s", len(resolved_names), ", ".join(resolved_names)
+    )
     guidance = _HEADER + "\n" + "\n\n".join(blocks)
     return f"{prompt}\n\n{guidance}" if prompt else guidance

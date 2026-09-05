@@ -206,11 +206,13 @@ import asyncio
 from agentship.conformance import run_capability_grid
 from agentship_langgraph.testing import offline
 
+
 async def main() -> None:
     results = await run_capability_grid(["echo", "langgraph"], offline=offline)
     for cell in results:
         mark = "ok " if cell.passed else "FAIL"
         print(f"[{mark}] {cell.engine}.{cell.capability} ({cell.kind}) — {cell.detail}")
+
 
 asyncio.run(main())
 ```

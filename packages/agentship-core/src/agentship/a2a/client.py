@@ -70,9 +70,7 @@ class RemoteA2aAgent:
                 self._remote.url, request.model_dump(by_alias=True), headers
             )
         except Exception as exc:  # noqa: BLE001 — any transport failure is a retryable A2A outage
-            raise A2AUnavailable(
-                f"A2A call to {self._remote.url!r} failed: {exc}"
-            ) from exc
+            raise A2AUnavailable(f"A2A call to {self._remote.url!r} failed: {exc}") from exc
         return _unwrap(raw)
 
 

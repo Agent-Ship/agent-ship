@@ -65,7 +65,7 @@ SSE back to a same-origin page (the browser never holds a credential).
 from agentship.auth import ApiKeyAuthProvider, EnvApiKeyStore
 from agentship_service.app import create_app
 
-app = create_app(auth=ApiKeyAuthProvider(EnvApiKeyStore()))   # ASGI app; run under uvicorn
+app = create_app(auth=ApiKeyAuthProvider(EnvApiKeyStore()))  # ASGI app; run under uvicorn
 ```
 
 ## Status & limits

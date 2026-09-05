@@ -132,9 +132,7 @@ class JwtAuthProvider(AuthProvider):
             return self._public_key
         assert self._jwks_client is not None  # guaranteed by the constructor's xor check
         try:
-            signing_key = await asyncio.to_thread(
-                self._jwks_client.get_signing_key_from_jwt, token
-            )
+            signing_key = await asyncio.to_thread(self._jwks_client.get_signing_key_from_jwt, token)
         except jwt.PyJWTError as exc:
             # Unknown kid, unreachable/invalid JWKS, or a malformed token header — none of
             # these yield a trustworthy key, so surface them under the one invalid_token code.
@@ -145,9 +143,7 @@ class JwtAuthProvider(AuthProvider):
         """Map a validated JWT payload to a :class:`Caller` using the configured claims."""
         user_id = payload.get(self._user_claim)
         if not user_id:
-            raise AuthError(
-                "invalid_token", f"JWT is missing the user claim {self._user_claim!r}"
-            )
+            raise AuthError("invalid_token", f"JWT is missing the user claim {self._user_claim!r}")
         tenant_id = payload.get(self._tenant_claim) or "default"
         scopes = _parse_scopes(payload.get(self._scopes_claim))
         return Caller(

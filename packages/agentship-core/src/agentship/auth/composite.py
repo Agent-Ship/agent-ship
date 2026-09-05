@@ -41,6 +41,4 @@ class CompositeAuthProvider(AuthProvider):
                 if exc.code == "no_credentials":
                     continue  # this provider had nothing to authenticate — try the next
                 raise  # recognized-but-invalid: do not fall through and mask it
-        raise AuthError(
-            "no_credentials", "no configured auth provider recognized a credential"
-        )
+        raise AuthError("no_credentials", "no configured auth provider recognized a credential")

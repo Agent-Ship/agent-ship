@@ -92,8 +92,12 @@ async def discover_mcp_tools(mcp: dict[str, McpServerSpec]) -> list[BaseTool]:
     _mcp_logger.info("connecting to %d server(s): %s", len(mcp), server_names)
     client = MultiServerMCPClient(to_connections(mcp))
     tools = await client.get_tools()
-    _mcp_logger.info("discovered %d tool(s) across %d server(s): %s",
-                     len(tools), len(mcp), ", ".join(t.name for t in tools))
+    _mcp_logger.info(
+        "discovered %d tool(s) across %d server(s): %s",
+        len(tools),
+        len(mcp),
+        ", ".join(t.name for t in tools),
+    )
     return tools
 
 
@@ -131,6 +135,7 @@ def discover_mcp_tools_sync(mcp: dict[str, McpServerSpec]) -> list[BaseTool]:
     try:
         asyncio.get_running_loop()
     except RuntimeError:
+
         async def bounded() -> list[BaseTool]:
             """Await discovery under the timeout, inside the loop asyncio.run creates."""
             return await asyncio.wait_for(discover_mcp_tools(mcp), timeout=DISCOVERY_TIMEOUT_S)

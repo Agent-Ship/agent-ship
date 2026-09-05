@@ -104,9 +104,7 @@ def test_generic_error_shows_debug_hint_and_no_traceback(raising_engine, tmp_pat
 def test_debug_flag_surfaces_the_full_traceback(raising_engine, tmp_path):
     """With ``--debug`` the original exception propagates so the traceback shows."""
     raising_engine.to_raise = RuntimeError("something odd happened")
-    result = CliRunner().invoke(
-        main, ["run", _spec_file(tmp_path), "--input", "hi", "--debug"]
-    )
+    result = CliRunner().invoke(main, ["run", _spec_file(tmp_path), "--input", "hi", "--debug"])
 
     assert result.exit_code != 0
     assert result.exception is not None

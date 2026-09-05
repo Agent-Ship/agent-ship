@@ -74,9 +74,12 @@ from agentship import build_agent
 agent = build_agent("note-taker.yaml")
 result = await agent.run("Save a note: renew the domain in March")
 
-if result.interrupt is not None:      # paused — nothing has been written yet
+if result.interrupt is not None:  # paused — nothing has been written yet
     result = await agent.engine.resume(
-        agent.compiled, result.resume_token, ctx, resume_value={"approved": True},
+        agent.compiled,
+        result.resume_token,
+        ctx,
+        resume_value={"approved": True},
     )
 ```
 
