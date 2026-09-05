@@ -98,16 +98,16 @@ stops counting once it is used — publishing converts it into a normal publishe
 project it just created. So the first claim goes in two waves:
 
 ```
-1. Register pending publishers for  agentship-core, agentship-langgraph, agentship-cli
-2. Actions -> Release -> Run workflow
-     packages: agentship-core,agentship-langgraph,agentship-cli
-3. Register pending publishers for  agentship-service, agentship-observability, agentship-sdk
-4. Actions -> Release -> Run workflow
-     packages: agentship-service,agentship-observability,agentship-sdk
+1. Register pending publishers for any THREE of the six
+2. Actions -> Release -> Run workflow    packages: <those three, comma-separated>
+3. Register pending publishers for the remaining three
+4. Actions -> Release -> Run workflow    packages: <those three>
 ```
 
-Core, langgraph and cli go first because `agentship-sdk` depends on all three — by the time
-it is published, everything it pins already exists on the index.
+**The only ordering rule: `agentship-sdk` goes in the second wave.** It pins every sibling,
+so publishing it first would put a distribution on the index whose dependencies cannot be
+resolved. Which of the other five go in which wave does not matter — publishing only
+uploads a file; nothing is resolved until something installs it.
 
 A partial run skips the install-back-out check, since resolving `agentship-sdk` needs all
 six present. Once every project exists, leave `packages` on `all` and it never comes up
