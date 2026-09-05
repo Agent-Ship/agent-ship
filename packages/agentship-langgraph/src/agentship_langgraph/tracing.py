@@ -237,7 +237,10 @@ class ObservabilityCallback(AsyncCallbackHandler):
         if (max_tokens := params.get("max_tokens")) is not None:
             attrs[semconv.GEN_AI_REQUEST_MAX_TOKENS] = max_tokens
         if self._capture_content:
-            attrs[semconv.GEN_AI_INPUT_MESSAGES] = redact_pii(_json(flat))
+            captured = redact_pii(_json(flat))
+            attrs[semconv.GEN_AI_INPUT_MESSAGES] = captured
+            # Same content under the key Opik/Phoenix actually render, as with token counts.
+            attrs[semconv.OI_INPUT_VALUE] = captured
         self._open(
             run_id,
             parent_run_id,
@@ -267,7 +270,9 @@ class ObservabilityCallback(AsyncCallbackHandler):
             ),
         }
         if self._capture_content:
-            attrs[semconv.GEN_AI_INPUT_MESSAGES] = redact_pii(_json(list(prompts)))
+            captured = redact_pii(_json(list(prompts)))
+            attrs[semconv.GEN_AI_INPUT_MESSAGES] = captured
+            attrs[semconv.OI_INPUT_VALUE] = captured
         self._open(
             run_id,
             parent_run_id,
@@ -286,7 +291,10 @@ class ObservabilityCallback(AsyncCallbackHandler):
         usage = _usage_from_result(response, model_id, self._latency_ms(run_id))
         span.set_attributes(usage_attributes(usage))
         if self._capture_content and (text := _output_text(response)):
-            span.set_attributes({semconv.GEN_AI_OUTPUT_MESSAGES: redact_pii(text)})
+            captured = redact_pii(text)
+            span.set_attributes(
+                {semconv.GEN_AI_OUTPUT_MESSAGES: captured, semconv.OI_OUTPUT_VALUE: captured}
+            )
         self._close(run_id)
 
     async def on_llm_error(self, error: BaseException, *, run_id: UUID, **kwargs: Any) -> None:
@@ -314,15 +322,21 @@ class ObservabilityCallback(AsyncCallbackHandler):
         if server := self._mcp_servers.get(name):
             attrs[semconv.AS_TOOL_MCP_SERVER] = server
         if self._capture_content:
-            payload = _json(inputs) if inputs else str(input_str)
-            attrs[semconv.GEN_AI_INPUT_MESSAGES] = redact_pii(payload)
+            payload = redact_pii(_json(inputs) if inputs else str(input_str))
+            attrs[semconv.GEN_AI_INPUT_MESSAGES] = payload
+            # The tool's arguments, under the key a trace UI renders — otherwise a tool row
+            # shows its name and nothing about what it was actually called with.
+            attrs[semconv.OI_INPUT_VALUE] = payload
         self._open(run_id, parent_run_id, semconv.tool_span(name), SpanKind.TOOL, attrs)
 
     async def on_tool_end(self, output: Any, *, run_id: UUID, **kwargs: Any) -> None:
         """Capture the (redacted) tool result when content capture is on, then close the span."""
         span = self._spans.get(run_id)
         if span is not None and self._capture_content:
-            span.set_attributes({semconv.GEN_AI_OUTPUT_MESSAGES: redact_pii(str(output))})
+            captured = redact_pii(str(output))
+            span.set_attributes(
+                {semconv.GEN_AI_OUTPUT_MESSAGES: captured, semconv.OI_OUTPUT_VALUE: captured}
+            )
         self._close(run_id)
 
     async def on_tool_error(self, error: BaseException, *, run_id: UUID, **kwargs: Any) -> None:

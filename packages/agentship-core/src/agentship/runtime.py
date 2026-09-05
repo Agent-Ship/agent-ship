@@ -208,6 +208,10 @@ class RunnableAgent:
                 semconv.agent_span(ctx.agent_name), SpanKind.AGENT, self._root_attrs(ctx)
             ) as root:
                 ctx.trace_id = observer.current_trace_id()
+                # What the user asked, on the trace's top row. Without it the first thing a
+                # reader looks for — the question — is absent from the root span.
+                if getattr(observer, "capture_content", False):
+                    root.set_attribute(semconv.OI_INPUT_VALUE, ctx.input_text)
                 try:
                     for mw in pipeline:
                         await mw.on_request(ctx)
@@ -222,6 +226,9 @@ class RunnableAgent:
                     await _run_error_hooks(pipeline, ctx, exc)
                     raise
                 root.set_attribute(semconv.AS_STATUS, "ok")
+                # And what it finally answered, so the top row shows the whole turn.
+                if getattr(observer, "capture_content", False) and result.output is not None:
+                    root.set_attribute(semconv.OI_OUTPUT_VALUE, str(result.output))
                 return result
         finally:
             # ``run``'s set/reset share a frame, so reset is valid here; guard it

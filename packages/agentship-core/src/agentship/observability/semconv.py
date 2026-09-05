@@ -111,6 +111,13 @@ GEN_AI_INPUT_MESSAGES = "gen_ai.input.messages"
 GEN_AI_OUTPUT_MESSAGES = "gen_ai.output.messages"
 
 # --- OpenInference mirror keys (Phoenix cost panel) -------------------------------------------
+#: The OpenInference content pair. Opik and Phoenix render a span's input/output panels from
+#: these, not from ``gen_ai.*.messages`` — so content captured only under the GenAI keys left
+#: those panels blank. Mirrored for the same reason the token counts below are: adopted from
+#: upstream, not invented. Both are gated by ``capture_content`` (the PHI gate).
+OI_INPUT_VALUE = "input.value"
+OI_OUTPUT_VALUE = "output.value"
+
 OI_TOKEN_COUNT_PROMPT = "llm.token_count.prompt"
 OI_TOKEN_COUNT_COMPLETION = "llm.token_count.completion"
 OI_TOKEN_COUNT_TOTAL = "llm.token_count.total"
