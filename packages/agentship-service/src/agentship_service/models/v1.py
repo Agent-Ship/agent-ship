@@ -18,10 +18,24 @@ from pydantic import BaseModel, Field
 
 #: The kinds of event a stream can carry (SSE ``:stream`` / WS ``/live``):
 #: ``session`` (opening frame with ids), ``token`` (an LLM token), ``content`` (a larger
-#: content chunk), ``tool_call``/``tool_result`` (a tool round-trip), ``guard`` (a
-#: guardrail action), ``done`` (terminal success), ``error`` (terminal failure).
+#: content chunk), ``reasoning`` (the model's thinking, when a reasoning model emits it),
+#: ``tool_call``/``tool_result`` (a tool round-trip), ``guard`` (a guardrail action),
+#: ``done`` (terminal success), ``error`` (terminal failure).
+#:
+#: ``reasoning`` is deliberately not ``content``: thinking is not the answer, and a client
+#: that cannot tell them apart has no way to render one as a collapsed aside and the other
+#: as the reply. It is also the channel a UI uses to show that a slow reasoning model is
+#: working rather than hung.
 StreamEventType = Literal[
-    "session", "token", "content", "tool_call", "tool_result", "guard", "done", "error"
+    "session",
+    "token",
+    "content",
+    "reasoning",
+    "tool_call",
+    "tool_result",
+    "guard",
+    "done",
+    "error",
 ]
 
 

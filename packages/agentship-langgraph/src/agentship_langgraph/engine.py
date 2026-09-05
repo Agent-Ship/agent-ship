@@ -50,6 +50,55 @@ from .tracing import ObservabilityCallback
 
 _engine_logger = logging.getLogger("agentship.engine")
 
+#: Content-block types that carry a model's thinking rather than its reply. Anthropic uses
+#: ``thinking``; ``reasoning``/``reasoning_content`` are the names other providers use for the
+#: same thing through LiteLLM.
+_REASONING_BLOCKS = frozenset({"thinking", "reasoning", "reasoning_content"})
+
+
+def split_reasoning(message: Any) -> tuple[str, str]:
+    """Split a model message into ``(reasoning, answer)``.
+
+    A reasoning model does not return a string. Anthropic-style extended thinking arrives as
+    a list of content blocks — ``[{"type": "thinking", ...}, {"type": "text", ...}]`` — and
+    DeepSeek and friends report it out-of-band in ``additional_kwargs.reasoning_content``.
+    Both must be separated from the reply before it is streamed: emitted whole, the model's
+    private deliberation reaches the user as part of its answer.
+
+    Returns empty strings rather than ``None`` so callers can test truthiness without
+    juggling two shapes. A plain-string message is all answer and no reasoning, which is
+    what every non-reasoning model produces.
+    """
+    reasoning: list[str] = []
+    answer: list[str] = []
+
+    content = getattr(message, "content", None)
+    if isinstance(content, str):
+        answer.append(content)
+    elif isinstance(content, list):
+        for block in content:
+            if not isinstance(block, dict):
+                # A bare string inside a block list is answer text.
+                answer.append(str(block))
+                continue
+            kind = block.get("type")
+            if kind in _REASONING_BLOCKS:
+                # The payload key matches the block type ("thinking" -> block["thinking"]),
+                # but not every provider follows that, so fall back across the known names.
+                reasoning.append(
+                    str(block.get(kind) or block.get("thinking") or block.get("text") or "")
+                )
+            elif kind == "text":
+                answer.append(str(block.get("text") or ""))
+
+    # Out-of-band reasoning (DeepSeek, some LiteLLM routes) rides alongside string content.
+    extra = (getattr(message, "additional_kwargs", None) or {}).get("reasoning_content")
+    if extra:
+        reasoning.append(str(extra))
+
+    return "".join(reasoning), "".join(answer)
+
+
 #: A process-wide singleton attached to every run's config. Silent when the ``agentship.tools``
 #: logger is at WARNING (the default); enabled by ``--verbose`` so tool calls appear on stderr.
 _TOOL_CALL_LOGGER = ToolCallLogger()
@@ -636,10 +685,29 @@ class LangGraphEngine(Engine):
                 if (metadata or {}).get("langgraph_node") in compiled.internal_nodes:
                     continue
                 if isinstance(message, AIMessageChunk):
-                    if message.content:
-                        streamed_content = True
-                        yield Event(type="content", data=message.content)
+                    if message.content or (message.additional_kwargs or {}).get(
+                        "reasoning_content"
+                    ):
+                        # A reasoning model's content is a list of blocks, not a string.
+                        # Emitting it whole put the model's private thinking into the answer.
+                        reasoning, answer = split_reasoning(message)
+                        if reasoning:
+                            yield Event(type="reasoning", data=reasoning)
+                        if answer:
+                            streamed_content = True
+                            yield Event(type="content", data=answer)
                 elif isinstance(message, AIMessage) and message.content:
+                    # Same split for a whole (non-chunk) reply, so a model that does not
+                    # stream still keeps its thinking out of the fallback answer below.
+                    _whole_reasoning, _whole_answer = split_reasoning(message)
+                    if _whole_reasoning:
+                        # A model that returns its thinking in one whole message rather than
+                        # in chunks still has to surface it, or reasoning is visible only
+                        # from providers that happen to stream.
+                        yield Event(type="reasoning", data=_whole_reasoning)
+                    if _whole_answer:
+                        last_full_content = _whole_answer
+                        continue
                     # A whole (non-chunk) model reply — remember its content as the
                     # fallback answer in case no chunk content ever arrives. Gated on
                     # AIMessage so the replayed Human/System input is never mistaken

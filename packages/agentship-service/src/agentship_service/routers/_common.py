@@ -7,12 +7,13 @@ request-size limit, and shape wire objects identically.
 from __future__ import annotations
 
 import json
+from typing import get_args
 
 from agentship.engines.base import Event
 from agentship.runtime import RunnableAgent
 from fastapi import HTTPException, Request
 
-from ..models.v1 import AgentCard, StreamEvent
+from ..models.v1 import AgentCard, StreamEvent, StreamEventType
 from ..registry import AgentRegistry
 
 #: Largest request body the service accepts. A turn's input is text, not a file upload, so
@@ -20,11 +21,11 @@ from ..registry import AgentRegistry
 #: memory. (Raised here, not in the gateway, so the limit holds gateway-free in dev too.)
 MAX_BODY_BYTES = 1_048_576
 
-#: The event types the stream contract allows (mirrors ``StreamEventType``). An engine event
-#: whose type is outside this set is surfaced as a ``content`` frame rather than dropped.
-_ALLOWED_EVENT_TYPES = frozenset(
-    {"session", "token", "content", "tool_call", "tool_result", "guard", "done", "error"}
-)
+#: The event types the stream contract allows. Derived from ``StreamEventType`` rather than
+#: repeated: this was a hand-written copy of the same list, so adding a frame type to the
+#: contract left this set behind and the new type was silently downgraded to ``content``.
+#: An engine event whose type is outside the set is surfaced as ``content``, not dropped.
+_ALLOWED_EVENT_TYPES = frozenset(get_args(StreamEventType))
 
 
 def get_agents(request: Request) -> AgentRegistry:
@@ -54,9 +55,7 @@ def enforce_body_limit(request: Request) -> None:
     """
     raw = request.headers.get("content-length")
     if raw is not None and raw.isdigit() and int(raw) > MAX_BODY_BYTES:
-        raise HTTPException(
-            status_code=413, detail=f"request body exceeds {MAX_BODY_BYTES} bytes"
-        )
+        raise HTTPException(status_code=413, detail=f"request body exceeds {MAX_BODY_BYTES} bytes")
 
 
 def agent_card(agent: RunnableAgent) -> AgentCard:

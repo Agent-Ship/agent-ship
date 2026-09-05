@@ -194,6 +194,17 @@ class ModelParams(BaseModel):
     api_base: str | None = None
     #: Per-request timeout in seconds. ``None`` keeps the model default.
     timeout: float | None = None
+    #: How hard a reasoning model should think before answering. ``None`` keeps the
+    #: provider's default (which for a non-reasoning model means: no thinking at all).
+    #:
+    #: One knob rather than a per-provider one, because LiteLLM already maps these four
+    #: levels onto each provider's own scale — an Anthropic thinking budget, an OpenAI
+    #: o-series effort, a Gemini thinking config. Re-deriving that mapping here would mean
+    #: owning a table that changes every time a provider ships a model.
+    #:
+    #: Typed rather than a free string so ``reasoning_effort: hgih`` fails when the spec
+    #: loads, not as a provider 400 in the middle of someone's turn.
+    reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = None
 
 
 class ObservabilitySpec(BaseModel):

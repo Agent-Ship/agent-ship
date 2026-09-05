@@ -36,6 +36,13 @@ _PARAM_TO_FIELD = {
 }
 
 
+#: Params that ``ChatLiteLLM`` has no constructor field for, and so must travel inside
+#: ``model_kwargs`` to reach the provider. Passed as plain constructor kwargs they are
+#: silently swallowed: the spec reads as configured and every request goes out without
+#: them — for ``reasoning_effort``, an agent asking to think hard that never thinks.
+_VIA_MODEL_KWARGS = frozenset({"reasoning_effort"})
+
+
 def resolve_model(model: str, **params: Any) -> BaseChatModel:
     """Build a ``ChatLiteLLM`` chat model for ``model`` with optional params.
 
@@ -73,11 +80,16 @@ def resolve_model(model: str, **params: Any) -> BaseChatModel:
         )
 
     kwargs: dict[str, Any] = {}
+    model_kwargs: dict[str, Any] = {}
     for name, value in params.items():
         if value is None:
             continue
-        field = _PARAM_TO_FIELD.get(name, name)
-        kwargs[field] = value
+        if name in _VIA_MODEL_KWARGS:
+            model_kwargs[name] = value
+        else:
+            kwargs[_PARAM_TO_FIELD.get(name, name)] = value
+    if model_kwargs:
+        kwargs["model_kwargs"] = model_kwargs
 
     # Ask the provider to report usage in the final stream chunk unless the caller overrode it,
     # so a streamed model span carries the same tokens/cost a non-streamed one does (P07).

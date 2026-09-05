@@ -148,6 +148,28 @@ main { flex: 1; display: flex; min-height: 0; }
 .msg.agent .bubble { border-bottom-left-radius: 4px; }
 .msg.pause .bubble { background: var(--amberdim); border-color: var(--amber); color: var(--t1); }
 .msg.failed .bubble { background: var(--reddim); border-color: var(--red); }
+
+/* What the agent is doing right now. A pulsing dot plus a short phrase, in the muted
+   secondary colour so it reads as activity rather than as part of the reply. */
+.status { display: flex; align-items: center; gap: 7px; margin-bottom: 7px;
+  color: var(--t2); font-size: 12px; letter-spacing: .01em; }
+.status::before { content: ""; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent); animation: pulse 1.1s ease-in-out infinite; flex: none; }
+@keyframes pulse { 0%, 100% { opacity: .25; transform: scale(.8); }
+  50% { opacity: 1; transform: scale(1.15); } }
+
+/* The model's thinking: an aside above the reply, collapsed by default. Uses the existing
+   purple pastel rather than a new colour, so it reads as secondary to the answer. */
+.reasoning { margin-bottom: 8px; border: 1px solid var(--purpledim); border-radius: 10px;
+  background: var(--purpledim); font-size: 12px; }
+.reasoning summary { padding: 6px 11px; cursor: pointer; color: var(--purple);
+  font-weight: 500; letter-spacing: .02em; list-style: none; user-select: none; }
+.reasoning summary::-webkit-details-marker { display: none; }
+.reasoning summary::before { content: "\25B8 "; display: inline-block; transition: .12s; }
+.reasoning[open] summary::before { transform: rotate(90deg); }
+.reasoning-body { padding: 0 11px 9px; color: var(--t2); white-space: pre-wrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; line-height: 1.55;
+  max-height: 260px; overflow-y: auto; }
 .who {
   font-size: 10px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase;
   color: var(--t3); margin-bottom: 4px;
@@ -860,6 +882,7 @@ async function streamTurn(text) {
   }
   const body = addMessage("agent", "");
   body.classList.add("caret");
+  showStatus(body, "Working\u2026");
   let text_so_far = "";
   await readSseFrames(response, (frame) => {
     addFrame(frame.type, frame.seq, frame.data);
@@ -872,6 +895,16 @@ async function streamTurn(text) {
     if (frame.type === "error") {
       body.classList.remove("caret");
       addMessage("failed", data.detail || "the stream failed");
+      return;
+    }
+    const status = statusFor(frame.type, data);
+    if (status !== null) showStatus(body, status);
+    if (frame.type === "reasoning") {
+      // Thinking is not the answer: it goes in its own collapsed panel above the reply, so a
+      // reader can watch a slow reasoning model work without it polluting the transcript.
+      const thought = typeof data.content === "string" ? data.content : (data.text || "");
+      if (thought) appendReasoning(body, thought);
+      scrollToEnd();
       return;
     }
     if (data.paused) {
@@ -887,10 +920,54 @@ async function streamTurn(text) {
     }
   });
   body.classList.remove("caret");
+  showStatus(body, "");
+  // The turn is over, so the panel is a record of what it thought, not a live status.
+  const panel = body.parentElement.querySelector(".reasoning summary");
+  if (panel) panel.textContent = "Reasoning";
   if (!text_so_far) body.innerHTML = renderMarkdown("_(no output)_");
   if (chat.resumeToken) {
     addMessage("pause", pauseQuestion(chat.interrupt));
   }
+}
+
+/* What to show on the status line for a frame, or "" to leave it unchanged.
+   Every one of these frames was already arriving and going only to the trace panel, which
+   is collapsed by default — so a turn spending fifteen seconds in a web search looked
+   exactly like a hung one. */
+function statusFor(type, data) {
+  if (type === "reasoning") return "Thinking\u2026";
+  if (type === "tool_call") return "Calling " + (data.tool || "a tool") + "\u2026";
+  if (type === "tool_result") return "Reading " + (data.tool || "tool") + " result\u2026";
+  if (type === "guard") return "Checking output\u2026";
+  // Answer text has started arriving, so the work is done being invisible.
+  if (type === "token" || type === "content") return "";
+  return null;   // null = not a status-bearing frame; leave whatever is showing
+}
+
+/* Show/replace/clear the status line for this message. */
+function showStatus(body, text) {
+  let line = body.parentElement.querySelector(".status");
+  if (!text) { if (line) line.remove(); return; }
+  if (!line) {
+    line = document.createElement("div");
+    line.className = "status";
+    body.parentElement.insertBefore(line, body);
+  }
+  line.textContent = text;
+}
+
+/* Append a chunk of the model's thinking to this message's reasoning panel, creating the
+   panel on the first chunk. Collapsed by default — it is context for a curious reader, not
+   the reply — and labelled with a live "Thinking…" that settles once the answer starts. */
+function appendReasoning(body, thought) {
+  let panel = body.parentElement.querySelector(".reasoning");
+  if (!panel) {
+    panel = document.createElement("details");
+    panel.className = "reasoning";
+    panel.innerHTML = '<summary>Thinking\u2026</summary><div class="reasoning-body"></div>';
+    body.parentElement.insertBefore(panel, body);
+  }
+  panel.querySelector(".reasoning-body").textContent += thought;
 }
 
 /* Pull the displayable text out of a stream frame's data. Token and content

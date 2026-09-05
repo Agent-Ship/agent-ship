@@ -75,6 +75,16 @@ def _json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str, ensure_ascii=False)
 
 
+def reasoning_tokens_of(message: Any) -> int:
+    """How many of a reply's output tokens were spent thinking (0 when it did not think).
+
+    LangChain reports the breakdown under ``usage_metadata.output_token_details.reasoning``.
+    Absent for every non-reasoning model, which is why this returns 0 rather than raising.
+    """
+    details = (getattr(message, "usage_metadata", None) or {}).get("output_token_details") or {}
+    return int(details.get("reasoning") or 0)
+
+
 def _cost_usd(model_id: str, input_tokens: int, output_tokens: int) -> float | None:
     """Price a call from LiteLLM's cost table; ``None`` when the model is unknown or unpriced."""
     if not model_id or not (input_tokens or output_tokens):
@@ -290,6 +300,24 @@ class ObservabilityCallback(AsyncCallbackHandler):
         model_id = self._model_ids.get(run_id, "")
         usage = _usage_from_result(response, model_id, self._latency_ms(run_id))
         span.set_attributes(usage_attributes(usage))
+
+        generations = response.generations or []
+        first = generations[0][0] if generations and generations[0] else None
+        message = getattr(first, "message", None)
+
+        # Spend, not content: always recorded. A reasoning model bills its thinking as output
+        # tokens, so without this breakdown a turn that cost 5x shows no reason why.
+        if thought_tokens := reasoning_tokens_of(message):
+            span.set_attributes({semconv.GEN_AI_USAGE_REASONING_TOKENS: thought_tokens})
+
+        # The thinking itself IS content — chain-of-thought — so it follows the same gate as
+        # prompts and tool arguments rather than getting an exemption for being interesting.
+        if self._capture_content and message is not None:
+            from .engine import split_reasoning
+
+            if thinking := split_reasoning(message)[0]:
+                span.set_attributes({semconv.AS_REASONING: redact_pii(thinking)})
+
         if self._capture_content and (text := _output_text(response)):
             captured = redact_pii(text)
             span.set_attributes(

@@ -105,3 +105,34 @@ def test_the_bare_root_sends_a_browser_to_studio() -> None:
 
     assert resp.status_code in (302, 307)
     assert resp.headers["location"] == "/studio"
+
+
+def test_studio_shows_what_the_agent_is_doing_while_it_works() -> None:
+    """A turn in progress says what it is doing, not just that something is happening.
+
+    Studio showed a blinking caret and nothing else. Tool calls went to the trace panel,
+    which is collapsed by default, so a turn that spent fifteen seconds on a web search
+    looked identical to one that was hung: no tool name, no thinking, no progress.
+
+    Every frame needed was already on the wire — `reasoning`, `tool_call`, `tool_result`
+    are all in the stream contract. This just renders them where the user is looking.
+    """
+    page = STUDIO_PAGE.read_text()
+
+    assert "function statusFor" in page, "no status line is derived from the stream frames"
+    for frame_type in ("reasoning", "tool_call", "tool_result"):
+        assert f'"{frame_type}"' in page, f"{frame_type} frames are not turned into a status"
+    assert "Thinking" in page and "Calling" in page
+
+
+def test_the_status_line_names_the_tool_being_called() -> None:
+    """ "Calling web_search…", not "Running a tool…".
+
+    Which tool is the whole point: it is the difference between "this agent is searching
+    the web" and "this agent is stuck". The name is already in the frame's data.
+    """
+    page = STUDIO_PAGE.read_text()
+
+    status = page[page.index("function statusFor") :]
+    status = status[: status.index("\n}")]
+    assert "data.tool" in status, "the tool name in the frame is not used in the status"

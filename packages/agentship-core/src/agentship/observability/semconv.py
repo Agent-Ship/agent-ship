@@ -103,6 +103,16 @@ GEN_AI_REQUEST_TEMPERATURE = "gen_ai.request.temperature"
 GEN_AI_REQUEST_MAX_TOKENS = "gen_ai.request.max_tokens"
 GEN_AI_USAGE_INPUT_TOKENS = "gen_ai.usage.input_tokens"
 GEN_AI_USAGE_OUTPUT_TOKENS = "gen_ai.usage.output_tokens"
+#: Of the output tokens, how many the model spent thinking. A subset of the output count,
+#: NOT an addition to it — providers bill reasoning as output, and adding it again would
+#: double-count the spend. Recorded whether or not content capture is on: it is a number,
+#: it leaks nothing, and it is the only thing that explains why a reasoning model cost
+#: several times a normal one for the same visible answer.
+GEN_AI_USAGE_REASONING_TOKENS = "gen_ai.usage.reasoning_tokens"
+#: The model's thinking text. Ours (``agentship.``) rather than a ``gen_ai.`` key because
+#: OTel's GenAI conventions have not settled on one; when they do, this moves and the drift
+#: guard will say so. Chain-of-thought is content, so it is gated by ``capture_content``.
+AS_REASONING = "agentship.reasoning"
 GEN_AI_RESPONSE_FINISH_REASONS = "gen_ai.response.finish_reasons"
 GEN_AI_TOOL_NAME = "gen_ai.tool.name"
 GEN_AI_TOOL_CALL_ID = "gen_ai.tool.call.id"
