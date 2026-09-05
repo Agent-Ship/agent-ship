@@ -11,8 +11,20 @@ name: Release
 # not a local file path, because that is where a bad pin or a missing dependency shows up.
 #
 # Publishing uses Trusted Publishing (OIDC): no API token is stored in this repository.
-# Configure each project once at https://pypi.org/manage/account/publishing/ with:
-#   owner Agent-Ship · repo agent-ship · workflow release.yml · environment pypi (or testpypi)
+# Configure each project once at https://pypi.org/manage/account/publishing/ with owner
+# Agent-Ship · repo agent-ship · workflow release.yml · environment pypi-<package>.
+#
+# CLAIMING THE NAMES THE FIRST TIME. PyPI allows at most THREE pending trusted publishers
+# at once, and a pending publisher stops counting once it has been used — publishing turns
+# it into a normal publisher on the project it just created. So the first claim goes in two
+# waves of three, which is what the `packages` input below is for:
+#
+#   1. register pending publishers for core, langgraph, cli
+#   2. Run workflow -> packages: agentship-core,agentship-langgraph,agentship-cli
+#   3. register pending publishers for service, observability, sdk
+#   4. Run workflow -> packages: agentship-service,agentship-observability,agentship-sdk
+#
+# After that all six projects exist and every later release publishes all of them at once.
 # ---------------------------------------------------------------------------------------
 # PAUSED. Automatic triggers are commented out below; this runs only when you start it by
 # hand (Actions -> Release -> Run workflow).
@@ -30,7 +42,40 @@ name: Release
 # Manual-only while paused:
 on:
   workflow_dispatch:
+    inputs:
+      packages:
+        description: 'Which packages to publish — "all", or a comma-separated subset'
+        default: all
+        required: false
 jobs:
+  plan:
+    name: Decide which packages to publish
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      complete: ${{ steps.plan.outputs.complete }}
+    steps:
+      - id: plan
+        name: Resolve the package list
+        run: |
+          all='agentship-core agentship-langgraph agentship-service agentship-observability agentship-cli agentship-sdk'
+          requested='${{ inputs.packages }}'
+          # A tag release always publishes everything; only a manual run may subset.
+          if [ -z "$requested" ] || [ "$requested" = "all" ]; then
+            selected="$all"; complete=true
+          else
+            selected="$(echo "$requested" | tr ',' ' ')"; complete=false
+          fi
+          for pkg in $selected; do
+            case " $all " in
+              *" $pkg "*) ;;
+              *) echo "unknown package: $pkg" >&2; echo "known: $all" >&2; exit 1 ;;
+            esac
+          done
+          echo "matrix=$(printf '%s\n' $selected | jq -R . | jq -sc .)" >> "$GITHUB_OUTPUT"
+          echo "complete=$complete" >> "$GITHUB_OUTPUT"
+          echo "publishing: $selected (complete set: $complete)"
+
   build:
     name: Build and verify distributions
     runs-on: ubuntu-latest
@@ -90,20 +135,14 @@ jobs:
     # everything in packages-dir, and a job may only publish the project its OIDC token
     # is scoped to.
     name: TestPyPI ${{ matrix.package }}
-    needs: build
+    needs: [plan, build]
     runs-on: ubuntu-latest
     strategy:
-      # Do not cancel the other five because one failed — a half-published release is
-      # easier to reason about when you can see exactly which packages made it.
+      # Do not cancel the others because one failed — a half-published release is easier
+      # to reason about when you can see exactly which packages made it.
       fail-fast: false
       matrix:
-        package:
-          - agentship-core
-          - agentship-langgraph
-          - agentship-service
-          - agentship-observability
-          - agentship-cli
-          - agentship-sdk
+        package: ${{ fromJSON(needs.plan.outputs.matrix) }}
     environment:
       name: testpypi-${{ matrix.package }}
       url: https://test.pypi.org/p/${{ matrix.package }}
@@ -133,7 +172,11 @@ jobs:
 
   verify-testpypi:
     name: Install from TestPyPI and smoke-test
-    needs: testpypi
+    needs: [plan, testpypi]
+    # Installing agentship-sdk resolves every sibling, so this can only pass once all six
+    # are on the index. A partial claim run skips it rather than failing on a package that
+    # has deliberately not been published yet.
+    if: needs.plan.outputs.complete == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -173,20 +216,14 @@ jobs:
 
   pypi:
     name: PyPI ${{ matrix.package }}
-    needs: verify-testpypi
+    needs: [plan, verify-testpypi]
     # Only a real tag publishes to PyPI. A workflow_dispatch rehearsal stops at TestPyPI.
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        package:
-          - agentship-core
-          - agentship-langgraph
-          - agentship-service
-          - agentship-observability
-          - agentship-cli
-          - agentship-sdk
+        package: ${{ fromJSON(needs.plan.outputs.matrix) }}
     environment:
       name: pypi-${{ matrix.package }}
       url: https://pypi.org/p/${{ matrix.package }}

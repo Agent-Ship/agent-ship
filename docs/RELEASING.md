@@ -91,6 +91,28 @@ may only publish the project its OIDC token is scoped to.
 Until that exists the publish steps fail — deliberately, rather than falling back to a
 stored secret.
 
+## Claiming the six names the first time
+
+PyPI allows at most **three pending trusted publishers at once**, and a pending publisher
+stops counting once it is used — publishing converts it into a normal publisher on the
+project it just created. So the first claim goes in two waves:
+
+```
+1. Register pending publishers for  agentship-core, agentship-langgraph, agentship-cli
+2. Actions -> Release -> Run workflow
+     packages: agentship-core,agentship-langgraph,agentship-cli
+3. Register pending publishers for  agentship-service, agentship-observability, agentship-sdk
+4. Actions -> Release -> Run workflow
+     packages: agentship-service,agentship-observability,agentship-sdk
+```
+
+Core, langgraph and cli go first because `agentship-sdk` depends on all three — by the time
+it is published, everything it pins already exists on the index.
+
+A partial run skips the install-back-out check, since resolving `agentship-sdk` needs all
+six present. Once every project exists, leave `packages` on `all` and it never comes up
+again.
+
 ## Before the first public release
 
 - [ ] Configure Trusted Publishing for all six projects, on both indexes
