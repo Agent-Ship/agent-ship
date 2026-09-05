@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 license = "Apache-2.0"
 dependencies = [
-    "agentship-core",
+    "agentship-core==0.0.1",
     "langgraph>=0.2",
     "langchain-core>=0.3",
     "langchain-litellm>=0.1",  # the default model source: one `model:` string routes to any provider

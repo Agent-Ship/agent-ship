@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 license = "Apache-2.0"
 dependencies = [
-    "agentship-core",
+    "agentship-core==0.0.1",
     "fastapi>=0.115",
     # SSE framing for :stream and A2A message/stream — owns the event:/data: wire encoding,
     # keepalive comments, and client-disconnect cancellation so we do not hand-frame it.

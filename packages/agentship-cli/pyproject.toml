@@ -10,8 +10,8 @@ readme = "README.md"
 requires-python = ">=3.13"
 license = "Apache-2.0"
 dependencies = [
-    "agentship-core",
-    "agentship-service",        # `agentship serve` builds the app via the service factory
+    "agentship-core==0.0.1",
+    "agentship-service==0.0.1",        # `agentship serve` builds the app via the service factory
     "click>=8",
     "python-dotenv>=1",  # the CLI loads a .env for real runs (scoped to the entry point)
     "uvicorn[standard]>=0.30",  # `agentship serve` runs the ASGI app

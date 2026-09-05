@@ -74,6 +74,12 @@ jobs:
       - name: Install build tooling
         run: python -m pip install --upgrade pip build twine
 
+      # Before building anything: the six versions must match and every sibling
+      # dependency must pin exactly that version. A release with one version missed is a
+      # broken release that looks fine until somebody installs it.
+      - name: Check version lockstep
+        run: python scripts/versions.py --check
+
       - name: Build every wheel and sdist
         run: |
           for pkg in agentship-core agentship-langgraph agentship-service \
