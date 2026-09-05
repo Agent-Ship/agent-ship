@@ -1,15 +1,25 @@
 name: CI
 
-# The gate (operating-model.md): the full offline suite runs on every push/PR to
-# main and feat/** branches. No secrets, offline only — Phase 0 has no network paths.
+# The gate: the full offline suite on every push and PR, on every branch.
+#
+# This used to list `[main, "feat/**"]`, so no push to v1 was ever tested — which is how
+# three modules that eleven tracked files import were absent from HEAD for weeks while the
+# local tree stayed green. A gate that does not run on the branch you work on is not a gate.
 on:
   push:
-    branches: [main, "feat/**"]
+    branches: ["**"]
   pull_request:
-    branches: [main, "feat/**"]
+    branches: ["**"]
+
+# A new push to the same branch cancels the previous run: nobody needs CI results for a
+# commit that has already been replaced.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
+    name: Lint and test (offline)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,15 +28,28 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+          cache: pip
 
-      - name: Install the packages (editable) + dev tooling
+      # All SIX packages. Installing only three left agentship-service,
+      # agentship-observability and the `agentship` meta-package untested: their suites
+      # were collected but their own dependencies were never resolved.
+      - name: Install every package (editable) + dev tooling
         run: |
           python -m pip install --upgrade pip
-          pip install -e packages/agentship-core -e packages/agentship-langgraph -e packages/agentship-cli
+          pip install \
+            -e packages/agentship-core \
+            -e packages/agentship-langgraph \
+            -e packages/agentship-service \
+            -e packages/agentship-observability \
+            -e packages/agentship-cli \
+            -e packages/agentship
           pip install 'pytest>=8' 'pytest-asyncio>=0.23' 'pytest-recording>=0.13' 'ruff>=0.6'
 
-      - name: Lint (ruff)
+      - name: Lint
         run: ruff check .
 
-      - name: Test (pytest)
-        run: pytest packages -q
+      # Bare `pytest` honours testpaths = ["packages", "conformance"]. The old
+      # `pytest packages` silently skipped the whole conformance matrix — the suite whose
+      # entire job is to fail the build when an engine over-declares a capability.
+      - name: Test
+        run: pytest -q
