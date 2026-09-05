@@ -1,0 +1,169 @@
+name: Release
+
+# Releases are cut from a TAG, never from a branch, so what is published is a fixed,
+# named commit that can be checked out again years later.
+#
+#   python scripts/versions.py --set 0.1.0
+#   git commit -am "release: 0.1.0" && git tag v0.1.0 && git push origin v0.1.0
+#
+# TestPyPI runs on every tag. PyPI runs only after TestPyPI has published AND the
+# packages have been installed back out of it and smoke-tested — a real index resolve,
+# not a local file path, because that is where a bad pin or a missing dependency shows up.
+#
+# Publishing uses Trusted Publishing (OIDC): no API token is stored in this repository.
+# Configure each project once at https://pypi.org/manage/account/publishing/ with:
+#   owner Agent-Ship · repo agent-ship · workflow release.yml · environment pypi (or testpypi)
+on:
+  push:
+    tags: ["v*"]
+  # Lets you rehearse the whole thing against TestPyPI without cutting a tag.
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build and verify distributions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - run: python -m pip install --upgrade pip build twine
+
+      - name: Check version lockstep
+        run: python scripts/versions.py --check
+
+      # A tag that disagrees with the packages is the single most confusing release
+      # failure: the index ends up with a version nobody tagged. Fail before publishing.
+      - name: Check the tag matches the packaged version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          packaged=$(python -c "import sys; sys.path.insert(0, 'scripts'); \
+            import versions; print(versions.declared_version(versions.pyprojects()[0]))")
+          if [ "$tag" != "$packaged" ]; then
+            echo "tag $GITHUB_REF_NAME does not match packaged version $packaged" >&2
+            echo "run: python scripts/versions.py --set $tag" >&2
+            exit 1
+          fi
+          echo "tag and packages agree on $packaged"
+
+      - name: Build every wheel and sdist
+        run: |
+          for pkg in agentship-core agentship-langgraph agentship-service \
+                     agentship-observability agentship-cli agentship; do
+            python -m build --outdir dist "packages/$pkg"
+          done
+
+      - name: Check distribution metadata
+        run: twine check dist/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: distributions
+          path: dist/
+
+  testpypi:
+    name: Publish to TestPyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/agentship
+    permissions:
+      id-token: write        # required for Trusted Publishing; no token needed
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: distributions
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          # A re-run of the same tag should not fail the release on an already-uploaded file.
+          skip-existing: true
+
+  verify-testpypi:
+    name: Install from TestPyPI and smoke-test
+    needs: testpypi
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      # The gate that makes TestPyPI worth the extra step: resolve through a REAL index.
+      # Local wheels are installed by file path, which cannot catch a sibling pin that no
+      # index can satisfy or a dependency that was never declared.
+      #
+      # --extra-index-url, not --index-url: the third-party dependencies live on real
+      # PyPI, and only our own packages are on TestPyPI.
+      - name: Install the published packages from TestPyPI
+        run: |
+          python -m pip install --upgrade pip
+          for attempt in 1 2 3 4 5; do
+            if pip install \
+                 --index-url https://test.pypi.org/simple/ \
+                 --extra-index-url https://pypi.org/simple/ \
+                 "agentship[starter]==${GITHUB_REF_NAME#v}"; then
+              break
+            fi
+            echo "index not ready yet, retrying in 20s ($attempt/5)"
+            sleep 20
+          done
+
+      - name: Smoke-test what a user would actually get
+        run: |
+          agentship --help > /dev/null
+          python - <<'EOF'
+          import agentship
+          assert "site-packages" in agentship.__file__, agentship.__file__
+          print("installed from TestPyPI:", agentship.__file__)
+          EOF
+
+  pypi:
+    name: Publish to PyPI
+    needs: verify-testpypi
+    # Only a real tag publishes to PyPI. A workflow_dispatch rehearsal stops at TestPyPI.
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/agentship
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: distributions
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    name: Create the GitHub release
+    needs: pypi
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: distributions
+          path: dist/
+
+      - name: Publish the release with its distributions attached
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes
