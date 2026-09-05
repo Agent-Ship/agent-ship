@@ -12,41 +12,52 @@
    to add/remove one class.
    --------------------------------------------------------------------------- */
 :root {
-  --bg: #08080f;
-  --surface: #0f0f1a;
-  --surface2: #161625;
-  --surface3: #1d1d30;
-  --border: rgba(255,255,255,.07);
-  --borderh: rgba(255,255,255,.13);
-  --t1: #eeeeff;
-  --t2: #9a96c5;
-  --t3: #4e4a72;
-  --accent: #a79df5;
-  --accentdim: rgba(167,157,245,.13);
-  --accentb: rgba(167,157,245,.28);
-  --green: #8fdfc4;
-  --greendim: rgba(143,223,196,.12);
-  --purple: #d3b4f7;
-  --purpledim: rgba(211,180,247,.12);
-  --red: #f0a9a9;
-  --reddim: rgba(240,169,169,.12);
-  --amber: #f3d08a;
-  --amberdim: rgba(243,208,138,.12);
+  --bg: #0d0d0f;
+  --surface: #131316;
+  --surface2: #16161a;
+  --surface3: #1c1c21;
+  --border: #26262c;
+  --borderh: #35353d;
+  --t1: #e8e8ea;
+  --t2: #9a9aa2;
+  --t3: #7d7d85;   /* 4.8:1 on --bg; #6b6b74 was 3.7:1, under AA */
+  --accent: #6e9fff;
+  --onaccent: #0d0d0f;          /* dark text on the light-blue accent: 7.3:1 */
+  --accentdim: rgba(110,159,255,.10);
+  --accentb: rgba(110,159,255,.30);
+  --green: #4ade80;
+  --greendim: rgba(74,222,128,.10);
+  --purple: #9a9aa2;
+  --purpledim: rgba(255,255,255,.045);
+  --red: #f87171;
+  --reddim: rgba(248,113,113,.10);
+  --amber: #fbbf24;
+  --amberdim: rgba(251,191,36,.10);
   --ui: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 }
 html:not(.dark) {
-  --bg: #f5f5fc;
+  --bg: #ffffff;
   --surface: #ffffff;
-  --surface2: #f0f0f8;
-  --surface3: #e8e8f4;
-  --border: rgba(0,0,0,.07);
-  --borderh: rgba(0,0,0,.13);
-  --t1: #18162e;
-  --t2: #5a5676;
-  --t3: #9694b2;
-  --accentdim: rgba(167,157,245,.08);
-  --accentb: rgba(167,157,245,.22);
+  --surface2: #f7f7f8;
+  --surface3: #f0f0f2;
+  --border: #e4e4e7;
+  --borderh: #d0d0d6;
+  --t1: #18181b;
+  --t2: #71717a;
+  --t3: #8e8e97;   /* 4.6:1 on white */
+  --accent: #2563eb;
+  --onaccent: #ffffff;          /* white on the deep-blue accent: 5.5:1 */
+  --accentdim: rgba(37,99,235,.07);
+  --accentb: rgba(37,99,235,.25);
+  --green: #16a34a;
+  --greendim: rgba(22,163,74,.08);
+  --purple: #71717a;
+  --purpledim: rgba(0,0,0,.035);
+  --red: #dc2626;
+  --reddim: rgba(220,38,38,.07);
+  --amber: #d97706;
+  --amberdim: rgba(217,119,6,.09);
 }
 
 * { box-sizing: border-box; }
@@ -149,12 +160,17 @@ main { flex: 1; display: flex; min-height: 0; }
 .msg.pause .bubble { background: var(--amberdim); border-color: var(--amber); color: var(--t1); }
 .msg.failed .bubble { background: var(--reddim); border-color: var(--red); }
 
-/* What the agent is doing right now. A pulsing dot plus a short phrase, in the muted
-   secondary colour so it reads as activity rather than as part of the reply. */
-.status { display: flex; align-items: center; gap: 7px; margin-bottom: 7px;
-  color: var(--t2); font-size: 12px; letter-spacing: .01em; }
-.status::before { content: ""; width: 6px; height: 6px; border-radius: 50%;
-  background: var(--accent); animation: pulse 1.1s ease-in-out infinite; flex: none; }
+/* What the agent did, step by step, one under the other. The last step is in progress
+   (pulsing dot); finished ones settle to a static tick so the list reads as a record of the
+   turn rather than as part of the reply. */
+.steps { margin-bottom: 9px; display: flex; flex-direction: column; gap: 3px; }
+.step { display: flex; align-items: center; gap: 7px; color: var(--t2);
+  font-size: 12px; letter-spacing: .01em; }
+.step::before { content: ""; width: 6px; height: 6px; border-radius: 50%; flex: none;
+  background: var(--accent); animation: pulse 1.1s ease-in-out infinite; }
+.step.done { color: var(--t3); }
+.step.done::before { content: "\2713"; width: auto; height: auto; background: none;
+  animation: none; color: var(--green); font-size: 10px; line-height: 1; }
 @keyframes pulse { 0%, 100% { opacity: .25; transform: scale(.8); }
   50% { opacity: 1; transform: scale(1.15); } }
 
@@ -212,7 +228,7 @@ main { flex: 1; display: flex; min-height: 0; }
 #input:focus { border-color: var(--accentb); background: var(--surface3); }
 #send {
   height: 44px; padding: 0 18px; border: none; border-radius: 11px;
-  background: var(--accent); color: #fff; font-weight: 600; cursor: pointer;
+  background: var(--accent); color: var(--onaccent); font-weight: 600; cursor: pointer;
 }
 #send:disabled { opacity: .45; cursor: not-allowed; }
 .hint { max-width: 780px; margin: 7px auto 0; font-size: 11px; color: var(--t3); display: flex; gap: 12px; }
@@ -268,7 +284,7 @@ main { flex: 1; display: flex; min-height: 0; }
 .card input:focus { border-color: var(--accentb); }
 .checkrow { display: flex; align-items: center; gap: 8px; margin-top: 14px; color: var(--t2); font-size: 13px; }
 .cardactions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
-.primary { background: var(--accent); border: none; color: #fff; font-weight: 600; }
+.primary { background: var(--accent); border: none; color: var(--onaccent); font-weight: 600; }
 .primary:hover { background: var(--accent); filter: brightness(1.08); }
 
 /* --- inline banner (auth failures and other real errors) ----------------- */
@@ -812,7 +828,7 @@ async function invokeTurn(text) {
   // status feature entirely and left the same silent wait it exists to fix.
   const waiting = addMessage("agent", "");
   waiting.classList.add("caret");
-  showStatus(waiting, "Working\u2026");
+  addStep(waiting, "Thinking\u2026");
   try {
     const response = await callApi("/v1/agents/" + encodeURIComponent(chat.selected.name) + ":invoke", {
       method: "POST",
@@ -893,7 +909,7 @@ async function streamTurn(text) {
   }
   const body = addMessage("agent", "");
   body.classList.add("caret");
-  showStatus(body, "Working\u2026");
+  addStep(body, "Thinking\u2026");
   let text_so_far = "";
   await readSseFrames(response, (frame) => {
     addFrame(frame.type, frame.seq, frame.data);
@@ -909,7 +925,7 @@ async function streamTurn(text) {
       return;
     }
     const status = statusFor(frame.type, data);
-    if (status !== null) showStatus(body, status);
+    if (status) addStep(body, status);
     if (frame.type === "reasoning") {
       // Thinking is not the answer: it goes in its own collapsed panel above the reply, so a
       // reader can watch a slow reasoning model work without it polluting the transcript.
@@ -931,7 +947,7 @@ async function streamTurn(text) {
     }
   });
   body.classList.remove("caret");
-  showStatus(body, "");
+  settleSteps(body);
   // The turn is over, so the panel is a record of what it thought, not a live status.
   const panel = body.parentElement.querySelector(".reasoning summary");
   if (panel) panel.textContent = "Reasoning";
@@ -955,16 +971,32 @@ function statusFor(type, data) {
   return null;   // null = not a status-bearing frame; leave whatever is showing
 }
 
-/* Show/replace/clear the status line for this message. */
-function showStatus(body, text) {
-  let line = body.parentElement.querySelector(".status");
-  if (!text) { if (line) line.remove(); return; }
-  if (!line) {
-    line = document.createElement("div");
-    line.className = "status";
-    body.parentElement.insertBefore(line, body);
+/* Add a step to this message's list of what the agent is doing, one under the other.
+   A single line that rewrote itself lost the history: a turn that thought, searched, then
+   read a result showed only the last step, and a fast step (a 19ms tool call) was gone
+   before it could be read. Stacking leaves a record of the turn. */
+function addStep(body, text) {
+  let list = body.parentElement.querySelector(".steps");
+  if (!list) {
+    list = document.createElement("div");
+    list.className = "steps";
+    body.parentElement.insertBefore(list, body);
   }
-  line.textContent = text;
+  const previous = list.lastElementChild;
+  // Consecutive duplicates are noise, not progress (repeated calls to the same tool are
+  // distinguished by their result step landing between them).
+  if (previous && previous.textContent === text) return;
+  if (previous) previous.classList.add("done");
+  const step = document.createElement("div");
+  step.className = "step";
+  step.textContent = text;
+  list.appendChild(step);
+}
+
+/* Mark every step finished — the turn is over, so nothing is still in progress. */
+function settleSteps(body) {
+  const list = body.parentElement.querySelector(".steps");
+  if (list) for (const step of list.children) step.classList.add("done");
 }
 
 /* Append a chunk of the model's thinking to this message's reasoning panel, creating the

@@ -152,6 +152,30 @@ def test_studio_is_never_served_from_a_stale_browser_cache() -> None:
     assert "no-store" in resp.headers.get("cache-control", "")
 
 
+def test_each_step_is_kept_on_its_own_line_not_overwritten() -> None:
+    """The steps stack up, so a finished turn shows what it actually did.
+
+    A single line that rewrites itself loses the history: a turn that thought, searched
+    the web, then read the result showed only whichever step happened to be last, and a
+    fast step was overwritten before it could be read. Stacking them leaves a record —
+    Thinking, Calling web_search, Reading web_search result — one under the other.
+    """
+    page = STUDIO_PAGE.read_text()
+
+    assert "function addStep" in page, "steps still replace one another instead of stacking"
+    steps = page[page.index("function addStep") :]
+    steps = steps[: steps.index("\n}")]
+    assert "appendChild" in steps, "a new step must be appended, not overwrite the previous"
+
+
+def test_the_first_thing_a_turn_says_is_that_it_is_thinking() -> None:
+    """The opening status is "Thinking…" — what the model is actually doing first."""
+    page = STUDIO_PAGE.read_text()
+
+    assert "Thinking" in page
+    assert 'addStep(body, "Working' not in page, "the opening step should say Thinking"
+
+
 def test_a_non_streaming_turn_also_says_it_is_working() -> None:
     """With streaming off there are no frames — and so, previously, no status at all.
 
@@ -163,4 +187,4 @@ def test_a_non_streaming_turn_also_says_it_is_working() -> None:
 
     invoke = page[page.index("async function invokeTurn") :]
     invoke = invoke[: invoke.index("\n}\n")]
-    assert "showStatus" in invoke, "the non-streaming path shows no status"
+    assert "addStep" in invoke, "the non-streaming path shows no status"
