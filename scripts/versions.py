@@ -29,9 +29,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PACKAGES = ROOT / "packages"
 
-#: The distributions released in lockstep. A name here must have a packages/<name>/.
+#: The distributions released in lockstep. Each name is BOTH the distribution name and its
+#: directory under packages/, which is why the meta-package lives in packages/agentship-sdk/
+#: rather than packages/agentship/ — if the two ever diverge, the sibling-pin rewrite below
+#: silently stops matching and every pin goes stale without failing.
 SIBLINGS = (
-    "agentship",
+    "agentship-sdk",
     "agentship-core",
     "agentship-langgraph",
     "agentship-service",

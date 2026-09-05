@@ -46,7 +46,7 @@ DATABASE_URL_ENV_VARS = ("AGENTSHIP_DATABASE_URL", "DATABASE_URL")
 #: opaque lookup miss. An engine not in this map gets a generic hint naming the
 #: conventional ``agentship-<name>`` package.
 ENGINE_PIP_TARGET = {
-    "langgraph": "agentship[langgraph]",
+    "langgraph": "agentship-sdk[langgraph]",
     "pydantic-ai": "agentship-pydantic-ai",
     "pydantic_ai": "agentship-pydantic-ai",
     "adk": "agentship-adk",

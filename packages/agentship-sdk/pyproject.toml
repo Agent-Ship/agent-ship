@@ -3,60 +3,60 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "agentship"
-version = "0.0.1"
+name = "agentship-sdk"
+version = "0.1.0"
 description = "AgentShip — an open, recipe-first harness that wires best-of-breed agent libraries behind small, stable seams. Meta-package: one install for the everyday stack (kernel + default engine + CLI)."
 readme = "README.md"
 requires-python = ">=3.13"
 license = "Apache-2.0"
-# The everyday stack: `pip install agentship` gives a real agent out of the box —
+# The everyday stack: `pip install agentship-sdk` gives a real agent out of the box —
 # kernel + the default LangGraph engine + the CLI. This is the same set as [starter];
-# the extra exists so the documented `pip install "agentship[starter]"` path resolves.
+# the extra exists so the documented `pip install "agentship-sdk[starter]"` path resolves.
 dependencies = [
-    "agentship-core==0.0.1",
-    "agentship-langgraph==0.0.1",
-    "agentship-cli==0.0.1",
+    "agentship-core==0.1.0",
+    "agentship-langgraph==0.1.0",
+    "agentship-cli==0.1.0",
 ]
 
 [project.optional-dependencies]
 # ---- Real extras (resolvable today) ----
 # The batteries-included default stack (DESIGN §9 quickstart / §14 Quickstart).
-# `pip install "agentship[starter]"` == kernel + default engine + CLI. langgraph and
+# `pip install "agentship-sdk[starter]"` == kernel + default engine + CLI. langgraph and
 # cli are already base deps above, so [starter] is the named alias the docs promise;
 # it also becomes the anchor that grows as pillars land (memory/observability/mcp).
 starter = [
-    "agentship-langgraph==0.0.1",
-    "agentship-cli==0.0.1",
+    "agentship-langgraph==0.1.0",
+    "agentship-cli==0.1.0",
 ]
-# The default engine on its own (DESIGN §9; the demo pins `agentship[langgraph]`).
+# The default engine on its own (DESIGN §9; the demo pins `agentship-sdk[langgraph]`).
 langgraph = [
-    "agentship-langgraph==0.0.1",
+    "agentship-langgraph==0.1.0",
 ]
 
 # ---- Pillar placeholders (empty until the pillar's phase lands) ----
 # Each names the dist it will pull in when that phase ships; kept present so the
-# extra name is stable from day one and `pip install agentship[<pillar>]` never
+# extra name is stable from day one and `pip install agentship-sdk[<pillar>]` never
 # warns "extra not provided". Fill with the sibling dist as the phase lands.
 mcp = []            # phase 03 — MCP tools (client) + agent-as-MCP-server  → agentship-mcp
 memory = []         # phase 08 — long-term, cross-session memory           → agentship-memory
 
 # The REST/SSE agent gateway — auth, tenant isolation, SSE, WS live (phase 04).
 service = [
-    "agentship-service==0.0.1",
+    "agentship-service==0.1.0",
 ]
 # OpenTelemetry span tree + exporters (console/Phoenix/Langfuse/LangSmith) and the
 # LiteLLM cost/token callback (phase 07). The kernel's vendor-free tracing contract
 # lives in agentship-core; this extra pulls the OTel pipeline that fulfils it.
 observability = [
-    "agentship-observability==0.0.1",
+    "agentship-observability==0.1.0",
 ]
 
 # Everything real above, aggregated. Grows as the placeholders gain deps.
 all = [
-    "agentship-langgraph==0.0.1",
-    "agentship-cli==0.0.1",
-    "agentship-service==0.0.1",
-    "agentship-observability==0.0.1",
+    "agentship-langgraph==0.1.0",
+    "agentship-cli==0.1.0",
+    "agentship-service==0.1.0",
+    "agentship-observability==0.1.0",
 ]
 
 # Meta-package: no modules of its own, just dependencies.

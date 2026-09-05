@@ -13,7 +13,7 @@ plus `agentship-core`, `-langgraph`, `-service`, `-observability` and `-cli`.
 
 They are only ever tested together, so a mixed set is a combination nobody has run. Before
 this was enforced, the meta-package depended on its siblings with no constraint at all —
-`pip install agentship==0.2.0` could legally resolve `agentship-core==0.9.0`.
+`pip install agentship-sdk==0.2.0` could legally resolve `agentship-core==0.9.0`.
 
 ```bash
 python scripts/versions.py --check       # CI gate; non-zero on any drift

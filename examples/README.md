@@ -83,7 +83,7 @@ A single agent on the default `langgraph` engine, backed by a real model via
 LiteLLM (`openai/gpt-4o-mini`). Needs the engine's deps and a provider key:
 
 ```bash
-pip install 'agentship[langgraph]'
+pip install 'agentship-sdk[langgraph]'
 export OPENAI_API_KEY=sk-...
 
 agentship run examples/assistant.yaml --input "Name three primary colors."
@@ -219,7 +219,7 @@ prompt: You are an autonomous research agent. ...
 ```
 
 ```bash
-pip install 'agentship[langgraph]'   # deepagents ships with the langgraph extra
+pip install 'agentship-sdk[langgraph]'   # deepagents ships with the langgraph extra
 export OPENAI_API_KEY=sk-...
 agentship run examples/autonomous.yaml --input "Research the fastest land animal."
 ```
@@ -415,7 +415,7 @@ observability:
 ```
 
 ```bash
-pip install 'agentship[observability]'   # the OTel pipeline + exporters
+pip install 'agentship-sdk[observability]'   # the OTel pipeline + exporters
 agentship run examples/observability.yaml --input "hi"
 # stdout: echo: hi        (the span prints to stderr)
 ```

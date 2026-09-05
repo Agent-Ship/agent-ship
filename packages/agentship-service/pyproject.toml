@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agentship-service"
-version = "0.0.1"
+version = "0.1.0"
 description = "AgentShip runtime service — the REST/SSE/WS surface over an agent, with pluggable auth adapters and tenant isolation. The irreducible in-app core a gateway cannot replace."
 readme = "README.md"
 requires-python = ">=3.13"
 license = "Apache-2.0"
 dependencies = [
-    "agentship-core==0.0.1",
+    "agentship-core==0.1.0",
     "fastapi>=0.115",
     # SSE framing for :stream and A2A message/stream — owns the event:/data: wire encoding,
     # keepalive comments, and client-disconnect cancellation so we do not hand-frame it.

@@ -97,7 +97,7 @@ def resolve_observer(observability: ObservabilitySpec | None) -> Observer | None
         raise CapabilityError(
             f"observability provider {observability.provider!r} is not installed — "
             f"available: {OBSERVERS.names()} "
-            "(install the adapter, e.g. `pip install agentship[observability]`)"
+            "(install the adapter, e.g. `pip install agentship-sdk[observability]`)"
         )
     return factory(observability)
 

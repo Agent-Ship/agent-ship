@@ -171,7 +171,7 @@ async def _section_observability() -> Section:
             "observability span-tree",
             0,
             0,
-            "agentship-observability not installed — pip install 'agentship[observability]'",
+            "agentship-observability not installed — pip install 'agentship-sdk[observability]'",
         )
 
     from agentship.runtime import build_agent
@@ -225,7 +225,7 @@ def _section_service_contracts(agents_dir: Path | None) -> Section:
             "service contracts",
             0,
             0,
-            "agentship-service not installed — pip install 'agentship[service]'",
+            "agentship-service not installed — pip install 'agentship-sdk[service]'",
         )
 
     import json
