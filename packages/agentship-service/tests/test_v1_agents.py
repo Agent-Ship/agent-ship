@@ -299,11 +299,15 @@ def test_a_pause_that_already_said_something_is_still_a_pause() -> None:
     inferring it from emptiness was the mistake.
     """
     try:
-        reply = _pausing_client().post(
-            "/v1/agents/drafter:invoke",
-            json={"input": "draft an email"},
-            headers={"X-API-Key": "full"},
-        ).json()
+        reply = (
+            _pausing_client()
+            .post(
+                "/v1/agents/drafter:invoke",
+                json={"input": "draft an email"},
+                headers={"X-API-Key": "full"},
+            )
+            .json()
+        )
     finally:
         from agentship.engines.base import ENGINES
 
@@ -319,11 +323,15 @@ def test_a_pause_tells_the_client_what_it_is_asking() -> None:
     Without it a UI can only say "this run paused" and cannot show WHAT is being approved.
     """
     try:
-        reply = _pausing_client().post(
-            "/v1/agents/drafter:invoke",
-            json={"input": "draft an email"},
-            headers={"X-API-Key": "full"},
-        ).json()
+        reply = (
+            _pausing_client()
+            .post(
+                "/v1/agents/drafter:invoke",
+                json={"input": "draft an email"},
+                headers={"X-API-Key": "full"},
+            )
+            .json()
+        )
     finally:
         from agentship.engines.base import ENGINES
 
@@ -347,16 +355,16 @@ def test_the_agent_card_reports_the_AGENT_not_the_engine() -> None:
             # why it advertised checkpointing for agents that had not asked for it.
             build_agent(AgentSpec(name="forgetful", engine="langgraph", model="x")),
             build_agent(
-                AgentSpec(
-                    name="remembers", engine="langgraph", model="x", durability="checkpoint"
-                )
+                AgentSpec(name="remembers", engine="langgraph", model="x", durability="checkpoint")
             ),
         ]
     )
     auth = ApiKeyAuthProvider(EnvApiKeyStore(raw=_KEYS))
-    cards = TestClient(create_app(auth=auth, agents=agents)).get(
-        "/v1/agents", headers={"X-API-Key": "full"}
-    ).json()
+    cards = (
+        TestClient(create_app(auth=auth, agents=agents))
+        .get("/v1/agents", headers={"X-API-Key": "full"})
+        .json()
+    )
     by_name = {c["name"]: c for c in cards}
 
     assert by_name["forgetful"]["capabilities"]["durability"] == "none", (
@@ -375,9 +383,11 @@ def test_an_agent_can_stream_even_when_its_yaml_does_not_say_streaming() -> None
     """
     agents = AgentRegistry([build_agent(AgentSpec(name="quiet", engine="echo"))])
     auth = ApiKeyAuthProvider(EnvApiKeyStore(raw=_KEYS))
-    card = TestClient(create_app(auth=auth, agents=agents)).get(
-        "/v1/agents/quiet", headers={"X-API-Key": "full"}
-    ).json()
+    card = (
+        TestClient(create_app(auth=auth, agents=agents))
+        .get("/v1/agents/quiet", headers={"X-API-Key": "full"})
+        .json()
+    )
 
     assert card["streaming"] is True, "an agent on a streaming engine can be streamed"
     assert card["capabilities"]["streaming"] is True

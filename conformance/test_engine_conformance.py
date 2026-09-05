@@ -31,16 +31,16 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+from agentship.conformance import CAPABILITIES
 from agentship.context import current_run
 from agentship.engines.base import ENGINES
 from agentship.errors import CapabilityError
 from agentship.primitives.model_router import DefaultModelRouter
 from agentship.runtime import build_agent
 from agentship.spec import AgentSpec
+from agentship_langgraph.testing import offline
 
-from conformance.capabilities import CAPABILITIES
 from conformance.conftest import REGISTERED_ENGINE_NAMES
-from conformance.engines import offline
 
 
 def _capabilities(engine_name: str):
@@ -290,7 +290,7 @@ async def test_router_purity(engine_name: str, monkeypatch) -> None:
 
 
 @pytest.mark.parametrize("engine_name", REGISTERED_ENGINE_NAMES)
-@pytest.mark.xfail(reason="P02: durability", strict=False, run=False)
+@pytest.mark.xfail(reason="P11: durable resume", strict=False, run=False)
 def test_durable_resume_after_kill(engine_name: str) -> None:
     """DEFERRED (P02: durability) — resume a killed run from its checkpoint.
 

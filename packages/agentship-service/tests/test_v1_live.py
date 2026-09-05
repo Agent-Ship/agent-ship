@@ -36,9 +36,7 @@ def _client() -> TestClient:
 def test_live_streams_a_turn() -> None:
     """A scoped caller sends a turn and receives session → content → done frames."""
     client = _client()
-    with client.websocket_connect(
-        "/v1/agents/support/live", headers={"x-api-key": "full"}
-    ) as ws:
+    with client.websocket_connect("/v1/agents/support/live", headers={"x-api-key": "full"}) as ws:
         ws.send_json({"input": "hello"})
         first = ws.receive_json()
         assert first["type"] == "session"
@@ -55,9 +53,7 @@ def test_live_streams_a_turn() -> None:
 def test_live_barge_in_starts_a_fresh_turn() -> None:
     """A second turn sent mid-conversation opens a new session and streams again."""
     client = _client()
-    with client.websocket_connect(
-        "/v1/agents/support/live", headers={"x-api-key": "full"}
-    ) as ws:
+    with client.websocket_connect("/v1/agents/support/live", headers={"x-api-key": "full"}) as ws:
         ws.send_json({"input": "first", "session_id": "s1"})
         assert ws.receive_json()["data"]["session_id"] == "s1"
 
@@ -87,9 +83,7 @@ def test_live_forbidden_scope_closes_4403() -> None:
     """An authenticated caller without invoke scope is closed with 4403."""
     client = _client()
     with pytest.raises(WebSocketDisconnect) as excinfo:
-        with client.websocket_connect(
-            "/v1/agents/support/live", headers={"x-api-key": "narrow"}
-        ):
+        with client.websocket_connect("/v1/agents/support/live", headers={"x-api-key": "narrow"}):
             pass
     assert excinfo.value.code == 4403
 
@@ -98,8 +92,6 @@ def test_live_unknown_agent_closes_4403() -> None:
     """An unknown agent is closed 4403 too, so the socket never reveals its absence."""
     client = _client()
     with pytest.raises(WebSocketDisconnect) as excinfo:
-        with client.websocket_connect(
-            "/v1/agents/ghost/live", headers={"x-api-key": "full"}
-        ):
+        with client.websocket_connect("/v1/agents/ghost/live", headers={"x-api-key": "full"}):
             pass
     assert excinfo.value.code == 4403

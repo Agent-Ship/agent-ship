@@ -53,11 +53,7 @@ async def agents_index(request: Request, agents: AgentRegistry = Depends(get_age
     """Public index of every A2A-exposed agent (name + card URL)."""
     root = _base_url(request)
     exposed = [a for a in agents if getattr(a.spec, "a2a", None) and a.spec.a2a.expose]
-    return {
-        "agents": [
-            {"name": a.spec.name, "url": f"{root}/a2a/{a.spec.name}"} for a in exposed
-        ]
-    }
+    return {"agents": [{"name": a.spec.name, "url": f"{root}/a2a/{a.spec.name}"} for a in exposed]}
 
 
 @router.get("/a2a/{name}/.well-known/agent-card.json", include_in_schema=False)
@@ -92,8 +88,6 @@ async def rpc(
     agent = _exposed_or_404(agents, name)
     req = JsonRpcRequest.model_validate(await request.json())
     if req.method == "message/stream":
-        return EventSourceResponse(
-            stream_rpc(agent, caller, req)
-        )
+        return EventSourceResponse(stream_rpc(agent, caller, req))
     response = await handle_rpc(agent, caller, req)
     return JSONResponse(response.model_dump(mode="json", by_alias=True))

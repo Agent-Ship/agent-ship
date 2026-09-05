@@ -65,9 +65,7 @@ def _auth_error(request: Request, exc: AuthError) -> JSONResponse:
     """A failed authentication → 401, an authorization denial (``forbidden``) → 403."""
     if exc.code in _AUTHZ_CODES:
         return problem_response(status=403, title="Forbidden", code=exc.code, detail=str(exc))
-    return problem_response(
-        status=401, title="Unauthorized", code=exc.code, detail=str(exc)
-    )
+    return problem_response(status=401, title="Unauthorized", code=exc.code, detail=str(exc))
 
 
 def _tenant_violation(request: Request, exc: TenantViolation) -> JSONResponse:
@@ -88,23 +86,17 @@ def _thread_busy(request: Request, exc: ThreadBusyError) -> JSONResponse:
 
 def _resume_error(request: Request, exc: ResumeError) -> JSONResponse:
     """A resume token that cannot be replayed → 409 (the run must be restarted)."""
-    return problem_response(
-        status=409, title="Conflict", code="resume_failed", detail=str(exc)
-    )
+    return problem_response(status=409, title="Conflict", code="resume_failed", detail=str(exc))
 
 
 def _capability_error(request: Request, exc: CapabilityError) -> JSONResponse:
     """The request asked for something the engine does not support → 400 Bad Request."""
-    return problem_response(
-        status=400, title="Bad Request", code="unsupported", detail=str(exc)
-    )
+    return problem_response(status=400, title="Bad Request", code="unsupported", detail=str(exc))
 
 
 def _model_error(request: Request, exc: ModelError) -> JSONResponse:
     """An upstream model/provider call failed → 502 Bad Gateway."""
-    return problem_response(
-        status=502, title="Bad Gateway", code="model_error", detail=str(exc)
-    )
+    return problem_response(status=502, title="Bad Gateway", code="model_error", detail=str(exc))
 
 
 def _agentship_error(request: Request, exc: AgentShipError) -> JSONResponse:

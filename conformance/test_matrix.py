@@ -20,13 +20,13 @@ Adding an engine (register it) or a capability (append to
 from __future__ import annotations
 
 import pytest
+from agentship.conformance import CAPABILITIES, Capability, request_capability
 from agentship.engines.base import ENGINES
 from agentship.errors import CapabilityError
 from agentship.runtime import build_agent
+from agentship_langgraph.testing import offline
 
-from conformance.capabilities import CAPABILITIES, Capability, request_capability
 from conformance.conftest import REGISTERED_ENGINE_NAMES
-from conformance.engines import offline
 
 
 def _engine_capabilities(engine_name: str):
@@ -37,17 +37,18 @@ def _engine_capabilities(engine_name: str):
 
 
 def _build_offline_agent(engine_name: str, capability: Capability):
-    """Build an agent on ``engine_name`` that requests ``capability`` (offline).
+    """Build an agent on ``engine_name`` that requests ``capability`` (offline), or ``None``.
 
     Uses the capability's own ``request_spec`` so the built agent genuinely has the
     capability's spec field set (e.g. ``streaming: true``), then the positive cell
     proves the capability against that agent. The engine's offline harness is
-    entered so a model-backed engine never touches the network.
+    entered so a model-backed engine never touches the network. When the capability
+    has **no** ``request_spec`` (no gate-checked spec field expresses it — e.g.
+    ``hitl``, whose interrupt contract is expressed by a custom-authored graph), this
+    returns ``None`` and the capability's ``prove`` cell builds its own agent.
     """
-    assert capability.request_spec is not None, (
-        f"capability {capability.name!r} is declared by {engine_name!r} but has no "
-        f"request_spec — a declared capability must be requestable to be proved"
-    )
+    if capability.request_spec is None:
+        return None
     return build_agent(capability.request_spec(engine_name))
 
 

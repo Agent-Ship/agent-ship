@@ -50,8 +50,10 @@ def test_enabled_limiter_throttles_after_burst() -> None:
     """Enabled with a small burst, requests beyond it get 429 + Retry-After + problem+json."""
     client = _client(rate_limit=True, requests_per_second=0.01, rate_limit_burst=3)
     headers = {"x-api-key": "k1"}
-    ok = [client.post("/v1/agents/support:invoke", headers=headers, json={"input": "hi"})
-          for _ in range(3)]
+    ok = [
+        client.post("/v1/agents/support:invoke", headers=headers, json={"input": "hi"})
+        for _ in range(3)
+    ]
     assert all(r.status_code == 200 for r in ok)
 
     throttled = client.post("/v1/agents/support:invoke", headers=headers, json={"input": "hi"})
@@ -72,13 +74,16 @@ def test_limiter_keys_are_independent() -> None:
     agents = AgentRegistry([build_agent(AgentSpec(name="support", engine="echo"))])
     auth = ApiKeyAuthProvider(EnvApiKeyStore(raw=keys))
     client = TestClient(
-        create_app(auth=auth, agents=agents, rate_limit=True,
-                   requests_per_second=0.01, rate_limit_burst=1)
+        create_app(
+            auth=auth, agents=agents, rate_limit=True, requests_per_second=0.01, rate_limit_burst=1
+        )
     )
-    first = client.post("/v1/agents/support:invoke", headers={"x-api-key": "k1"},
-                        json={"input": "hi"})
+    first = client.post(
+        "/v1/agents/support:invoke", headers={"x-api-key": "k1"}, json={"input": "hi"}
+    )
     assert first.status_code == 200
     # k1 is now exhausted, but k2 has its own full bucket.
-    other = client.post("/v1/agents/support:invoke", headers={"x-api-key": "k2"},
-                        json={"input": "hi"})
+    other = client.post(
+        "/v1/agents/support:invoke", headers={"x-api-key": "k2"}, json={"input": "hi"}
+    )
     assert other.status_code == 200

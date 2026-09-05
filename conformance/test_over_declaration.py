@@ -36,6 +36,11 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import pytest
+from agentship.conformance import (
+    CAPABILITIES,
+    DEFERRED_CAPABILITIES,
+    covered_capability_names,
+)
 from agentship.engines.base import (
     ENGINES,
     Engine,
@@ -44,13 +49,7 @@ from agentship.engines.base import (
     Result,
 )
 from agentship.runtime import build_agent
-
-from conformance.capabilities import (
-    CAPABILITIES,
-    DEFERRED_CAPABILITIES,
-    covered_capability_names,
-)
-from conformance.engines import offline
+from agentship_langgraph.testing import offline
 
 
 class _LiarEngine(Engine):
