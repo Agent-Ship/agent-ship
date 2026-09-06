@@ -53,6 +53,12 @@ on:
         options: [testpypi, pypi, both]
         default: testpypi
         required: false
+      auth:
+        description: 'How to authenticate: the stored token, or Trusted Publishing (OIDC).'
+        type: choice
+        options: [token, trusted-publishing]
+        default: token
+        required: false
 jobs:
   plan:
     name: Decide which packages to publish
@@ -180,7 +186,7 @@ jobs:
         with:
           repository-url: https://test.pypi.org/legacy/
           packages-dir: upload/
-          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
+          password: ${{ inputs.auth == 'trusted-publishing' && '' || secrets.TEST_PYPI_API_TOKEN }}
           # A re-run of the same tag should not fail the release on an already-uploaded file.
           skip-existing: true
 
@@ -275,7 +281,7 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: upload/
-          password: ${{ secrets.PYPI_API_TOKEN }}
+          password: ${{ inputs.auth == 'trusted-publishing' && '' || secrets.PYPI_API_TOKEN }}
           # Re-running a release must not fail on a file that already went up.
           skip-existing: true
 
