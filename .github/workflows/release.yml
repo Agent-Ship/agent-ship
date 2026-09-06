@@ -173,10 +173,14 @@ jobs:
           cp "dist/$prefix-"* upload/
           echo "publishing:"; ls -1 upload
 
+      # Token auth when TEST_PYPI_API_TOKEN is set; Trusted Publishing (OIDC) otherwise.
+      # An empty `password` makes the action fall back to OIDC, so one step covers both and
+      # switching is a matter of setting or clearing a secret.
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
           packages-dir: upload/
+          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
           # A re-run of the same tag should not fail the release on an already-uploaded file.
           skip-existing: true
 
@@ -267,9 +271,13 @@ jobs:
           cp "dist/$prefix-"* upload/
           echo "publishing:"; ls -1 upload
 
+      # Token auth when PYPI_API_TOKEN is set; Trusted Publishing (OIDC) otherwise.
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: upload/
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          # Re-running a release must not fail on a file that already went up.
+          skip-existing: true
 
   github-release:
     name: Create the GitHub release
