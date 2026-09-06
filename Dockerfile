@@ -9,7 +9,7 @@
 # yet: the install below reads the sibling checkout. Once `pip install agentship` resolves
 # from an index, the context becomes `.` and the COPY/install below collapses to one line:
 #
-#     RUN pip install "agentship-sdk[starter,observability]==0.1.0"
+#     RUN pip install "agentship-sdk[starter,observability]==0.0.1"
 
 FROM python:3.13-slim
 

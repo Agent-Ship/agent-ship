@@ -5,7 +5,7 @@
 #
 # INTENDED install once AgentShip is published to PyPI:
 #
-#     pip install "agentship-sdk[starter]==0.1.0"
+#     pip install "agentship-sdk[starter]==0.0.1"
 #
 # `[starter]` is AgentShip's documented default stack (DESIGN §9 / §14 quickstart):
 # kernel + the default LangGraph engine + the CLI — exactly what this demo needs.
@@ -36,7 +36,7 @@ dependencies = [
     # [starter] is the default stack; [observability] adds the OTel span-tree + exporters that
     # the Phase 07 slice (agents/observability.yaml) exports to Opik / LangFuse / LangSmith;
     # [service] adds the /v1 REST/SSE/WS surface the Phase 06-09 slices call.
-    "agentship-sdk[starter,observability,service]==0.1.0",
+    "agentship-sdk[starter,observability,service]==0.0.1",
 ]
 
 [project.optional-dependencies]
