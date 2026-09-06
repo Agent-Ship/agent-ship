@@ -14,6 +14,7 @@ pipeline sitting unreachable behind a manual ``build_observer`` call.
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Callable
 from typing import TYPE_CHECKING
@@ -32,6 +33,9 @@ ObserverFactory = Callable[["ObservabilitySpec"], Observer]
 #: ``otel`` provider is contributed by ``agentship-observability`` (installed via the
 #: ``observability`` extra); the kernel never imports it directly, keeping itself vendor-free.
 OBSERVERS: Registry[ObserverFactory] = Registry("agentship.observers", label="observer")
+
+#: Silent unless the application configures logging, like every other library logger here.
+logger = logging.getLogger("agentship.observability")
 
 
 #: Env var naming the backends every agent's spans ship to, comma-separated (e.g.
@@ -87,6 +91,10 @@ def resolve_observer(observability: ObservabilitySpec | None) -> Observer | None
     """
     if not tracing_is_on(observability):
         return None
+    # Whether the spec NAMED a provider, as opposed to inheriting the default. Pydantic's
+    # model_fields_set is the only way to tell the two apart after construction, and the two
+    # deserve opposite treatment: an unmet request is loud, an unmet default is not.
+    asked_for_provider = observability is not None and "provider" in observability.model_fields_set
     # No block at all still means traced — with whatever backends the environment names.
     if observability is None:
         from ..spec import ObservabilitySpec  # imported here: spec imports this module
@@ -94,11 +102,22 @@ def resolve_observer(observability: ObservabilitySpec | None) -> Observer | None
         observability = ObservabilitySpec(exporters=default_exporters())
     factory = OBSERVERS.get(observability.provider)
     if factory is None:
-        raise CapabilityError(
-            f"observability provider {observability.provider!r} is not installed — "
-            f"available: {OBSERVERS.names()} "
-            "(install the adapter, e.g. `pip install agentship-sdk[observability]`)"
+        # Raise only when the provider was ASKED for. `provider` defaults to "otel" and an
+        # agent with no observability block is still traced, so without this check a stack
+        # without agentship-observability could not run any agent at all — including the
+        # keyless echo example the docs open with. Tracing is fail-open everywhere else; the
+        # one path that runs before tracing exists must not be the exception.
+        if asked_for_provider:
+            raise CapabilityError(
+                f"observability provider {observability.provider!r} is not installed — "
+                f"available: {OBSERVERS.names()} "
+                "(install the adapter, e.g. `pip install agentship-sdk[observability]`)"
+            )
+        logger.debug(
+            "no observability adapter installed; running untraced. "
+            "`pip install agentship-sdk[observability]` to enable tracing."
         )
+        return None
     return factory(observability)
 
 
