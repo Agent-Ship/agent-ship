@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agentship-core"
-version = "0.1.0"
+version = "0.0.1"
 description = "AgentShip kernel — spec, context, runtime, registry, errors, middleware, and the echo engine. The thin, vendor-free harness core."
 readme = "README.md"
 requires-python = ">=3.13"

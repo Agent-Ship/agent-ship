@@ -4,14 +4,14 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agentship-cli"
-version = "0.1.0"
+version = "0.0.1"
 description = "AgentShip CLI — the `agentship` command that loads a YAML spec, builds the agent, and runs (or streams) one turn."
 readme = "README.md"
 requires-python = ">=3.13"
 license = "Apache-2.0"
 dependencies = [
-    "agentship-core==0.1.0",
-    "agentship-service==0.1.0",        # `agentship serve` builds the app via the service factory
+    "agentship-core==0.0.1",
+    "agentship-service==0.0.1",        # `agentship serve` builds the app via the service factory
     "click>=8",
     "python-dotenv>=1",  # the CLI loads a .env for real runs (scoped to the entry point)
     "uvicorn[standard]>=0.30",  # `agentship serve` runs the ASGI app
