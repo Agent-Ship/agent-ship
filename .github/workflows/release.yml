@@ -116,7 +116,7 @@ jobs:
       - name: Build every wheel and sdist
         run: |
           for pkg in agentship-core agentship-langgraph agentship-service \
-                     agentship-observability agentship-cli agentship; do
+                     agentship-observability agentship-cli agentship-sdk; do
             python -m build --outdir dist "packages/$pkg"
           done
 
