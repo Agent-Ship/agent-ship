@@ -38,11 +38,15 @@ jobs:
       - name: Install every package (editable) + dev tooling
         run: |
           python -m pip install --upgrade pip
+          # WITH extras: the suite covers the optional paths too (jwt auth, the postgres
+          # checkpointer, MCP, deepagents). A bare editable install collects those tests and
+          # then fails to import them — locally they passed only because this machine's venv
+          # had accumulated the extras by hand.
           pip install \
-            -e packages/agentship-core \
-            -e packages/agentship-langgraph \
-            -e packages/agentship-service \
-            -e packages/agentship-observability \
+            -e 'packages/agentship-core[postgres,jwt]' \
+            -e 'packages/agentship-langgraph[autonomous,mcp,postgres]' \
+            -e 'packages/agentship-service[serve,a2a]' \
+            -e 'packages/agentship-observability[phoenix]' \
             -e packages/agentship-cli \
             -e packages/agentship-sdk
           pip install -r requirements-dev.txt
@@ -103,13 +107,18 @@ jobs:
         run: |
           python -m venv /tmp/clean
           /tmp/clean/bin/pip install --upgrade pip
+          # Resolve each wheel to its real filename first. Appending "[extras]" to a glob
+          # gives pip the literal string "agentship_core-*[postgres,jwt]", which it rejects
+          # as an invalid wheel filename — the shell never expands a pattern that is glued
+          # to a quoted suffix the way it looks like it should.
+          resolve() { ls "dist/$1-"*.whl | head -1; }
           /tmp/clean/bin/pip install \
-            "dist/agentship_core-"*.whl"[postgres,jwt]" \
-            "dist/agentship_langgraph-"*.whl"[autonomous,mcp,postgres]" \
-            "dist/agentship_service-"*.whl"[serve,a2a]" \
-            "dist/agentship_observability-"*.whl"[phoenix]" \
-            dist/agentship_cli-*.whl \
-            dist/agentship_sdk-*.whl
+            "$(resolve agentship_core)[postgres,jwt]" \
+            "$(resolve agentship_langgraph)[autonomous,mcp,postgres]" \
+            "$(resolve agentship_service)[serve,a2a]" \
+            "$(resolve agentship_observability)[phoenix]" \
+            "$(resolve agentship_cli)" \
+            "$(resolve agentship_sdk)"
           /tmp/clean/bin/pip install -r requirements-dev.txt
 
       # Without this the job could pass by importing the source tree and prove nothing.
