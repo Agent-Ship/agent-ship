@@ -104,9 +104,8 @@ def test_importing_agentship_does_not_load_dotenv(tmp_path, monkeypatch):
     (tmp_path / ".env").write_text(f"{_PROBE}=fromdotenv\n")
     monkeypatch.chdir(tmp_path)
     try:
-        import agentship_cli.main
-
         import agentship
+        import agentship_cli.main
 
         importlib.reload(agentship)
         importlib.reload(agentship_cli.main)

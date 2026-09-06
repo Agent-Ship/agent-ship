@@ -14,11 +14,10 @@ The *interface* for durable resume lands here; a working checkpoint resume is Ph
 from __future__ import annotations
 
 import pytest
+from agentship import ResumeToken as ExportedResumeToken
 from agentship.context import Caller, RunContext, RunMode
 from agentship.engines.base import Engine, EngineCapabilities, Result, ResumeToken
 from agentship.errors import CapabilityError
-
-from agentship import ResumeToken as ExportedResumeToken
 
 
 def _ctx() -> RunContext:

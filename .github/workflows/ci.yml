@@ -45,7 +45,7 @@ jobs:
             -e packages/agentship-observability \
             -e packages/agentship-cli \
             -e packages/agentship-sdk
-          pip install 'pytest>=8' 'pytest-asyncio>=0.23' 'pytest-recording>=0.13' 'ruff>=0.6'
+          pip install -r requirements-dev.txt
 
       - name: Lint
         run: ruff check .
@@ -85,7 +85,7 @@ jobs:
       - name: Build every wheel and sdist
         run: |
           for pkg in agentship-core agentship-langgraph agentship-service \
-                     agentship-observability agentship-cli agentship; do
+                     agentship-observability agentship-cli agentship-sdk; do
             python -m build --outdir dist "packages/$pkg"
           done
           ls -l dist
@@ -110,7 +110,7 @@ jobs:
             "dist/agentship_observability-"*.whl"[phoenix]" \
             dist/agentship_cli-*.whl \
             dist/agentship_sdk-*.whl
-          /tmp/clean/bin/pip install 'pytest>=8' 'pytest-asyncio>=0.23' 'pytest-recording>=0.13'
+          /tmp/clean/bin/pip install -r requirements-dev.txt
 
       # Without this the job could pass by importing the source tree and prove nothing.
       # The src/ layout should make that impossible; this asserts it rather than trusting it.

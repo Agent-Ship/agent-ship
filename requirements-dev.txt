@@ -1,0 +1,10 @@
+# Pinned dev tooling, so CI and a laptop run the SAME checks.
+#
+# These were floating (`ruff>=0.6`). CI installed ruff 0.16.6 while this machine had
+# 0.16.1, and a lint the newer version flags failed the build with no code change and no
+# obvious way to reproduce it locally. A linter that drifts is a linter that fails at
+# random. Bump these deliberately, in a commit, with the fallout fixed in the same commit.
+ruff==0.16.6
+pytest==9.1.1
+pytest-asyncio==1.4.0
+pytest-recording==0.13.4
