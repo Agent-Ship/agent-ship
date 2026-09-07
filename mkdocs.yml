@@ -73,6 +73,8 @@ nav:
       - "0002 — Plain StateGraph supervisor": decisions/0002-plain-stategraph-supervisor.md
       - "0003 — LangGraph checkpointer substrate": decisions/0003-langgraph-checkpointer-as-the-durability-substrate.md
       - "0004 — Consume langchain-mcp-adapters": decisions/0004-consume-langchain-mcp-adapters.md
+      - "0005 — Lockstep versioning, tag-triggered releases": decisions/0005-lockstep-versioning-and-tag-triggered-releases.md
+  - Releasing: RELEASING.md
   - Changelog: CHANGELOG.md
 
 # Fail the build on a broken internal link or a page missing from nav, so a dead link is
