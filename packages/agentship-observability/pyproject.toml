@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agentship-observability"
-version = "0.0.1"
+version = "0.0.2"
 description = "AgentShip observability — the OpenTelemetry implementation of the Observer port: span-tree exporter pipeline (Phoenix/Langfuse/LangSmith), the one-per-process LiteLLM cost/token callback, and the studio launcher. The vendor-free contract lives in agentship-core."
 readme = "README.md"
 requires-python = ">=3.13"
@@ -13,7 +13,7 @@ license = "Apache-2.0"
 # (Phoenix, Langfuse, LangSmith) is reached over OTLP/HTTP, so there is no
 # per-vendor SDK lock-in here (design §5 — we consume, we do not reinvent).
 dependencies = [
-    "agentship-core==0.0.1",
+    "agentship-core==0.0.2",
     "opentelemetry-api>=1.27",
     "opentelemetry-sdk>=1.27",
     "opentelemetry-exporter-otlp-proto-http>=1.27",

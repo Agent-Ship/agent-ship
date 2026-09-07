@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agentship-langgraph"
-version = "0.0.1"
+version = "0.0.2"
 description = "AgentShip LangGraph engine — the default real-model runtime, with a LiteLLM model source that routes one `model:` string to any provider."
 readme = "README.md"
 requires-python = ">=3.13"
 license = "Apache-2.0"
 dependencies = [
-    "agentship-core==0.0.1",
+    "agentship-core==0.0.2",
     "langgraph>=0.2",
     "langchain-core>=0.3",
     "langchain-litellm>=0.1",  # the default model source: one `model:` string routes to any provider

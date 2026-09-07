@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agentship-sdk"
-version = "0.0.1"
+version = "0.0.2"
 description = "AgentShip — an open, recipe-first harness that wires best-of-breed agent libraries behind small, stable seams. Meta-package: one install for the everyday stack (kernel + default engine + CLI)."
 readme = "README.md"
 requires-python = ">=3.13"
@@ -13,9 +13,9 @@ license = "Apache-2.0"
 # kernel + the default LangGraph engine + the CLI. This is the same set as [starter];
 # the extra exists so the documented `pip install "agentship-sdk[starter]"` path resolves.
 dependencies = [
-    "agentship-core==0.0.1",
-    "agentship-langgraph==0.0.1",
-    "agentship-cli==0.0.1",
+    "agentship-core==0.0.2",
+    "agentship-langgraph==0.0.2",
+    "agentship-cli==0.0.2",
 ]
 
 [project.optional-dependencies]
@@ -25,12 +25,12 @@ dependencies = [
 # cli are already base deps above, so [starter] is the named alias the docs promise;
 # it also becomes the anchor that grows as pillars land (memory/observability/mcp).
 starter = [
-    "agentship-langgraph==0.0.1",
-    "agentship-cli==0.0.1",
+    "agentship-langgraph==0.0.2",
+    "agentship-cli==0.0.2",
 ]
 # The default engine on its own (DESIGN §9; the demo pins `agentship-sdk[langgraph]`).
 langgraph = [
-    "agentship-langgraph==0.0.1",
+    "agentship-langgraph==0.0.2",
 ]
 
 # ---- Pillar placeholders (empty until the pillar's phase lands) ----
@@ -42,21 +42,21 @@ memory = []         # phase 08 — long-term, cross-session memory           →
 
 # The REST/SSE agent gateway — auth, tenant isolation, SSE, WS live (phase 04).
 service = [
-    "agentship-service==0.0.1",
+    "agentship-service==0.0.2",
 ]
 # OpenTelemetry span tree + exporters (console/Phoenix/Langfuse/LangSmith) and the
 # LiteLLM cost/token callback (phase 07). The kernel's vendor-free tracing contract
 # lives in agentship-core; this extra pulls the OTel pipeline that fulfils it.
 observability = [
-    "agentship-observability==0.0.1",
+    "agentship-observability==0.0.2",
 ]
 
 # Everything real above, aggregated. Grows as the placeholders gain deps.
 all = [
-    "agentship-langgraph==0.0.1",
-    "agentship-cli==0.0.1",
-    "agentship-service==0.0.1",
-    "agentship-observability==0.0.1",
+    "agentship-langgraph==0.0.2",
+    "agentship-cli==0.0.2",
+    "agentship-service==0.0.2",
+    "agentship-observability==0.0.2",
 ]
 
 # Meta-package: no modules of its own, just dependencies.
