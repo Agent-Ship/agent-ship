@@ -2,7 +2,7 @@
 
 The middleware are mounted in one documented order (outermost → innermost):
 
-    CORS → SecurityHeaders (+ trace id) → Auth (+ TenantScope) → router
+    CORS → SecurityHeaders (+ trace id) → ProblemFallback → Auth (+ TenantScope) → router
 
 so a request is CORS-checked, stamped, rate-limited (when enabled, P04 C5), and
 authenticated *before* any route runs, and a CORS preflight (``OPTIONS``) short-circuits at
@@ -21,7 +21,12 @@ from starlette.middleware.cors import CORSMiddleware
 
 from .build_info import build_info
 from .errors import install_error_handlers
-from .middleware import AuthMiddleware, RateLimitMiddleware, SecurityHeadersMiddleware
+from .middleware import (
+    AuthMiddleware,
+    ProblemFallbackMiddleware,
+    RateLimitMiddleware,
+    SecurityHeadersMiddleware,
+)
 from .registry import AgentRegistry
 from .routers import a2a_router, agents_router, live_router, studio_router, tasks_router
 from .routers.tasks import TaskStore
@@ -71,7 +76,8 @@ def create_app(
 
     # Mount inner → outer. add_middleware makes each call the new outermost layer, so the
     # last call (CORS) runs first on a request and the first call (Auth) runs last. The
-    # resulting request-path order is CORS → SecurityHeaders → RateLimit → Auth → router.
+    # resulting request-path order is
+    # CORS → SecurityHeaders → ProblemFallback → RateLimit → Auth → router.
     app.add_middleware(AuthMiddleware, auth=auth)
     app.add_middleware(
         RateLimitMiddleware,
@@ -79,6 +85,11 @@ def create_app(
         requests_per_second=requests_per_second,
         burst=rate_limit_burst,
     )
+    # Directly inside SecurityHeaders: an exception escaping ANY inner layer (auth, rate
+    # limit, a route) becomes problem+json here, so the response still travels back out
+    # through SecurityHeaders and is stamped like any other. Starlette's own
+    # ServerErrorMiddleware is outside everything the app mounts and cannot be.
+    app.add_middleware(ProblemFallbackMiddleware)
     app.add_middleware(SecurityHeadersMiddleware, hsts=hsts)
     if cors_origins:
         app.add_middleware(

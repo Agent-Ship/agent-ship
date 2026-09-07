@@ -13,6 +13,7 @@ from agentship.auth import ApiKeyAuthProvider, EnvApiKeyStore
 from agentship_service import create_app
 from agentship_service.middleware import (
     AuthMiddleware,
+    ProblemFallbackMiddleware,
     RateLimitMiddleware,
     SecurityHeadersMiddleware,
 )
@@ -100,28 +101,38 @@ def test_hsts_opt_in() -> None:
     assert "strict-transport-security" in resp.headers
 
 
-def test_middleware_order_is_cors_then_headers_then_ratelimit_then_auth() -> None:
-    """The stack is mounted outermost→innermost: CORS, SecurityHeaders, RateLimit, Auth.
+def test_middleware_order_is_cors_then_headers_then_fallback_then_ratelimit_then_auth() -> None:
+    """Mounted outermost→innermost: CORS, SecurityHeaders, ProblemFallback, RateLimit, Auth.
 
     Starlette lists ``user_middleware`` outermost-first (index 0 = added last), so the
-    documented request path CORS → SecurityHeaders → RateLimit → Auth → router is exactly
-    this order.
+    documented request path is exactly this order.
+
+    ProblemFallback sits directly INSIDE SecurityHeaders and outside everything else: it
+    must catch an exception from any inner layer, and its response must still travel back
+    out through SecurityHeaders to be stamped. Moving it inward (inside Auth) leaves an
+    auth-layer crash rendered by Starlette outside the stack — unstamped and untraceable.
     """
     app = create_app(auth=_auth(), cors_origins=["https://app.example"])
     classes = [m.cls for m in app.user_middleware]
     assert classes == [
         CORSMiddleware,
         SecurityHeadersMiddleware,
+        ProblemFallbackMiddleware,
         RateLimitMiddleware,
         AuthMiddleware,
     ]
 
 
 def test_cors_absent_when_no_origins() -> None:
-    """With no allow-list, CORS is not mounted — only SecurityHeaders, RateLimit, Auth."""
+    """With no allow-list, CORS is not mounted — the rest of the stack is unchanged."""
     app = create_app(auth=_auth())
     classes = [m.cls for m in app.user_middleware]
-    assert classes == [SecurityHeadersMiddleware, RateLimitMiddleware, AuthMiddleware]
+    assert classes == [
+        SecurityHeadersMiddleware,
+        ProblemFallbackMiddleware,
+        RateLimitMiddleware,
+        AuthMiddleware,
+    ]
 
 
 def test_options_preflight_short_circuits_before_auth() -> None:

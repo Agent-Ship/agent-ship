@@ -279,6 +279,18 @@ class _PausingEngine:
             interrupt={"action": "confirm_write", "tool": "send_email"},
         )
 
+    async def resume(self, compiled, token, ctx, *, resume_value=None):
+        """Finish the paused run, echoing the human's decision so the test can see it arrive.
+
+        Echoing ``resume_value`` is the point: it proves the decision travelled from the
+        request body through the router into the engine, rather than the endpoint merely
+        returning a plausible-looking 200.
+        """
+        from agentship.engines.base import Result
+
+        approved = (resume_value or {}).get("approved")
+        return Result(output=f"sent, approved={approved}", resume_token=None, interrupt=None)
+
 
 def _pausing_client() -> TestClient:
     """A client over an app serving one agent on the pausing engine."""
@@ -391,3 +403,64 @@ def test_an_agent_can_stream_even_when_its_yaml_does_not_say_streaming() -> None
 
     assert card["streaming"] is True, "an agent on a streaming engine can be streamed"
     assert card["capabilities"]["streaming"] is True
+
+
+# ---- :resume — the paths a pause is actually completed through ----------------------------------
+
+
+def test_resume_completes_a_paused_run() -> None:
+    """The happy path: a pause is resumed with the human's decision and the run finishes.
+
+    Everything else about `:resume` was tested through its refusals — wrong scope, a
+    non-durable engine, a body with no token. None of them proved the endpoint can do the
+    one thing it exists for, so a resume that returned the wrong shape, dropped
+    `resume_value`, or never reached the engine would have gone unnoticed.
+    """
+    client = _pausing_client()
+
+    paused = client.post(
+        "/v1/agents/drafter:invoke", json={"input": "email bob"}, headers={"x-api-key": "full"}
+    ).json()
+    assert paused["paused"] is True, "the run should be waiting on a human"
+
+    resumed = client.post(
+        "/v1/agents/drafter:resume",
+        json={
+            "resume_token": paused["resume_token"],
+            "session_id": paused["session_id"],
+            "resume_value": {"approved": True},
+        },
+        headers={"x-api-key": "full"},
+    )
+
+    assert resumed.status_code == 200
+    body = resumed.json()
+    assert body["output"] == "sent, approved=True", "the decision must reach the engine"
+    assert body["paused"] is False, "a completed resume is not still waiting"
+    assert body["resume_token"] is None, "a finished run hands back no token to resume again"
+    assert body["session_id"] == paused["session_id"], "a resume stays on the same thread"
+
+
+def test_a_malformed_resume_token_is_the_callers_fault() -> None:
+    """A token that is not a token is a 422, not a 500.
+
+    `resume_token` was typed `dict`, so anything JSON-shaped passed the boundary and was
+    validated inside the handler instead. The ValidationError that came back was nobody's
+    registered error, so the caller was told their own bad input was a server fault — and,
+    because Starlette renders that 500 outside the middleware stack, the response also
+    lost every security header and its trace id.
+    """
+    client = _pausing_client()
+
+    response = client.post(
+        "/v1/agents/drafter:resume",
+        json={"resume_token": {"nonsense": True}, "session_id": "s1"},
+        headers={"x-api-key": "full"},
+    )
+
+    assert response.status_code == 422, "a malformed token is a bad request"
+    body = response.json()
+    assert body["code"] == "invalid_request"
+    assert "resume_token" in (body["detail"] or ""), "say which field was wrong"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert body["trace_id"], "the response a caller reports must carry a trace id"

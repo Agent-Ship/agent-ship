@@ -91,3 +91,39 @@ def test_unhandled_error_is_generic_500_without_leak() -> None:
     body = resp.json()
     assert body["code"] == "internal_error"
     assert "secret internal detail" not in resp.text
+
+
+def test_an_unexpected_500_is_as_hardened_as_every_other_response() -> None:
+    """A 500 must carry the same security headers and a trace id as a 200 does.
+
+    Starlette's own backstop, ``ServerErrorMiddleware``, is the OUTERMOST layer — outside
+    anything the app mounts. A 500 it rendered therefore never travelled back out through
+    the security-headers middleware, and that middleware's ``finally`` had already reset
+    the trace-id contextvar before the body was built. So the one response a caller is
+    most likely to report was the one with no headers and ``trace_id: null``.
+    """
+    from agentship_service import create_app
+    from agentship_service.registry import AgentRegistry
+
+    class _Boom:
+        """An auth provider whose authenticate blows up in an unforeseen way."""
+
+        async def authenticate(self, request):
+            """Fail with an error nothing has a handler for."""
+            raise RuntimeError("unforeseen")
+
+    client = TestClient(
+        create_app(auth=_Boom(), agents=AgentRegistry([])), raise_server_exceptions=False
+    )
+    resp = client.get("/v1/agents", headers={"x-api-key": "whatever"})
+
+    assert resp.status_code == 500
+    assert resp.headers["content-type"] == "application/problem+json"
+    assert resp.headers["x-content-type-options"] == "nosniff"
+    assert resp.headers["x-frame-options"] == "DENY"
+    assert resp.headers["referrer-policy"] == "no-referrer"
+    assert resp.headers["x-trace-id"], "a 500 is exactly when a caller needs the trace id"
+    body = resp.json()
+    assert body["code"] == "internal_error"
+    assert body["trace_id"] == resp.headers["x-trace-id"], "header and body must agree"
+    assert "unforeseen" not in resp.text, "still no leak"

@@ -15,7 +15,7 @@ import uuid
 from contextlib import contextmanager
 
 from agentship.context import Caller
-from agentship.engines.base import Result, ResumeToken
+from agentship.engines.base import Result
 from agentship.errors import CapabilityError
 from fastapi import APIRouter, Depends
 from sse_starlette.sse import EventSourceResponse
@@ -130,7 +130,7 @@ async def resume(
     agent = resolve_agent(agents, name)
     with log_turn("resume", name, caller, body.session_id):
         result = await agent.resume(
-            ResumeToken.model_validate(body.resume_token),
+            body.resume_token,
             resume_value=body.resume_value,
             caller=caller,
             session_id=body.session_id,
