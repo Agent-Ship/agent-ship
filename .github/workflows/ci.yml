@@ -141,6 +141,59 @@ jobs:
           /tmp/clean/bin/agentship --help > /dev/null
           /tmp/clean/bin/agentship verify --help > /dev/null
 
+      # Everything above installs all six with EVERY extra, so observability is always
+      # present and the minimal install is never exercised. That is not a gap in coverage,
+      # it is the exact shape 0.0.1 shipped broken in: `provider` defaults to "otel", every
+      # agent is traced, and a stack without agentship-observability could not run ANY
+      # agent. `--help` and an import both passed; only running an agent caught it.
+      #
+      # So: install what `pip install "agentship-sdk[starter]"` actually gives a new user —
+      # no extras, no adapter — and run the README quickstart with the provider keys empty.
+      - name: Install the starter shape, as a new user gets it
+        run: |
+          python -m venv /tmp/starter
+          /tmp/starter/bin/pip install --upgrade pip
+          resolve() { ls "dist/$1-"*.whl | head -1; }
+          # Every sibling by explicit FILE PATH. --find-links is not enough: with the same
+          # version already on PyPI, pip will happily prefer the published wheel over the
+          # local one and silently test the wrong build. A path pins the exact file, while
+          # third-party dependencies still resolve normally from the index.
+          /tmp/starter/bin/pip install \
+            "$(resolve agentship_core)" \
+            "$(resolve agentship_langgraph)" \
+            "$(resolve agentship_service)" \
+            "$(resolve agentship_cli)" \
+            "$(resolve agentship_sdk)[starter]"
+          echo "installed:"; /tmp/starter/bin/pip list | grep -i agentship
+
+      - name: The starter shape must have NO observability adapter
+        run: |
+          if /tmp/starter/bin/pip show agentship-observability > /dev/null 2>&1; then
+            echo "agentship-observability is installed — this step no longer tests the" >&2
+            echo "shape it exists to test. Either [starter] gained the adapter (fine, drop" >&2
+            echo "this guard) or something pulled it in by accident (not fine)." >&2
+            exit 1
+          fi
+          echo "no adapter present, as intended"
+
+      - name: Run the README quickstart, keyless
+        env:
+          OPENAI_API_KEY: ""
+          ANTHROPIC_API_KEY: ""
+        run: |
+          mkdir -p "$RUNNER_TEMP/qs" && cd "$RUNNER_TEMP/qs"
+          cat > hello.yaml <<'EOF'
+          name: hello
+          engine: echo
+          prompt: A stand-in agent that needs no provider.
+          EOF
+          out=$(/tmp/starter/bin/agentship run hello.yaml --input "hi there")
+          echo "$out"
+          case "$out" in
+            *"hi there"*) echo "the starter shape can run an agent" ;;
+            *) echo "the starter shape cannot run an agent" >&2; exit 1 ;;
+          esac
+
       - name: Keep the distributions for inspection
         uses: actions/upload-artifact@v4
         with:

@@ -111,6 +111,12 @@ jobs:
           fi
           echo "tag and packages agree on $packaged"
 
+      # A release with no notes is one nobody wrote. Cheaper to fail here than to discover
+      # it after six uploads, when the version is burned and the page is already public.
+      - name: Check the changelog has a section for this version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: python scripts/changelog.py --check "${GITHUB_REF_NAME#v}"
+
       - name: Build every wheel and sdist
         run: |
           for pkg in agentship-core agentship-langgraph agentship-service \
@@ -324,10 +330,26 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
       - uses: actions/download-artifact@v4
         with:
           name: distributions
           path: dist/
+
+      # The release page and the changelog must not be two accounts of the same release.
+      # `--generate-notes` alone writes the page from PR titles, which is a list of what was
+      # merged rather than a description of what changed — so the curated section wins, and
+      # the generated commit list is appended under it for anyone who wants the detail.
+      - name: Take the notes from the changelog
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          python scripts/changelog.py --section "$version" > "$RUNNER_TEMP/notes.md"
+          echo "notes for $version:"; cat "$RUNNER_TEMP/notes.md"
 
       - name: Publish the release with its distributions attached
         env:
@@ -336,4 +358,5 @@ jobs:
           gh release create "$GITHUB_REF_NAME" dist/* \
             --repo "$GITHUB_REPOSITORY" \
             --title "$GITHUB_REF_NAME" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
             --generate-notes

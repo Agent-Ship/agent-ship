@@ -5,8 +5,16 @@ All notable, user-facing changes to AgentShip, grouped by delivery phase. This f
 (when a non-obvious decision was made) all land. See `.spec-dev/operating-model.md` (DOCS gate) and
 `.spec-dev/STATUS.md` (the authoritative board).
 
-The format is loosely based on [Keep a Changelog](https://keepachangelog.com). This project has not
-yet cut a tagged release; entries are grouped by phase until v0.1 ships (phases 00–10).
+The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
+
+**This file is the source of the GitHub release notes.** `scripts/changelog.py` extracts the
+`## [<version>]` section for a tag and the release workflow publishes it verbatim, so the release
+page and this file cannot drift. A tag whose version has no section here **fails the release
+before anything is published** — see [Releasing](RELEASING.md#release-notes).
+
+Work in progress accumulates under `## [Unreleased]`; cutting a release renames that heading to
+the version and dates it. Entries within a release are grouped by delivery phase, which is how
+they were written before the project cut tagged releases.
 
 <!-- BACKFILLED 2026-08-23 from code+tests during the status-reconciliation pass, not written at
      ship time. Headings were migrated to the post-renumber phase numbers as each phase's docs were
@@ -14,6 +22,18 @@ yet cut a tagged release; entries are grouped by phase until v0.1 ships (phases 
      DoD gate. See the phase-number note at the bottom. -->
 
 ## [Unreleased]
+
+## [0.0.2] — 2026-09-07
+
+**The first release that can actually run an agent.** `0.0.1` claimed the six names on PyPI and
+shipped a build whose quickstart failed on install; this replaces it. `0.0.1` has been yanked.
+
+### Fixed
+- **An agent runs without the observability adapter installed.** `provider` defaults to `otel`
+  and every agent is traced, so `pip install "agentship-sdk[starter]"` — which does not include
+  `agentship-observability` — could not run *any* agent, including the keyless echo example the
+  README opens with. A provider that was explicitly asked for still fails loudly; a defaulted one
+  now logs at debug and runs untraced.
 
 ### Release engineering (2026-09-07)
 - **A tag now publishes.** `release.yml`'s tag trigger had been commented out, so `git push --tags`
@@ -34,6 +54,16 @@ yet cut a tagged release; entries are grouped by phase until v0.1 ships (phases 
   correctly, but it means TestPyPI must be set up before the first tag.
 - **Note on `0.0.1`:** it is live on PyPI and cannot run an agent. PyPI versions are immutable, so
   it will be superseded by `0.0.2` and yanked, never replaced.
+
+## [0.0.1] — 2026-09-06 — YANKED
+
+The name-claiming upload: the six distributions were published to reserve their names on PyPI.
+The build itself was unusable — `agentship run` failed on the README's own quickstart — so this
+version has been **yanked** and is skipped by every resolver. Use `0.0.2` or later. The number
+cannot be reused; PyPI versions are immutable.
+
+Everything below shipped in this release. Entries are grouped by delivery phase rather than by
+version, because the project had not cut a tagged release when they were written.
 
 ### Testing & verification tooling (2026-08-25)
 - Promoted the conformance capability catalogue into the shipped, vendor-free `agentship.conformance`

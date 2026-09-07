@@ -83,13 +83,46 @@ does **not** mean a release per fix. Batch them:
 Releasing on every commit burns numbers and produces an event — six uploads, a tag, a GitHub
 Release, a changelog entry — for changes nobody was waiting on.
 
+## Release notes
+
+**`docs/CHANGELOG.md` is the source; the GitHub release page is a copy of it.** Writing notes
+twice means they disagree, and the copy people actually read — the release page — is the one
+nobody remembers to update.
+
+```bash
+python scripts/changelog.py --check 0.0.2      # is there a section? (the release gate)
+python scripts/changelog.py --section 0.0.2    # print exactly what the page will show
+```
+
+A section is a `## [<version>]` heading and everything up to the next `##`:
+
+```markdown
+## [0.0.2] — 2026-09-07
+
+### Fixed
+- ...
+```
+
+The `build` job runs `--check` **before anything is published**, so a tag with no notes fails
+while it is still free to fix. `github-release` then publishes that section as the release body,
+with GitHub's generated commit list appended below it for anyone who wants the detail.
+
+Day to day: add entries under `## [Unreleased]` as you merge. Cutting a release is then just
+renaming that heading to the version and dating it.
+
 ## Cutting a release
 
 ```bash
+# 1. Notes first — the release gate checks for them, so write them before tagging.
+#    Rename `## [Unreleased]` in docs/CHANGELOG.md to `## [0.0.2] — <date>`.
+python scripts/changelog.py --check 0.0.2
+
+# 2. Version across all six, plus every sibling pin.
 python scripts/versions.py --set 0.0.2
 python scripts/versions.py --check
 make test
 
+# 3. The release commit does nothing else — six version lines and the pins between them.
 git commit -am "release: 0.0.2"
 git tag v0.0.2
 git push origin main --tags
