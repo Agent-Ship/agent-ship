@@ -1,11 +1,10 @@
 # Releasing
 
-> **CI and the release pipeline are currently PAUSED.** Every workflow runs
-> manual-only (Actions → the workflow → Run workflow). To resume, uncomment the `on:`
-> block at the top of the workflow file and delete the PAUSED banner above it.
-
-AgentShip ships as **six distributions released together**: `agentship` (the meta-package)
+AgentShip ships as **six distributions released together**: `agentship-sdk` (the meta-package)
 plus `agentship-core`, `-langgraph`, `-service`, `-observability` and `-cli`.
+
+Pushing a tag matching `v*` is the only thing that publishes. Pushing to a branch runs the
+test gate and reaches no index, so `main` is never one accidental push away from a release.
 
 ## Versioning
 
