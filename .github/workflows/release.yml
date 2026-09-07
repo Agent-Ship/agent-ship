@@ -209,8 +209,6 @@ jobs:
       # Local wheels are installed by file path, which cannot catch a sibling pin that no
       # index can satisfy or a dependency that was never declared.
       #
-      # --extra-index-url, not --index-url: the third-party dependencies live on real
-      # PyPI, and only our own packages are on TestPyPI.
       # The version comes from the packages, not from the ref: a manual rehearsal runs on a
       # branch, where GITHUB_REF_NAME is "main" and "==main" is not a version anyone can
       # resolve. The build job has already proven a tag agrees with this same number.
@@ -222,13 +220,25 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "verifying $version"
 
+      # TestPyPI is a sandbox anyone may upload to, so it carries junk copies of common
+      # names. Its `fastapi` is a decade-old placeholder whose sdist cannot even be built
+      # ("FileNotFoundError: DESCRIPTION.txt"), and it out-numbers the real one — so pip
+      # picks it whichever index is primary. That is not hypothetical: it failed the v0.0.2
+      # release here, after TestPyPI had already published.
+      #
+      # Two flags contain it. Real PyPI is the PRIMARY index, so third-party dependencies
+      # come from where they actually live, and TestPyPI is only consulted for names PyPI
+      # does not have — which is exactly our six at an unreleased version. And
+      # --only-binary :all: refuses sdists outright: the junk on TestPyPI is source-only,
+      # every real dependency ships wheels, and our own packages are pure-Python wheels.
       - name: Install the published packages from TestPyPI
         run: |
           python -m pip install --upgrade pip
           for attempt in 1 2 3 4 5; do
             if pip install \
-                 --index-url https://test.pypi.org/simple/ \
-                 --extra-index-url https://pypi.org/simple/ \
+                 --index-url https://pypi.org/simple/ \
+                 --extra-index-url https://test.pypi.org/simple/ \
+                 --only-binary :all: \
                  "agentship-sdk[starter]==${{ steps.version.outputs.version }}"; then
               exit 0
             fi
