@@ -25,22 +25,14 @@ name: Release
 #   4. Run workflow -> packages: agentship-service,agentship-observability,agentship-sdk
 #
 # After that all six projects exist and every later release publishes all of them at once.
-# ---------------------------------------------------------------------------------------
-# PAUSED. Automatic triggers are commented out below; this runs only when you start it by
-# hand (Actions -> Release -> Run workflow).
-#
-# To re-enable: uncomment the `on:` block and delete this banner. Nothing else changed, so
-# it resumes exactly as it was.
-# ---------------------------------------------------------------------------------------
-# on:
-#   push:
-#     tags: ["v*"]
-  # Lets you rehearse the whole thing against TestPyPI without cutting a tag.
-#   workflow_dispatch:
-
-
-# Manual-only while paused:
 on:
+  # The only thing that publishes. Pushing to a branch never reaches an index; a tag does.
+  push:
+    tags: ["v*"]
+  # Lets you rehearse the whole thing against TestPyPI without cutting a tag. The inputs
+  # below only apply to a manual run — a tag publishes every package, to both indexes.
+  # No secret is set, so both auth paths end at Trusted Publishing (OIDC); see
+  # docs/RELEASING.md.
   workflow_dispatch:
     inputs:
       packages:
@@ -213,6 +205,17 @@ jobs:
       #
       # --extra-index-url, not --index-url: the third-party dependencies live on real
       # PyPI, and only our own packages are on TestPyPI.
+      # The version comes from the packages, not from the ref: a manual rehearsal runs on a
+      # branch, where GITHUB_REF_NAME is "main" and "==main" is not a version anyone can
+      # resolve. The build job has already proven a tag agrees with this same number.
+      - name: Resolve the version being verified
+        id: version
+        run: |
+          version=$(python -c "import sys; sys.path.insert(0, 'scripts'); \
+            import versions; print(versions.declared_version(versions.pyprojects()[0]))")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "verifying $version"
+
       - name: Install the published packages from TestPyPI
         run: |
           python -m pip install --upgrade pip
@@ -220,12 +223,16 @@ jobs:
             if pip install \
                  --index-url https://test.pypi.org/simple/ \
                  --extra-index-url https://pypi.org/simple/ \
-                 "agentship[starter]==${GITHUB_REF_NAME#v}"; then
-              break
+                 "agentship-sdk[starter]==${{ steps.version.outputs.version }}"; then
+              exit 0
             fi
             echo "index not ready yet, retrying in 20s ($attempt/5)"
             sleep 20
           done
+          # Falling out of the loop means five attempts failed. Say so and stop, rather
+          # than letting the smoke-test step below fail with a confusing "command not found".
+          echo "could not install from TestPyPI after 5 attempts" >&2
+          exit 1
 
       - name: Smoke-test what a user would actually get
         run: |
@@ -235,6 +242,30 @@ jobs:
           assert "site-packages" in agentship.__file__, agentship.__file__
           print("installed from TestPyPI:", agentship.__file__)
           EOF
+
+      # `--help` and an import prove the wheels unpack, not that the product works. 0.0.1
+      # passed both and still could not run an agent: observability defaulted to a provider
+      # the starter stack does not install, so the first command in the README failed. Run
+      # the quickstart itself — keyless, in a clean directory, with no provider key in the
+      # environment — so the next release cannot ship that class of bug again.
+      - name: Run the README quickstart, exactly as a new user would
+        env:
+          OPENAI_API_KEY: ""
+          ANTHROPIC_API_KEY: ""
+        run: |
+          mkdir -p "$RUNNER_TEMP/quickstart"
+          cd "$RUNNER_TEMP/quickstart"
+          cat > hello.yaml <<'EOF'
+          name: hello
+          engine: echo
+          prompt: A stand-in agent that needs no provider.
+          EOF
+          out=$(agentship run hello.yaml --input "hi there")
+          echo "$out"
+          case "$out" in
+            *"hi there"*) echo "quickstart works" ;;
+            *) echo "quickstart did not echo the input" >&2; exit 1 ;;
+          esac
 
   pypi:
     name: PyPI ${{ matrix.package }}
