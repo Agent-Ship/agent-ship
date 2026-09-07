@@ -120,16 +120,20 @@ worked" into "a user can install this".
 
 ## Publishing credentials
 
-Publishing supports both, and the workflow picks by input:
+**There is no API token in this repository**, and none is needed. Publishing uses PyPI
+Trusted Publishing (OIDC): GitHub proves the workflow's identity and PyPI issues a
+short-lived credential. Verified — the repo has no secrets at repository, organisation or
+environment scope, and `0.0.1` reached PyPI anyway.
 
-| `auth` input | Credential | When |
+The `auth` input exists to *test* the two paths, not to choose a strategy:
+
+| `auth` input | `password` passed to the publish action | Result |
 |---|---|---|
-| `token` (default, and what a tag uses) | `PYPI_API_TOKEN` / `TEST_PYPI_API_TOKEN` repo secrets | today |
-| `trusted-publishing` | OIDC — no stored secret | once configured below |
+| `token` (default) | `secrets.PYPI_API_TOKEN` — unset, so empty | action falls back to OIDC |
+| `trusted-publishing` | explicitly empty | OIDC |
 
-Trusted Publishing is where this should land: GitHub proves the workflow's identity and PyPI
-issues a short-lived credential, so no long-lived token sits in the repository. Until every
-project is configured for it, releases go out on stored tokens.
+Both end at OIDC while no secret exists. Setting `PYPI_API_TOKEN` is what would switch the
+default to token auth; nothing does that today, and nothing should need to.
 
 Configure once per project at <https://pypi.org/manage/account/publishing/>. All six use
 the same owner/repo/workflow and differ only by **environment**:
@@ -179,12 +183,36 @@ again.
 
 ## State of the six names
 
-- [x] **Reserved on PyPI** (2026-09-06) — all six exist at `0.0.1`
-- [ ] Trusted Publishing configured for all six, on both indexes — publishing currently
-      uses stored tokens (see above); the switch is `auth: trusted-publishing`
-- [ ] Yank `0.0.1` — it is live and cannot run an agent. Yanking hides it from every
-      resolver (`pip install agentship-sdk` skips it) without freeing the number, which is
-      burned regardless. Done per-project on pypi.org → Manage → Releases → Yank.
+Checked 2026-09-07 against both indexes and the repo's GitHub settings.
+
+| | PyPI | TestPyPI |
+|---|---|---|
+| Projects exist | ✅ all six at `0.0.1` | ❌ all six 404 — names free, nothing published |
+| GitHub environments | ✅ `pypi-agentship-*` (six) | ❌ none |
+| Trusted publishers | ✅ working (`0.0.1` published with no secret) | ❌ not registered |
+
+**A tag today would fail at the `testpypi` job**, before PyPI is touched. That is the
+pipeline behaving correctly — `pypi` requires `testpypi` not to have failed — but it means
+TestPyPI has to be set up before the first tag, not during it.
+
+### Remaining before a tag can succeed
+
+- [ ] **Register pending publishers on TestPyPI** for all six, at
+      <https://test.pypi.org/manage/account/publishing/>. Same owner/repo/workflow as PyPI,
+      environment `testpypi-<package>`. TestPyPI enforces the same **three pending publishers
+      at a time** limit, so this goes in two waves exactly like the PyPI claim below.
+      GitHub creates the `testpypi-*` environments itself on first run; the publishers are
+      the part that must exist up front.
+- [ ] **Rehearse** — Actions → Release → Run workflow, `target: testpypi`. This publishes to
+      TestPyPI only and runs the install-back-out check. Do this before any tag.
+- [ ] **Yank `0.0.1` on PyPI** — it is live and cannot run an agent. Yanking hides it from
+      every resolver (`pip install agentship-sdk` skips it) without freeing the number, which
+      is burned regardless. Per-project: pypi.org → Manage → Releases → Yank.
+
+TestPyPI versions are immutable too, so a rehearsal burns the number it publishes. Rehearse
+with the version you intend to release and the tag will find it already there — harmless,
+since `skip-existing: true` covers it, but the install-back-out check is then verifying the
+rehearsal's upload rather than the tag's.
 
 **`0.0.1` is permanent and broken.** It shipped before the observability default was fixed,
 so `agentship run` failed on the README's own quickstart. It cannot be replaced — PyPI

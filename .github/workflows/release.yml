@@ -30,8 +30,9 @@ on:
   push:
     tags: ["v*"]
   # Lets you rehearse the whole thing against TestPyPI without cutting a tag. The inputs
-  # below only apply to a manual run — a tag publishes every package, to both indexes,
-  # with the stored token.
+  # below only apply to a manual run — a tag publishes every package, to both indexes.
+  # No secret is set, so both auth paths end at Trusted Publishing (OIDC); see
+  # docs/RELEASING.md.
   workflow_dispatch:
     inputs:
       packages:

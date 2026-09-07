@@ -28,6 +28,10 @@ yet cut a tagged release; entries are grouped by phase until v0.1 ships (phases 
 - **Documented the release strategy**: ADR 0005 (lockstep versioning, tag-triggered releases from
   `main`, no release branches, `0.0.x` while pre-release) and a rewritten `RELEASING.md` covering
   branching, cadence, and hotfix-from-a-tag.
+- **Recorded the actual state of both indexes.** PyPI has all six projects and working trusted
+  publishers; **TestPyPI has none of the six**, and no `testpypi-*` environments or pending
+  publishers exist. A tag would therefore fail at the `testpypi` job before reaching PyPI —
+  correctly, but it means TestPyPI must be set up before the first tag.
 - **Note on `0.0.1`:** it is live on PyPI and cannot run an agent. PyPI versions are immutable, so
   it will be superseded by `0.0.2` and yanked, never replaced.
 
