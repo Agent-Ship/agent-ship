@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
+from agentship.engines.base import ResumeToken
 from pydantic import BaseModel, Field
 
 #: The kinds of event a stream can carry (SSE ``:stream`` / WS ``/live``):
@@ -77,7 +78,13 @@ class ResumeRequest(BaseModel):
 
     model_config = {"extra": "forbid"}
 
-    resume_token: dict = Field(..., description="The {engine, blob} token from a prior turn.")
+    # Typed, not `dict`: the token is validated at the API boundary, so a malformed one is a
+    # 422 problem document naming the bad field. As a bare `dict` it reached
+    # `ResumeToken.model_validate` inside the handler, where the ValidationError was nobody's
+    # registered error — a 500 that told the caller their own bad input was a server fault.
+    resume_token: ResumeToken = Field(
+        ..., description="The {engine, blob} token from a prior turn."
+    )
     session_id: str = Field(..., description="The paused run's session (its checkpoint thread).")
     resume_value: Any | None = Field(
         default=None, description='The human\'s decision, e.g. {"approved": true}.'
