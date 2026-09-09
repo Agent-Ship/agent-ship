@@ -97,6 +97,68 @@ prompt: A stand-in agent that needs no provider.
 
 ---
 
+## How it fits together
+
+One YAML spec is compiled by an **engine adapter** into somebody else's graph, and run through
+a kernel that imports no vendor library. Everything below is in the tree today — dashed boxes
+are seams with a contract and one implementation, not roadmap.
+
+```mermaid
+flowchart TB
+  classDef spec    fill:#fef3c7,stroke:#b45309,stroke-width:2px,color:#7c2d12
+  classDef system  fill:#ccfbf1,stroke:#0f766e,stroke-width:2.5px,color:#134e4a
+  classDef adapter fill:#dcfce7,stroke:#15803d,stroke-width:1.5px,color:#14532d
+  classDef ext     fill:#f1f5f9,stroke:#64748b,stroke-width:1.5px,color:#334155
+  classDef obs     fill:#dbeafe,stroke:#1e40af,stroke-width:1.5px,color:#1e3a8a
+
+  SPEC["<b>agent.yaml</b><br/><i>[AgentSpec]</i><br/>name · engine · prompt<br/>tools · members"]:::spec
+
+  CLI["<b>agentship-cli</b><br/><i>[Entry point]</i><br/>run · serve · doctor · verify"]:::spec
+  SVC["<b>agentship-service</b><br/><i>[FastAPI]</i><br/>:invoke :resume :stream<br/>WS /live · /a2a · Studio"]:::spec
+
+  subgraph CORE["agentship-core — imports no vendor library"]
+    RT["<b>RunnableAgent</b><br/><i>[Runtime]</i><br/>one turn: run / stream / resume"]:::system
+    SEAM["<b>Seams</b><br/><i>[Contracts]</i><br/>auth · tenancy · tools<br/>observability · A2A"]:::system
+    CONF["<b>Conformance matrix</b><br/><i>[Build gate]</i><br/>fails on a capability<br/>declared but not held"]:::system
+  end
+
+  subgraph ENG["engine adapters — the only code that names a vendor"]
+    ECHO["<b>echo</b><br/><i>[Engine]</i><br/>no provider, no network"]:::adapter
+    LG["<b>langgraph</b><br/><i>[Engine]</i><br/>single · graph · autonomous"]:::adapter
+  end
+
+  subgraph EXT["consumed, never reimplemented"]
+    X1["<b>LangGraph</b><br/><i>[External]</i><br/>StateGraph · checkpointer"]:::ext
+    X2["<b>LiteLLM</b><br/><i>[External]</i><br/>every model provider"]:::ext
+    X3["<b>MCP adapters</b><br/><i>[External]</i><br/>stdio · http · OAuth"]:::ext
+  end
+
+  OBS["<b>agentship-observability</b><br/><i>[OTel exporter]</i><br/>Phoenix / Langfuse / Opik"]:::obs
+
+  SPEC -->|compiled by| CLI
+  SPEC -->|served by| SVC
+  CLI --> CORE
+  SVC --> CORE
+  CORE -->|delegates the turn to| ENG
+  CONF -.->|verifies| ENG
+  LG --> X1
+  LG --> X2
+  LG --> X3
+  CORE -->|emits spans| OBS
+```
+
+**Read it in one line:** your spec never names a vendor, the kernel never imports one, and the
+adapter is the single place that does — so replacing LangGraph is one package, not a rewrite.
+
+`echo` is the proof rather than a toy: it is a second engine with no provider, no network and
+no key, which is why the conformance matrix can tell a capability an engine *declares* from one
+it actually *has*.
+
+**Not in this picture, because it is not built yet:** voice, long-term memory, guardrails/PII,
+sandboxing, evals, and the ADK / Pydantic AI adapters. See [Status](#status).
+
+---
+
 ## What you get
 
 **Multi-agent.** A coordinator classifies the request against each member's `description`,
@@ -210,12 +272,17 @@ agentship db upgrade                   # apply checkpoint migrations (gated)
 ## Status
 
 **Early — `0.x`, so the API can change between minor versions.** Pin exactly if that matters
-to you (`agentship-sdk==0.0.1`).
+to you (`agentship-sdk==0.0.2`).
 
-> **Known issue in 0.0.1.** `pip install "agentship-sdk[starter]"` on its own cannot run an
-> agent: tracing is on by default and the observability adapter is not in that extra, so
-> every run fails with `observability provider 'otel' is not installed`. Install
-> `[starter,observability]` as shown above. Fixed on `main`; ships in 0.0.2.
+> **`0.0.1` is yanked.** It reserved the six names on PyPI but could not run an agent —
+> tracing was on by default and the adapter is not in `[starter]`, so every run failed with
+> `observability provider 'otel' is not installed`. Fixed in **0.0.2**; every resolver skips
+> `0.0.1`, so a plain `pip install` gets the working one.
+
+**What is built** is the diagram above: the spec, the kernel and its seams, two engines, the
+`/v1` service, the CLI, and OpenTelemetry tracing. **What is not built yet:** voice, long-term
+memory, guardrails/PII, sandboxing, evals, and the ADK / Pydantic AI adapters. The JOSS
+figures in [`figures/`](figures/) show the full intended system, not today's tree.
 
 Rebuilt foundation-first: one thin working slice per phase, with tests and a runnable demo
 before anything is called done. Test first, one task per commit, CI green — see
