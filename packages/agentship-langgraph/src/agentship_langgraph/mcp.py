@@ -14,6 +14,7 @@ import asyncio
 import concurrent.futures
 import logging
 import os
+import sys
 from typing import TYPE_CHECKING, Any
 
 from agentship.errors import AgentShipError, CapabilityError
@@ -51,6 +52,31 @@ def mcp_version_ok() -> tuple[bool, str | None]:
     return (_MCP_MIN <= parts < _MCP_MAX_EXCLUSIVE, installed)
 
 
+#: Bare interpreter names in a ``command:``. An author writing these means "Python", not
+#: "whichever Python happens to be first on PATH in the shell that launched this".
+_BARE_PYTHON = frozenset({"python", "python3"})
+
+
+def _interpreter_for(command: str | None) -> str | None:
+    """Resolve a bare ``python``/``python3`` command to the interpreter already running.
+
+    A Python MCP server needs the ``mcp`` package to start. ``command: python3`` resolves
+    through PATH, so outside an activated virtualenv it finds the SYSTEM interpreter, which
+    does not have ``mcp``: the subprocess dies on import and the only symptom the agent sees
+    is ``Connection closed`` — pointing at the server rather than at the interpreter that
+    could not import its dependency. The same spec then passes or fails depending on shell
+    state, which makes it untrustworthy as a test.
+
+    Using :data:`sys.executable` runs the server under the same interpreter as the agent that
+    spawned it, which is by construction an environment where ``mcp`` exists. An absolute path
+    or any non-Python command is left exactly as written — that author named something
+    specific and meant it.
+    """
+    if command in _BARE_PYTHON:
+        return sys.executable
+    return command
+
+
 def to_connections(mcp: dict[str, McpServerSpec]) -> dict[str, dict[str, Any]]:
     """Translate the spec's ``mcp:`` block into a ``MultiServerMCPClient`` connections dict.
 
@@ -63,7 +89,7 @@ def to_connections(mcp: dict[str, McpServerSpec]) -> dict[str, dict[str, Any]]:
         if server.transport == "stdio":
             connections[name] = {
                 "transport": "stdio",
-                "command": server.command,
+                "command": _interpreter_for(server.command),
                 "args": list(server.args),
             }
         else:  # streamable_http
