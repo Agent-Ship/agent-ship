@@ -123,9 +123,19 @@ def _build_processors(turn: VoiceTurn):
             self._turn = turn
 
         async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
-            """Confirm text that TTS reports it is speaking; pass everything through."""
+            """Confirm text that TTS reports it is speaking; pass everything through.
+
+            Two frame types, because Pipecat emits different ones depending on the service.
+            A service with word timestamps emits ``TTSTextFrame`` per word; one without emits
+            a plain ``TextFrame`` (that is what ``push_text_frames=True`` means -- checked in
+            pipecat's own source, not assumed). Listening for only the first would silently
+            record nothing for the majority of services, and "nothing was spoken" is exactly
+            the failure this witness exists to prevent.
+            """
             await super().process_frame(frame, direction)
-            if isinstance(frame, TTSTextFrame) and getattr(frame, "will_be_spoken", True):
+            if isinstance(frame, TTSTextFrame | TextFrame) and getattr(
+                frame, "will_be_spoken", True
+            ):
                 self._turn.confirm_spoken(frame.text)
             await self.push_frame(frame, direction)
 
