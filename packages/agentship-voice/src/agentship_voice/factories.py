@@ -17,8 +17,7 @@ import os
 from dataclasses import dataclass
 
 from agentship.errors import CapabilityError
-
-from .config import VoiceConfig
+from agentship.spec import VoiceSpec
 
 
 @dataclass(frozen=True)
@@ -96,7 +95,7 @@ def _require_key(provider: _Provider, kind: str, name: str) -> str | None:
     return key
 
 
-def make_stt(config: VoiceConfig):
+def make_stt(config: VoiceSpec):
     """Build the speech-to-text service named by ``config.stt``."""
     provider = _resolve("stt", config.stt, STT_PROVIDERS)
     service = _load(provider, "stt", config.stt)
@@ -104,7 +103,7 @@ def make_stt(config: VoiceConfig):
     return service(api_key=key) if key else service()
 
 
-def make_tts(config: VoiceConfig):
+def make_tts(config: VoiceSpec):
     """Build the text-to-speech service named by ``config.tts``.
 
     ``voice_id`` is passed only when the spec sets one, so the provider keeps its own default
@@ -119,7 +118,7 @@ def make_tts(config: VoiceConfig):
     return service(**kwargs)
 
 
-def make_vad(config: VoiceConfig):
+def make_vad(config: VoiceSpec):
     """Build the voice-activity detector named by ``config.vad``.
 
     The VAD is what decides the human has stopped talking. It runs locally, so it is the one
@@ -130,7 +129,7 @@ def make_vad(config: VoiceConfig):
     return analyzer()
 
 
-def preflight(config: VoiceConfig) -> list[str]:
+def preflight(config: VoiceSpec) -> list[str]:
     """Return one message per missing dependency or key, or an empty list when ready.
 
     Collects every problem instead of raising on the first, so a first-time setup is one list

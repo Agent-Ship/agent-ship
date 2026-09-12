@@ -11,7 +11,7 @@ node and the spoken-text witness are all the genuine article. A test that stubbe
 processors instead would prove only that the stubs agree with each other.
 
 :meth:`~agentship_voice.adapters.pipecat_adapter.PipecatAdapter.run` is the thin layer above
-this: it resolves real providers from :class:`~agentship_voice.config.VoiceConfig` and hands
+this: it resolves real providers from :class:`~agentship_voice.config.VoiceSpec` and hands
 them here.
 """
 

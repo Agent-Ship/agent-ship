@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 from agentship.errors import CapabilityError
-from agentship_voice.config import VoiceConfig
+from agentship.spec import VoiceSpec
 from agentship_voice.factories import STT_PROVIDERS, TTS_PROVIDERS, make_stt, make_tts, preflight
 
 pytest.importorskip("pipecat", reason="needs the [pipecat] extra")
@@ -13,7 +13,7 @@ pytest.importorskip("pipecat", reason="needs the [pipecat] extra")
 def test_an_unknown_provider_names_the_real_choices() -> None:
     """A typo in ``stt:`` fails naming what exists, not with a bare KeyError."""
     with pytest.raises(CapabilityError) as raised:
-        make_stt(VoiceConfig(stt="deepgrma"))
+        make_stt(VoiceSpec(stt="deepgrma"))
     message = str(raised.value)
     assert "deepgrma" in message
     assert "deepgram" in message, "the message must list the provider they meant"
@@ -27,7 +27,7 @@ def test_a_missing_key_is_reported_before_the_session_starts(monkeypatch) -> Non
     """
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     with pytest.raises(CapabilityError) as raised:
-        make_tts(VoiceConfig(tts="openai"))
+        make_tts(VoiceSpec(tts="openai"))
     assert "OPENAI_API_KEY" in str(raised.value), "name the variable that is not set"
 
 
@@ -36,7 +36,7 @@ def test_preflight_reports_every_problem_at_once(monkeypatch) -> None:
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("CARTESIA_API_KEY", raising=False)
 
-    problems = preflight(VoiceConfig(stt="openai", tts="cartesia"))
+    problems = preflight(VoiceSpec(stt="openai", tts="cartesia"))
 
     assert len(problems) >= 2, "both missing keys should be reported together"
     assert any("OPENAI_API_KEY" in p for p in problems)
@@ -46,13 +46,13 @@ def test_preflight_reports_every_problem_at_once(monkeypatch) -> None:
 def test_preflight_is_quiet_when_everything_is_ready(monkeypatch) -> None:
     """Nothing missing means nothing reported — silence is the ready signal."""
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
-    assert preflight(VoiceConfig(stt="openai", tts="openai", vad="silero")) == []
+    assert preflight(VoiceSpec(stt="openai", tts="openai", vad="silero")) == []
 
 
 def test_a_local_vad_needs_no_key(monkeypatch) -> None:
     """Silero runs in-process, so it is the one stage that costs nothing and needs no key."""
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    problems = preflight(VoiceConfig(stt="openai", tts="openai", vad="silero"))
+    problems = preflight(VoiceSpec(stt="openai", tts="openai", vad="silero"))
     assert not any("vad" in p for p in problems), "a local model must not ask for credentials"
 
 

@@ -22,7 +22,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from ..config import VoiceConfig
+from agentship.spec import VoiceSpec
+
 from ..turn import VoiceTurn
 
 
@@ -43,7 +44,7 @@ class VoiceAdapter(ABC):
         """
 
     @abstractmethod
-    async def run(self, turn: VoiceTurn, config: VoiceConfig) -> None:
+    async def run(self, turn: VoiceTurn, config: VoiceSpec) -> None:
         """Assemble the pipeline around ``turn`` and serve until cancelled.
 
         Returns only when the session ends. Cancellation is the normal way to stop, so an

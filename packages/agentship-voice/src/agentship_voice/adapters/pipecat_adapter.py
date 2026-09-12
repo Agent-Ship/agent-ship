@@ -23,8 +23,8 @@ import asyncio
 import logging
 
 from agentship.errors import CapabilityError
+from agentship.spec import VoiceSpec
 
-from ..config import VoiceConfig
 from ..turn import VoiceTurn
 from .base import VoiceAdapter
 
@@ -169,7 +169,7 @@ class PipecatAdapter(VoiceAdapter):
         agent_node, witness = _build_processors(turn)
         return agent_node(), witness()
 
-    async def run(self, turn: VoiceTurn, config: VoiceConfig) -> None:
+    async def run(self, turn: VoiceTurn, config: VoiceSpec) -> None:
         """Assemble transport, VAD, STT and TTS around ``turn`` and serve until cancelled.
 
         Every problem with the setup is reported before anything is built. A voice session
@@ -208,7 +208,7 @@ class PipecatAdapter(VoiceAdapter):
         await WorkerRunner(handle_sigint=False).run(PipelineWorker(pipeline))
 
 
-def _build_transport(config: VoiceConfig, vad):
+def _build_transport(config: VoiceSpec, vad):
     """Build the transport named by ``config.transport``, with ``vad`` doing the endpointing.
 
     The VAD belongs to the transport's input parameters rather than to a pipeline stage: it has

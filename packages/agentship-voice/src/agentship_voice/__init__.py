@@ -5,11 +5,12 @@ tracing. Only the hosting differs: a voice framework supplies ears (transport, V
 a mouth (TTS), and this package supplies the agent in the shape that framework expects.
 
 The public surface is deliberately two things: :class:`~agentship_voice.turn.VoiceTurn` (text
-in, spoken text out) and :class:`~agentship_voice.config.VoiceConfig` (the ``voice:`` block).
+in, spoken text out) and :class:`~agentship_voice.config.VoiceSpec` (the ``voice:`` block).
 Adapters live under :mod:`agentship_voice.adapters` and each needs its own extra installed.
 """
 
-from .config import VoiceConfig
+from agentship.spec import VoiceSpec
+
 from .turn import VoiceTurn
 
-__all__ = ["VoiceConfig", "VoiceTurn"]
+__all__ = ["VoiceSpec", "VoiceTurn"]

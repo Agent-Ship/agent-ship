@@ -18,7 +18,8 @@ from __future__ import annotations
 
 import logging
 
-from ..config import VoiceConfig
+from agentship.spec import VoiceSpec
+
 from ..turn import VoiceTurn
 from .base import VoiceAdapter
 
@@ -135,7 +136,7 @@ class LiveKitAdapter(VoiceAdapter):
 
         session.on("conversation_item_added", _on_item)
 
-    async def run(self, turn: VoiceTurn, config: VoiceConfig) -> None:
+    async def run(self, turn: VoiceTurn, config: VoiceSpec) -> None:
         """Assemble a room session around ``turn`` and serve until cancelled."""
         raise NotImplementedError(
             "LiveKitAdapter.run lands with the transport task — host() and witness() work now."

@@ -175,14 +175,14 @@ async def test_run_refuses_to_start_and_says_why(monkeypatch) -> None:
     turns that into a message before anyone picks up.
     """
     from agentship.errors import CapabilityError
-    from agentship_voice.config import VoiceConfig
+    from agentship.spec import VoiceSpec
 
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("CARTESIA_API_KEY", raising=False)
     turn, _node, _witness, _pushed = _hosted()
 
     with pytest.raises(CapabilityError) as raised:
-        await PipecatAdapter().run(turn, VoiceConfig(stt="openai", tts="cartesia"))
+        await PipecatAdapter().run(turn, VoiceSpec(stt="openai", tts="cartesia"))
 
     message = str(raised.value)
     assert "voice cannot start" in message
@@ -193,14 +193,14 @@ async def test_run_refuses_to_start_and_says_why(monkeypatch) -> None:
 async def test_an_unsupported_transport_fails_before_any_provider_is_built(monkeypatch) -> None:
     """An unknown transport names what is supported instead of failing obscurely later."""
     from agentship.errors import CapabilityError
-    from agentship_voice.config import VoiceConfig
+    from agentship.spec import VoiceSpec
 
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     turn, _node, _witness, _pushed = _hosted()
 
     with pytest.raises(CapabilityError) as raised:
         await PipecatAdapter().run(
-            turn, VoiceConfig(stt="openai", tts="openai", transport="carrier-pigeon")
+            turn, VoiceSpec(stt="openai", tts="openai", transport="carrier-pigeon")
         )
 
     assert "carrier-pigeon" in str(raised.value)
