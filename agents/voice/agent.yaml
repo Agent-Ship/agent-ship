@@ -1,0 +1,32 @@
+# A voice agent: the SAME agent the REST service runs, with ears and a mouth in front of it.
+#
+# Nothing here is voice-specific except the `voice:` block. The prompt, model and tools are
+# exactly what a text agent would declare — which is the point: memory, tracing and tools are
+# inherited rather than reimplemented for audio.
+#
+#   pip install "agentship-voice[pipecat]" "pipecat-ai[openai]"
+#   agentship voice serve agents/voice/agent.yaml --dry-run   # check deps + keys, bind nothing
+#   agentship voice serve agents/voice/agent.yaml             # serve over websocket
+name: voice-assistant
+engine: langgraph
+model: openai/gpt-4o-mini
+prompt: >-
+  You are a voice assistant. You are being LISTENED to, not read, so answer in one or two
+  short sentences. Never use lists, headings or markdown — they cannot be heard. If you need
+  to give several items, say them in a sentence.
+
+voice:
+  # Which framework hosts the agent. `livekit` runs the same agent in a LiveKit session.
+  framework: pipecat
+  # Ears and mouth. Both are OpenAI here so one key runs the whole demo; deepgram + cartesia
+  # is the lower-latency pairing and changes nothing else in this file.
+  stt: openai
+  tts: openai
+  # Decides when you have stopped talking. Runs locally, costs nothing, needs no key.
+  vad: silero
+  transport: websocket
+  # You can cut the agent off mid-sentence. What it had already SAID is what goes into the
+  # conversation history — not what it was going to say.
+  allow_interruptions: true
+  # Target time-to-first-audio. Recorded so a run can be measured against it.
+  latency_budget_ms: 850

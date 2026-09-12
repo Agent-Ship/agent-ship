@@ -20,3 +20,6 @@ agents/research_team/notes/*.md
 # Runtime logs from `make run`/demos — never part of the repo.
 tools.log
 *.log
+
+# Audio written by demos/talk.py — artefacts of a run, not source.
+voice-out/
