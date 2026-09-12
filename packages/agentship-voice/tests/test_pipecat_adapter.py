@@ -164,3 +164,44 @@ async def test_the_witness_ignores_text_that_will_not_be_spoken() -> None:
 def test_a_missing_extra_is_one_actionable_line() -> None:
     """With pipecat present there is nothing to report; the message names the install."""
     assert PipecatAdapter().missing_dependency() is None
+
+
+@pytest.mark.asyncio
+async def test_run_refuses_to_start_and_says_why(monkeypatch) -> None:
+    """A session with missing keys fails at setup with every problem listed.
+
+    The failure a voice agent must never have is the silent one: it connects, the human speaks,
+    and nothing comes back because a provider rejected the call. Reporting at assembly time
+    turns that into a message before anyone picks up.
+    """
+    from agentship.errors import CapabilityError
+    from agentship_voice.config import VoiceConfig
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("CARTESIA_API_KEY", raising=False)
+    turn, _node, _witness, _pushed = _hosted()
+
+    with pytest.raises(CapabilityError) as raised:
+        await PipecatAdapter().run(turn, VoiceConfig(stt="openai", tts="cartesia"))
+
+    message = str(raised.value)
+    assert "voice cannot start" in message
+    assert "OPENAI_API_KEY" in message, "each missing piece is named"
+
+
+@pytest.mark.asyncio
+async def test_an_unsupported_transport_fails_before_any_provider_is_built(monkeypatch) -> None:
+    """An unknown transport names what is supported instead of failing obscurely later."""
+    from agentship.errors import CapabilityError
+    from agentship_voice.config import VoiceConfig
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    turn, _node, _witness, _pushed = _hosted()
+
+    with pytest.raises(CapabilityError) as raised:
+        await PipecatAdapter().run(
+            turn, VoiceConfig(stt="openai", tts="openai", transport="carrier-pigeon")
+        )
+
+    assert "carrier-pigeon" in str(raised.value)
+    assert "websocket" in str(raised.value), "say which transports exist"

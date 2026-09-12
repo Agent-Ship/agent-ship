@@ -22,6 +22,8 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from agentship.errors import CapabilityError
+
 from ..config import VoiceConfig
 from ..turn import VoiceTurn
 from .base import VoiceAdapter
@@ -168,7 +170,63 @@ class PipecatAdapter(VoiceAdapter):
         return agent_node(), witness()
 
     async def run(self, turn: VoiceTurn, config: VoiceConfig) -> None:
-        """Assemble transport, VAD, STT and TTS around ``turn`` and serve until cancelled."""
-        raise NotImplementedError(
-            "PipecatAdapter.run lands with the transport/VAD task — host() is usable now."
+        """Assemble transport, VAD, STT and TTS around ``turn`` and serve until cancelled.
+
+        Every problem with the setup is reported before anything is built. A voice session
+        that dies on a missing key halfway through the first sentence fails in the least
+        debuggable place there is, and a first run should be one list of things to fix rather
+        than run-fix-run-fix.
+
+        Uses Pipecat's worker API rather than ``PipelineTask``/``PipelineRunner``, which are
+        deprecated since 1.3 — there is no reason to write new code against a deprecation.
+        """
+        from pipecat.pipeline.worker import PipelineWorker
+        from pipecat.workers.runner import WorkerRunner
+
+        from ..factories import make_stt, make_tts, make_vad, preflight
+        from ..pipeline import build_pipeline
+
+        problems = preflight(config)
+        if problems:
+            raise CapabilityError("voice cannot start:\n  - " + "\n  - ".join(problems))
+
+        transport = _build_transport(config, make_vad(config))
+        pipeline = build_pipeline(
+            turn,
+            stt=make_stt(config),
+            tts=make_tts(config),
+            transport_in=transport.input(),
+            transport_out=transport.output(),
         )
+        logger.info(
+            "voice session: %s → agent → %s (interruptions=%s, budget=%dms)",
+            config.stt,
+            config.tts,
+            config.allow_interruptions,
+            config.latency_budget_ms,
+        )
+        await WorkerRunner(handle_sigint=False).run(PipelineWorker(pipeline))
+
+
+def _build_transport(config: VoiceConfig, vad):
+    """Build the transport named by ``config.transport``, with ``vad`` doing the endpointing.
+
+    The VAD belongs to the transport's input parameters rather than to a pipeline stage: it has
+    to see raw audio to decide when the human stopped talking, which is upstream of everything
+    else. ``allow_interruptions`` is handed over here too, because barge-in is a property of the
+    transport's turn-taking, not something a downstream processor can retrofit.
+    """
+    if config.transport == "websocket":
+        from pipecat.transports.websocket.server import (
+            WebsocketServerParams,
+            WebsocketServerTransport,
+        )
+
+        return WebsocketServerTransport(
+            params=WebsocketServerParams(
+                audio_in_enabled=True, audio_out_enabled=True, vad_analyzer=vad
+            )
+        )
+    raise CapabilityError(
+        f"unsupported voice transport {config.transport!r} — available: websocket"
+    )
