@@ -217,6 +217,7 @@ main { flex: 1; display: flex; min-height: 0; }
 .welcome h2 { margin: 14px 0 6px; font-size: 19px; color: var(--t1); letter-spacing: -.02em; }
 
 /* --- composer ------------------------------------------------------------ */
+#talk.live { background: var(--bad, #c0392b); color: #fff; }
 #composer { flex: none; border-top: 1px solid var(--border); background: var(--surface); padding: 12px 18px 14px; }
 .composerinner { max-width: 780px; margin: 0 auto; display: flex; gap: 9px; align-items: flex-end; }
 #input {
@@ -365,6 +366,7 @@ main { flex: 1; display: flex; min-height: 0; }
       <div id="composer">
         <div class="composerinner">
           <textarea id="input" rows="1" placeholder="Send a message…  (Enter to send, Shift+Enter for a newline)"></textarea>
+          <button id="talk" title="Talk to this agent (needs a voice: block)">Talk</button>
           <button id="send">Send</button>
         </div>
         <div class="hint">
@@ -1137,6 +1139,111 @@ function start() {
 }
 
 start();
+
+/* --- voice ---------------------------------------------------------------- */
+/* Talk to the agent over WS /v1/agents/{name}/voice.
+ *
+ * The socket carries raw 16-bit PCM in both directions — no protobuf, no client library — so
+ * this is the whole client: capture, send, receive, play. The credential rides the
+ * `bearer` subprotocol because a browser cannot set headers on a WebSocket handshake. */
+const VOICE_RATE = 16000;
+let voice = null;   // { ws, ctx, node, stream, playAt } while a call is up
+
+// Whether a call is currently up.
+function talking() { return voice !== null; }
+
+// Start or stop the call, depending on which we are in.
+async function toggleTalk() {
+  if (talking()) { stopTalk(); return; }
+  if (!chat.selected) { showBanner({ detail: "Pick an agent first.", code: "no_agent" }, false); return; }
+  try { await startTalk(); }
+  catch (err) { stopTalk(); showBanner({ detail: "Voice failed: " + (err && err.message ? err.message : err), code: "voice_failed" }, false); }
+}
+
+// Open the mic and the socket, and wire each to the other.
+async function startTalk() {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    // Echo cancellation matters here: without it the agent hears its own voice through the
+    // speakers and answers itself.
+    audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+  });
+  const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: VOICE_RATE });
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  const url = proto + "//" + location.host + "/v1/agents/" + encodeURIComponent(chat.selected.name) + "/voice";
+  const ws = new WebSocket(url, ["bearer", apiKey()]);
+  ws.binaryType = "arraybuffer";
+
+  voice = { ws, ctx, stream, node: null, playAt: 0 };
+  el("talk").classList.add("live");
+  el("talk").textContent = "Stop";
+
+  ws.onmessage = (event) => { if (event.data instanceof ArrayBuffer) playChunk(event.data); };
+  ws.onclose = (event) => {
+    // 4404 means this agent has no voice: block — worth saying, rather than a silent no-op.
+    if (event.code === 4404) showBanner({ detail: "This agent has no `voice:` block.", code: "not_voice" }, false);
+    else if (event.code === 4503) showBanner({ detail: "This server has no voice package installed.", code: "voice_unavailable" }, false);
+    else if (event.code === 4401 || event.code === 4403) showBanner({ detail: "Not allowed to talk to this agent.", code: "forbidden" }, true);
+    stopTalk();
+  };
+  ws.onerror = () => showBanner({ detail: "Voice socket error.", code: "voice_socket" }, false);
+
+  await new Promise((resolve, reject) => {
+    ws.onopen = resolve;
+    setTimeout(() => reject(new Error("timed out opening the voice socket")), 8000);
+  });
+
+  const source = ctx.createMediaStreamSource(stream);
+  const node = ctx.createScriptProcessor(1024, 1, 1);
+  node.onaudioprocess = (event) => {
+    if (!voice || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(toPcm16(event.inputBuffer.getChannelData(0)));
+  };
+  source.connect(node);
+  node.connect(ctx.destination);
+  voice.node = node;
+}
+
+// Close everything, in the order that avoids a click of leftover audio.
+function stopTalk() {
+  if (!voice) return;
+  const { ws, ctx, node, stream } = voice;
+  voice = null;
+  try { if (node) node.disconnect(); } catch (e) {}
+  try { stream.getTracks().forEach((t) => t.stop()); } catch (e) {}
+  try { if (ws.readyState === WebSocket.OPEN) ws.close(1000); } catch (e) {}
+  try { ctx.close(); } catch (e) {}
+  el("talk").classList.remove("live");
+  el("talk").textContent = "Talk";
+}
+
+// Float samples (-1..1) to the 16-bit PCM the server expects.
+function toPcm16(samples) {
+  const out = new Int16Array(samples.length);
+  for (let i = 0; i < samples.length; i++) {
+    const clamped = Math.max(-1, Math.min(1, samples[i]));
+    out[i] = clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff;
+  }
+  return out.buffer;
+}
+
+// Queue a chunk of the agent's speech so chunks play back-to-back instead of on top of
+// each other — scheduling each one after the last keeps the reply a single voice.
+function playChunk(buffer) {
+  if (!voice) return;
+  const pcm = new Int16Array(buffer);
+  const frames = voice.ctx.createBuffer(1, pcm.length, VOICE_RATE);
+  const channel = frames.getChannelData(0);
+  for (let i = 0; i < pcm.length; i++) channel[i] = pcm[i] / 0x8000;
+  const source = voice.ctx.createBufferSource();
+  source.buffer = frames;
+  source.connect(voice.ctx.destination);
+  const now = voice.ctx.currentTime;
+  voice.playAt = Math.max(now, voice.playAt || now);
+  source.start(voice.playAt);
+  voice.playAt += frames.duration;
+}
+
+el("talk").addEventListener("click", toggleTalk);
 </script>
 </body>
 </html>

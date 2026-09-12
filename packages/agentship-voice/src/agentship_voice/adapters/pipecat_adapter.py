@@ -206,7 +206,7 @@ class PipecatAdapter(VoiceAdapter):
             config.latency_budget_ms,
         )
         runner = WorkerRunner(handle_sigint=False)
-        runner.add_workers(PipelineWorker(pipeline))
+        await runner.add_workers(PipelineWorker(pipeline))
         await runner.run()
 
 

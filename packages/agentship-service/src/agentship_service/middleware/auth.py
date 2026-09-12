@@ -59,6 +59,8 @@ class AuthMiddleware:
 
         # HTTPConnection is the shared base of Request and WebSocket; the auth providers
         # only read headers, so it serves both an HTTP request and a WS handshake.
+        if scope["type"] == "websocket":
+            scope = _credential_from_subprotocol(scope)
         connection = HTTPConnection(scope)
         try:
             caller = await self._auth.authenticate(connection)
@@ -122,3 +124,34 @@ def require_scope(verb: str):
         return caller
 
     return dependency
+
+
+#: The subprotocol a browser uses to carry a credential on a WebSocket handshake.
+#: ``Sec-WebSocket-Protocol: bearer, <token>``.
+_BEARER_SUBPROTOCOL = "bearer"
+
+
+def _credential_from_subprotocol(scope: dict) -> dict:
+    """Return ``scope`` with a WebSocket subprotocol credential promoted to a header.
+
+    A browser cannot set headers on a WebSocket handshake — ``WebSocket()`` takes a URL and a
+    subprotocol list and nothing else. It *can* send ``Sec-WebSocket-Protocol``, which is why
+    that is the standard way to carry a token, and why Studio could not otherwise talk to its
+    own service at all.
+
+    Promoting it to an ``authorization`` header here means every auth provider keeps reading
+    headers and nothing else: the browser's constraint is handled once, at the edge, instead of
+    each provider growing a second way to find a credential. A handshake that already carries
+    an ``authorization`` or ``x-api-key`` header is left alone — an explicit header wins.
+
+    The token is NOT accepted from the query string: URLs are logged by proxies and leak into
+    referrers, which is exactly the kind of credential exposure a header avoids.
+    """
+    headers = scope.get("headers", [])
+    if any(name in (b"authorization", b"x-api-key") for name, _ in headers):
+        return scope
+    protocols = [p.strip() for p in scope.get("subprotocols", [])]
+    if len(protocols) < 2 or protocols[0] != _BEARER_SUBPROTOCOL:
+        return scope
+    token = protocols[1]
+    return {**scope, "headers": [*headers, (b"authorization", f"Bearer {token}".encode())]}
