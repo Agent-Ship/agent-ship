@@ -88,17 +88,15 @@ def test_the_pipeline_order_is_the_cascade() -> None:
     Order is the design. The witness sits downstream of TTS because that is the only place the
     frame saying what is actually being spoken can be seen; putting it earlier would silently
     record text that was buffered but never heard.
+
+    There is deliberately no VAD stage: Pipecat's ``VADAnalyzer`` is not a ``FrameProcessor``,
+    it belongs to the transport. This test had a ``vad`` slot until a demo showed a pipeline
+    built that way transcribed nothing at all.
     """
     order = processor_order(
-        transport_in="in",
-        vad="vad",
-        stt="stt",
-        agent="agent",
-        tts="tts",
-        witness="w",
-        transport_out="out",
+        transport_in="in", stt="stt", agent="agent", tts="tts", witness="w", transport_out="out"
     )
-    assert order == ["in", "vad", "stt", "agent", "tts", "w", "out"]
+    assert order == ["in", "stt", "agent", "tts", "w", "out"]
     assert order.index("w") > order.index("tts"), "the witness must observe TTS, not precede it"
 
 

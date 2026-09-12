@@ -95,19 +95,33 @@ def _require_key(provider: _Provider, kind: str, name: str) -> str | None:
     return key
 
 
-def make_stt(config: VoiceSpec):
-    """Build the speech-to-text service named by ``config.stt``."""
+def make_stt(config: VoiceSpec, *, sample_rate: int | None = None):
+    """Build the speech-to-text service named by ``config.stt``.
+
+    ``sample_rate`` pins the rate instead of taking whatever the transport negotiates. Leave it
+    unset unless you have a reason: the pipeline's ``StartFrame`` carries the rate that was
+    actually agreed, and pinning a different one means resampling.
+
+    It does NOT make a service usable outside a pipeline. Pipecat stores the constructor value
+    and only applies it in ``setup()``, which the pipeline calls — a service that was never set
+    up reports rate 0, computes a zero-sized read and fails inside its HTTP client. Drive the
+    pipeline, not the service.
+    """
     provider = _resolve("stt", config.stt, STT_PROVIDERS)
     service = _load(provider, "stt", config.stt)
     key = _require_key(provider, "stt", config.stt)
-    return service(api_key=key) if key else service()
+    kwargs = {"api_key": key} if key else {}
+    if sample_rate is not None:
+        kwargs["sample_rate"] = sample_rate
+    return service(**kwargs)
 
 
-def make_tts(config: VoiceSpec):
+def make_tts(config: VoiceSpec, *, sample_rate: int | None = None):
     """Build the text-to-speech service named by ``config.tts``.
 
     ``voice_id`` is passed only when the spec sets one, so the provider keeps its own default
-    rather than us inventing a voice on the author's behalf.
+    rather than us inventing a voice on the author's behalf. See :func:`make_stt` for when
+    ``sample_rate`` needs passing.
     """
     provider = _resolve("tts", config.tts, TTS_PROVIDERS)
     service = _load(provider, "tts", config.tts)
@@ -115,6 +129,8 @@ def make_tts(config: VoiceSpec):
     kwargs = {"api_key": key} if key else {}
     if config.voice_id:
         kwargs["voice_id"] = config.voice_id
+    if sample_rate is not None:
+        kwargs["sample_rate"] = sample_rate
     return service(**kwargs)
 
 

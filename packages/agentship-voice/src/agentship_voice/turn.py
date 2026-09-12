@@ -54,6 +54,10 @@ class VoiceTurn:
         self.agent = agent
         self.caller = caller
         self.session_id = session_id
+        #: What the human actually said this turn, as STT heard it. Recorded because it is the
+        #: input the answer has to be judged against — a wrong answer to a misheard question is
+        #: an STT problem, and without this the two are indistinguishable in a log.
+        self.heard: str | None = None
         #: Everything the agent produced this turn — including text that was generated but
         #: never reached the speaker because the human cut in.
         self.generated: list[str] = []
@@ -79,6 +83,7 @@ class VoiceTurn:
         generator simply stops; ``generated`` holds what was produced, and ``spoken`` holds
         only what an adapter confirmed reached the speaker.
         """
+        self.heard = text
         started = time.monotonic()
         async for event in self.agent.stream(text, caller=self.caller, session_id=self.session_id):
             if event.type not in ("content", "token"):

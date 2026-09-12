@@ -205,7 +205,9 @@ class PipecatAdapter(VoiceAdapter):
             config.allow_interruptions,
             config.latency_budget_ms,
         )
-        await WorkerRunner(handle_sigint=False).run(PipelineWorker(pipeline))
+        runner = WorkerRunner(handle_sigint=False)
+        runner.add_workers(PipelineWorker(pipeline))
+        await runner.run()
 
 
 def _build_transport(config: VoiceSpec, vad):

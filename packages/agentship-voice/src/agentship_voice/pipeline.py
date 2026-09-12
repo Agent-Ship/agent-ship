@@ -28,7 +28,7 @@ __all__ = ["build_pipecat_pipeline", "processor_order"]
 
 
 def processor_order(
-    *, transport_in=None, vad=None, stt=None, agent=None, tts=None, witness=None, transport_out=None
+    *, transport_in=None, stt=None, agent=None, tts=None, witness=None, transport_out=None
 ) -> list:
     """Return the processors in pipeline order, dropping the stages that are absent.
 
@@ -36,17 +36,21 @@ def processor_order(
     assembly function:
 
     1. ``transport_in`` — audio arrives
-    2. ``vad`` — decides when the human stopped talking
-    3. ``stt`` — turns their audio into a transcript
-    4. ``agent`` — the AgentShip turn
-    5. ``tts`` — turns the reply into audio
-    6. ``witness`` — records what TTS actually spoke (must be AFTER tts; see the adapter)
-    7. ``transport_out`` — audio leaves
+    2. ``stt`` — turns the human's audio into a transcript
+    3. ``agent`` — the AgentShip turn
+    4. ``tts`` — turns the reply into audio
+    5. ``witness`` — records what TTS actually spoke (must be AFTER tts; see the adapter)
+    6. ``transport_out`` — audio leaves
+
+    **There is no VAD stage, and there cannot be one.** Pipecat's ``VADAnalyzer`` is not a
+    ``FrameProcessor``; it is handed to the transport, which uses it to decide when the human
+    stopped talking and emits the speaking frames that make STT transcribe at all. This slot
+    existed here until a demo proved that a pipeline built with it transcribed nothing.
 
     Stages are optional so the same order can be driven in a test with no transport and no VAD,
     and it stays the one place the sequence is stated.
     """
-    stages = [transport_in, vad, stt, agent, tts, witness, transport_out]
+    stages = [transport_in, stt, agent, tts, witness, transport_out]
     return [stage for stage in stages if stage is not None]
 
 
@@ -56,7 +60,6 @@ def build_pipecat_pipeline(
     stt,
     tts,
     transport_in=None,
-    vad=None,
     transport_out=None,
 ):
     """Build the Pipecat ``Pipeline`` that runs ``turn`` between ``stt`` and ``tts``.
@@ -73,7 +76,6 @@ def build_pipecat_pipeline(
     return Pipeline(
         processor_order(
             transport_in=transport_in,
-            vad=vad,
             stt=stt,
             agent=agent,
             tts=tts,
