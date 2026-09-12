@@ -184,14 +184,14 @@ class PipecatAdapter(VoiceAdapter):
         from pipecat.workers.runner import WorkerRunner
 
         from ..factories import make_stt, make_tts, make_vad, preflight
-        from ..pipeline import build_pipeline
+        from ..pipeline import build_pipecat_pipeline
 
         problems = preflight(config)
         if problems:
             raise CapabilityError("voice cannot start:\n  - " + "\n  - ".join(problems))
 
         transport = _build_transport(config, make_vad(config))
-        pipeline = build_pipeline(
+        pipeline = build_pipecat_pipeline(
             turn,
             stt=make_stt(config),
             tts=make_tts(config),

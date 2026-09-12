@@ -17,8 +17,7 @@ the same class of lie as an engine over-declaring a capability.
 
 from __future__ import annotations
 
-import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass
@@ -66,14 +65,3 @@ class LatencyTrace:
             return None
         worst = max(stages, key=lambda name: stages[name])
         return worst, stages[worst]
-
-
-@dataclass
-class _Stopwatch:
-    """Monotonic elapsed-time helper. Monotonic so a clock adjustment cannot make time flow back."""
-
-    started: float = field(default_factory=time.monotonic)
-
-    def ms(self) -> float:
-        """Milliseconds since this stopwatch was created."""
-        return (time.monotonic() - self.started) * 1000

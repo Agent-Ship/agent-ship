@@ -20,12 +20,13 @@ no provider key: a turn is an async iterator of strings.
 
 from __future__ import annotations
 
+import time
 from collections.abc import AsyncIterator
 
 from agentship.context import Caller
 from agentship.runtime import RunnableAgent
 
-from .trace import LatencyTrace, _Stopwatch
+from .trace import LatencyTrace
 
 #: Appended to history when the human cuts the agent off. Kept as one constant because an
 #: adapter, a test and a transcript reader all have to agree on the exact string. No leading
@@ -78,7 +79,7 @@ class VoiceTurn:
         generator simply stops; ``generated`` holds what was produced, and ``spoken`` holds
         only what an adapter confirmed reached the speaker.
         """
-        watch = _Stopwatch()
+        started = time.monotonic()
         async for event in self.agent.stream(text, caller=self.caller, session_id=self.session_id):
             if event.type not in ("content", "token"):
                 continue
@@ -86,10 +87,10 @@ class VoiceTurn:
             if not chunk:
                 continue
             if self.trace.llm_ttft_ms is None:
-                self.trace.llm_ttft_ms = watch.ms()
+                self.trace.llm_ttft_ms = (time.monotonic() - started) * 1000
             self.generated.append(chunk)
             yield chunk
-        self.trace.llm_total_ms = watch.ms()
+        self.trace.llm_total_ms = (time.monotonic() - started) * 1000
 
     def confirm_spoken(self, chunk: str) -> None:
         """Record that ``chunk`` actually reached the speaker.

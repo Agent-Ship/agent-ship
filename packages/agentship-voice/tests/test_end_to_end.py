@@ -18,7 +18,7 @@ from agentship_voice.turn import VoiceTurn
 
 pytest.importorskip("pipecat", reason="needs the [pipecat] extra")
 
-from agentship_voice.pipeline import build_pipeline, processor_order  # noqa: E402
+from agentship_voice.pipeline import build_pipecat_pipeline, processor_order  # noqa: E402
 from pipecat.frames.frames import (  # noqa: E402
     EndFrame,
     InputAudioRawFrame,
@@ -117,7 +117,7 @@ async def test_audio_in_becomes_a_spoken_reply() -> None:
     """
     turn = _turn()
     spoken: list[str] = []
-    pipeline = build_pipeline(turn, stt=_FakeEars("my balance"), tts=_FakeMouth(spoken))
+    pipeline = build_pipecat_pipeline(turn, stt=_FakeEars("my balance"), tts=_FakeMouth(spoken))
 
     task = PipelineTask(pipeline)
     await task.queue_frames(

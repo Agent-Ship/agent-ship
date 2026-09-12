@@ -1,7 +1,12 @@
 """Assemble the cascaded voice pipeline: ears → agent → mouth.
 
-Assembly is separated from provider construction on purpose. :func:`build_pipeline` takes the
-STT and TTS services as arguments rather than building them from config, so the whole loop can
+:func:`processor_order` is framework-neutral — it states the cascade and nothing else.
+:func:`build_pipecat_pipeline` is named for its framework because it returns a Pipecat
+``Pipeline``; a generic name there would hide which framework a caller is committing to.
+
+Assembly is separated from provider construction on purpose:
+:func:`build_pipecat_pipeline` takes the STT and TTS services as arguments rather than
+building them from config, so the whole loop can
 be driven end to end with stand-in providers — no Deepgram key, no Cartesia key, no network,
 no microphone.
 
@@ -19,7 +24,7 @@ from __future__ import annotations
 
 from .turn import VoiceTurn
 
-__all__ = ["build_pipeline", "processor_order"]
+__all__ = ["build_pipecat_pipeline", "processor_order"]
 
 
 def processor_order(
@@ -45,7 +50,7 @@ def processor_order(
     return [stage for stage in stages if stage is not None]
 
 
-def build_pipeline(
+def build_pipecat_pipeline(
     turn: VoiceTurn,
     *,
     stt,
