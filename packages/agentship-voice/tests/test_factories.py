@@ -131,3 +131,41 @@ def test_only_the_end_of_a_turn_is_made_patient() -> None:
     from pipecat.audio.vad.vad_analyzer import VADParams
 
     assert make_vad(VoiceSpec()).params.start_secs == VADParams().start_secs
+
+
+def test_each_stage_s_model_is_the_author_s_to_name(monkeypatch) -> None:
+    """Unset means "whatever the library picked", which is a choice somebody else made.
+
+    For the ears especially: everything downstream reasons about the words that came back, so
+    a misheard sentence is answered confidently and wrongly.
+    """
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    spec = VoiceSpec(stt="openai", tts="openai", stt_model="whisper-1", tts_model="tts-1-hd")
+
+    assert make_stt(spec)._settings.model == "whisper-1"
+    assert make_tts(spec)._settings.model == "tts-1-hd"
+
+
+def test_a_vocabulary_hint_reaches_the_recogniser(monkeypatch) -> None:
+    """A recogniser maps unfamiliar words onto familiar ones unless told the vocabulary."""
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    service = make_stt(VoiceSpec(stt="openai", stt_hint="Pipecat, AgentShip, LangGraph"))
+
+    assert "Pipecat" in (service._settings.prompt or "")
+
+
+def test_the_voice_reaches_providers_that_name_the_argument_differently(monkeypatch) -> None:
+    """OpenAI takes ``voice``; Cartesia takes ``voice_id``.
+
+    Sending the wrong name is not an error — the service swallows it in ``**kwargs`` and speaks
+    in its default voice, so a setting the author wrote is silently dropped. That is exactly
+    what happened before each provider recorded its own argument name.
+    """
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    assert make_tts(VoiceSpec(tts="openai", voice_id="nova"))._settings.voice == "nova"
+
+
+def test_every_tts_provider_declares_how_to_pick_its_voice() -> None:
+    """A provider without ``voice_arg`` would silently ignore the spec's ``voice_id``."""
+    for name, provider in TTS_PROVIDERS.items():
+        assert provider.voice_arg, f"{name} must say what it calls its voice argument"

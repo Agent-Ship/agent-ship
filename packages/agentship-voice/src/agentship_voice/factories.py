@@ -30,6 +30,11 @@ class _Provider:
     env_var: str | None
     #: The Pipecat extra that installs its SDK, e.g. ``pipecat-ai[deepgram]``.
     extra: str
+    #: What this provider calls its voice-selection argument. They disagree — OpenAI takes
+    #: ``voice``, Cartesia takes ``voice_id`` — and a service that receives the wrong name
+    #: swallows it in ``**kwargs`` and speaks in its default voice, so a setting the author
+    #: wrote is silently dropped. ``None`` for providers that have no voice to select.
+    voice_arg: str | None = None
 
 
 #: Speech-to-text providers, by the name used in ``voice.stt``.
@@ -45,10 +50,18 @@ STT_PROVIDERS = {
 #: Text-to-speech providers, by the name used in ``voice.tts``.
 TTS_PROVIDERS = {
     "cartesia": _Provider(
-        "pipecat.services.cartesia.tts", "CartesiaTTSService", "CARTESIA_API_KEY", "cartesia"
+        "pipecat.services.cartesia.tts",
+        "CartesiaTTSService",
+        "CARTESIA_API_KEY",
+        "cartesia",
+        voice_arg="voice_id",
     ),
     "openai": _Provider(
-        "pipecat.services.openai.tts", "OpenAITTSService", "OPENAI_API_KEY", "openai"
+        "pipecat.services.openai.tts",
+        "OpenAITTSService",
+        "OPENAI_API_KEY",
+        "openai",
+        voice_arg="voice",
     ),
 }
 
@@ -117,6 +130,13 @@ def make_stt(config: VoiceSpec, *, sample_rate: int | None = None):
         # Pinning the language stops per-utterance auto-detection, which mistakes short English
         # phrases for other languages and makes the agent answer in one nobody spoke.
         kwargs["language"] = _as_language(config.language)
+    if config.stt_model:
+        kwargs["model"] = config.stt_model
+    if config.stt_hint:
+        # Biases recognition toward words this agent actually deals in. A recogniser has no
+        # idea what the conversation is about and will map an unfamiliar term onto a familiar
+        # one; naming the vocabulary is the difference between "Pipecat" and "pipe cat".
+        kwargs["prompt"] = config.stt_hint
     return service(**kwargs)
 
 
@@ -146,10 +166,12 @@ def make_tts(config: VoiceSpec, *, sample_rate: int | None = None):
     service = _load(provider, "tts", config.tts)
     key = _require_key(provider, "tts", config.tts)
     kwargs = {"api_key": key} if key else {}
-    if config.voice_id:
-        kwargs["voice_id"] = config.voice_id
+    if config.voice_id and provider.voice_arg:
+        kwargs[provider.voice_arg] = config.voice_id
     if sample_rate is not None:
         kwargs["sample_rate"] = sample_rate
+    if config.tts_model:
+        kwargs["model"] = config.tts_model
     return service(**kwargs)
 
 

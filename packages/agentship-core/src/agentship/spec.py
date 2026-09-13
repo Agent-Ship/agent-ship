@@ -274,10 +274,22 @@ class VoiceSpec(BaseModel):
     #: Which framework hosts the agent. Both run the SAME agent; they differ in where it sits —
     #: a node in Pipecat's frame graph, or the LLM slot of a LiveKit session.
     framework: Literal["pipecat", "livekit"] = "pipecat"
-    #: Speech-to-text: the ears.
+    #: Speech-to-text provider: the ears.
     stt: str = "deepgram"
-    #: Text-to-speech: the mouth.
+    #: Which model that provider should listen with. Unset takes the provider's default, which
+    #: is a choice somebody else made — name it here when transcription quality matters, which
+    #: for a voice agent is always: everything downstream is reasoning about these words, so a
+    #: misheard sentence is answered confidently and wrongly.
+    stt_model: str | None = None
+    #: Words the recogniser should expect — names, jargon, product terms. A recogniser has no
+    #: idea what this agent is about and will map an unfamiliar word onto a familiar one; this
+    #: is how you tell it. Provider term for this is a "prompt"; it is a vocabulary hint, not
+    #: an instruction, and the model never answers it.
+    stt_hint: str | None = None
+    #: Text-to-speech provider: the mouth.
     tts: str = "cartesia"
+    #: Which model that provider should speak with. Unset takes the provider's default.
+    tts_model: str | None = None
     #: Voice-activity detection — decides when the human has stopped talking. Runs locally.
     vad: str = "silero"
     #: How audio reaches the process.

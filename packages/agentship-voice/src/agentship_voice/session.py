@@ -46,6 +46,9 @@ async def run_browser_session(websocket, agent, caller: Caller, sample_rate: int
         # would hear silence and have nothing to report but "it didn't work".
         raise RuntimeError("voice cannot start: " + "; ".join(problems))
 
+    stt = make_stt(spec.voice)
+    tts = make_tts(spec.voice)
+
     transport = FastAPIWebsocketTransport(
         websocket=websocket,
         params=FastAPIWebsocketParams(
@@ -64,18 +67,26 @@ async def run_browser_session(websocket, agent, caller: Caller, sample_rate: int
         # analyzer handed to the transport is simply never consulted — the pipeline then hears
         # audio and transcribes silence, with nothing in any log to say why.
         vad=VADProcessor(vad_analyzer=make_vad(spec.voice)),
-        stt=make_stt(spec.voice),
-        tts=make_tts(spec.voice),
+        stt=stt,
+        tts=tts,
         transport_in=transport.input(),
         transport_out=transport.output(),
     )
 
+    # Naming the MODELS, not just the providers. "openai → agent → openai" says nothing about
+    # what is doing the listening, and the listening is where a voice agent goes wrong first:
+    # everything downstream reasons about whatever words came back, so a misheard sentence is
+    # answered confidently and wrongly, and the log gave no way to tell.
     logger.info(
-        "voice session: agent=%s tenant=%s %s → agent → %s",
+        "voice session: agent=%s tenant=%s | ears %s/%s | brain %s | mouth %s/%s (%s)",
         spec.name,
         caller.tenant_id,
         spec.voice.stt,
+        getattr(stt._settings, "model", "default"),
+        spec.model or "unset",
         spec.voice.tts,
+        getattr(tts._settings, "model", "default"),
+        getattr(tts._settings, "voice", spec.voice.voice_id or "default"),
     )
     runner = WorkerRunner(handle_sigint=False)
     await runner.add_workers(PipelineWorker(pipeline))
