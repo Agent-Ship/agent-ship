@@ -32,7 +32,7 @@ from pipecat.services.stt_service import STTService  # noqa: E402
 from pipecat.services.tts_service import TTSService  # noqa: E402
 from pipecat.workers.runner import WorkerRunner  # noqa: E402
 
-AGENT = Path(__file__).resolve().parents[1] / "agents" / "voice" / "agent.yaml"
+AGENT = Path(__file__).resolve().parents[1] / "agents" / "voice_assistant.yaml"
 RATE = 24000
 
 

@@ -65,3 +65,40 @@ observability:
   capture_content: true
   # Opik Cloud is off-box, so egress must be opted into. Harmless when shipping nowhere.
   allow_saas_exporter: true
+
+# Talk to it. The same agent, the same tools, the same durable session — voice only changes how
+# a turn arrives and leaves, which is the whole claim: memory, tools and tracing are inherited
+# rather than rebuilt for audio.
+#
+#   agentship serve --agents-dir agents      -> Studio, pick deep-research, press the mic
+#
+# Researching aloud is slower than typing, deliberately: the model still searches and reads
+# pages, so expect a pause before it speaks. The latency panel shows where that time went.
+voice:
+  framework: pipecat
+  # Deepgram: purpose-built for streaming speech, and markedly more accurate on live
+  # audio than a batch transcriber fed one VAD segment at a time. `agentship voice
+  # providers` shows which of these this machine can actually reach.
+  stt: deepgram
+  # nova-3 is their current best. Naming it matters more here than anywhere else: the
+  # whole agent reasons about whatever words come back, so a misheard sentence is
+  # answered confidently and wrongly.
+  stt_model: nova-3
+  tts: openai
+  tts_model: gpt-4o-mini-tts
+  # Conversational pace. The provider default is tuned for narration, which sounds sluggish
+  # in a dialogue where the listener is waiting for their turn.
+  tts_speed: 1.1
+  voice_id: alloy
+  vad: silero
+  # Pinned, or recognition guesses per utterance and mishears short ones — spoken "ChatGPT"
+  # came back as Urdu script once, and the agent then answered in Urdu.
+  language: en
+  transport: websocket
+  # Researching takes thought, and so does asking about it. 1.5s also means longer audio
+  # segments, which transcribe markedly better than clipped fragments.
+  endpoint_silence_ms: 1500
+  allow_interruptions: true
+  # Honest about this one: a research turn that searches and reads pages will not answer in
+  # 850ms. The budget is what a CONVERSATIONAL turn should hit, and the panel shows the gap.
+  latency_budget_ms: 850

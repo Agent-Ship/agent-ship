@@ -27,7 +27,7 @@ litellm.disable_aiohttp_transport = True
 os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-AGENT = REPO_ROOT / "agents" / "voice" / "agent.yaml"
+AGENT = REPO_ROOT / "agents" / "voice_assistant.yaml"
 OUT = REPO_ROOT / "voice-out"
 
 QUESTION = "What is the capital of France?"
