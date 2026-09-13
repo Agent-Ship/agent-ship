@@ -38,22 +38,70 @@ class _Provider:
 
 
 #: Speech-to-text providers, by the name used in ``voice.stt``.
+#:
+#: Every one is CONSUMED — Pipecat implements the protocol, we map a name to a class and check
+#: the two things that go wrong. Adding a provider is a line here, which is the point: an agent
+#: should be able to change ears without changing anything else about itself.
+#:
+#: The environment variable is OUR convention, not the library's: Pipecat takes ``api_key`` as
+#: an argument and reads nothing. Each name below is the one that vendor's own documentation
+#: uses, so a key already exported for another tool is found without being renamed.
 STT_PROVIDERS = {
+    # Purpose-built for streaming speech; generally the most accurate on live audio.
     "deepgram": _Provider(
         "pipecat.services.deepgram.stt", "DeepgramSTTService", "DEEPGRAM_API_KEY", "deepgram"
     ),
     "openai": _Provider(
         "pipecat.services.openai.stt", "OpenAISTTService", "OPENAI_API_KEY", "openai"
     ),
+    "assemblyai": _Provider(
+        "pipecat.services.assemblyai.stt",
+        "AssemblyAISTTService",
+        "ASSEMBLYAI_API_KEY",
+        "assemblyai",
+    ),
+    "elevenlabs": _Provider(
+        "pipecat.services.elevenlabs.stt",
+        "ElevenLabsSTTService",
+        "ELEVENLABS_API_KEY",
+        "elevenlabs",
+    ),
+    "cartesia": _Provider(
+        "pipecat.services.cartesia.stt", "CartesiaSTTService", "CARTESIA_API_KEY", "cartesia"
+    ),
+    "gladia": _Provider(
+        "pipecat.services.gladia.stt", "GladiaSTTService", "GLADIA_API_KEY", "gladia"
+    ),
+    # Whisper on Groq's hardware: cheap and fast, batch rather than truly streaming.
+    "groq": _Provider("pipecat.services.groq.stt", "GroqSTTService", "GROQ_API_KEY", "groq"),
+    "speechmatics": _Provider(
+        "pipecat.services.speechmatics.stt",
+        "SpeechmaticsSTTService",
+        "SPEECHMATICS_API_KEY",
+        "speechmatics",
+    ),
 }
 
 #: Text-to-speech providers, by the name used in ``voice.tts``.
+#:
+#: ``voice_arg`` is what each one calls its voice-selection argument. They disagree, and a
+#: service handed the wrong name swallows it in ``**kwargs`` and speaks in its default voice —
+#: a setting the author wrote, silently dropped.
 TTS_PROVIDERS = {
+    # Low latency and a large voice library; the usual pairing with Deepgram for speed.
     "cartesia": _Provider(
         "pipecat.services.cartesia.tts",
         "CartesiaTTSService",
         "CARTESIA_API_KEY",
         "cartesia",
+        voice_arg="voice_id",
+    ),
+    # The most natural voices most people recognise; slower than Cartesia.
+    "elevenlabs": _Provider(
+        "pipecat.services.elevenlabs.tts",
+        "ElevenLabsTTSService",
+        "ELEVENLABS_API_KEY",
+        "elevenlabs",
         voice_arg="voice_id",
     ),
     "openai": _Provider(
@@ -62,6 +110,33 @@ TTS_PROVIDERS = {
         "OPENAI_API_KEY",
         "openai",
         voice_arg="voice",
+    ),
+    "deepgram": _Provider(
+        "pipecat.services.deepgram.tts",
+        "DeepgramTTSService",
+        "DEEPGRAM_API_KEY",
+        "deepgram",
+        voice_arg="voice",
+    ),
+    "rime": _Provider(
+        "pipecat.services.rime.tts", "RimeTTSService", "RIME_API_KEY", "rime", voice_arg="voice_id"
+    ),
+    "lmnt": _Provider(
+        "pipecat.services.lmnt.tts", "LmntTTSService", "LMNT_API_KEY", "lmnt", voice_arg="voice_id"
+    ),
+    "inworld": _Provider(
+        "pipecat.services.inworld.tts",
+        "InworldTTSService",
+        "INWORLD_API_KEY",
+        "inworld",
+        voice_arg="voice_id",
+    ),
+    "neuphonic": _Provider(
+        "pipecat.services.neuphonic.tts",
+        "NeuphonicTTSService",
+        "NEUPHONIC_API_KEY",
+        "neuphonic",
+        voice_arg="voice_id",
     ),
 }
 

@@ -169,3 +169,41 @@ def test_every_tts_provider_declares_how_to_pick_its_voice() -> None:
     """A provider without ``voice_arg`` would silently ignore the spec's ``voice_id``."""
     for name, provider in TTS_PROVIDERS.items():
         assert provider.voice_arg, f"{name} must say what it calls its voice argument"
+
+
+@pytest.mark.parametrize("table", [STT_PROVIDERS, TTS_PROVIDERS])
+def test_every_registered_provider_points_at_a_real_class(table) -> None:
+    """A typo in a module path or class name must fail HERE, not in front of a user.
+
+    A registry entry is otherwise only exercised when somebody configures that provider — so a
+    misspelled class sits there looking correct until the one person who picks it gets an
+    error that reads like their own mistake. Providers whose SDK is not installed are skipped
+    (that is what the extra is for); the ones present are checked properly.
+    """
+    from importlib import import_module
+
+    checked = 0
+    for name, provider in table.items():
+        try:
+            module = import_module(provider.module)
+        except Exception:  # noqa: BLE001 — any import failure means the SDK is absent here,
+            # which `_load` turns into an actionable install message at the point of use.
+            continue
+        assert hasattr(module, provider.cls), (
+            f"{name} names {provider.cls}, which {provider.module} does not define"
+        )
+        checked += 1
+    assert checked, "no provider SDK installed, so this proved nothing"
+
+
+@pytest.mark.parametrize("table", [STT_PROVIDERS, TTS_PROVIDERS])
+def test_every_provider_names_its_key_the_way_its_vendor_does(table) -> None:
+    """``ELEVENLABS_API_KEY``, not ``ELEVEN_LABS_KEY``: a key already exported must be found.
+
+    Pipecat reads no environment at all — it takes ``api_key`` as an argument — so this name is
+    purely our convention, and the only useful convention is the vendor's own.
+    """
+    for name, provider in table.items():
+        assert provider.env_var and provider.env_var.endswith("_API_KEY"), name
+        stem = provider.env_var.removesuffix("_API_KEY").lower().replace("_", "")
+        assert stem == name.replace("_", ""), f"{name} reads {provider.env_var}"

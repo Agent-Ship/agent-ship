@@ -42,6 +42,7 @@ def _build_processors(turn: VoiceTurn):
         BotStartedSpeakingFrame,
         BotStoppedSpeakingFrame,
         Frame,
+        InterimTranscriptionFrame,
         InterruptionFrame,
         LLMFullResponseEndFrame,
         LLMFullResponseStartFrame,
@@ -184,8 +185,16 @@ def _build_processors(turn: VoiceTurn):
                 await self._tell("speaking")
             elif isinstance(frame, BotStoppedSpeakingFrame):
                 await self._tell("idle")
-            if isinstance(frame, TTSTextFrame | TextFrame) and getattr(
-                frame, "will_be_spoken", True
+            # TranscriptionFrame and InterimTranscriptionFrame are BOTH TextFrames, so a
+            # streaming recogniser's partials sail straight into this check and get recorded
+            # as things the agent said. With Deepgram the transcript read "said: Is the
+            # capital" before the agent had spoken a word — the human's own sentence,
+            # attributed to the agent, and counted as spoken for the barge-in clip point.
+            heard_not_spoken = isinstance(frame, TranscriptionFrame | InterimTranscriptionFrame)
+            if (
+                isinstance(frame, TTSTextFrame | TextFrame)
+                and not heard_not_spoken
+                and getattr(frame, "will_be_spoken", True)
             ):
                 # Both frame types carry spoken text, because Pipecat reports a sentence twice:
                 # once as the plain TextFrame that `push_text_frames` emits, and again as the

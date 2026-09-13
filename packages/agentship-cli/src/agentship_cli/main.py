@@ -1078,6 +1078,56 @@ def voice() -> None:
     """
 
 
+@voice.command("providers")
+@click.option(
+    "--env-file",
+    "env_file",
+    type=click.Path(dir_okay=False),
+    default=None,
+    help="Read keys from this .env instead of ./.env.",
+)
+def voice_providers(env_file: str | None) -> None:
+    """List the speech providers this install can reach, and what each one still needs.
+
+    Answers the question a spec cannot: `stt: deepgram` is easy to write and gives no hint
+    whether this machine can actually run it. Shows SDK and key status per provider so the
+    gap between "supported" and "usable here" is visible before a session fails.
+    """
+    # Load .env first, or this reports "needs key" for keys that are sitting right there and
+    # would be found by `voice serve` — a status command that disagrees with the thing it is
+    # reporting on is worse than no status command.
+    load_env_for_run(env_file)
+    try:
+        from agentship_voice.factories import STT_PROVIDERS, TTS_PROVIDERS
+    except ImportError:
+        raise click.ClickException(
+            'voice needs the voice package — pip install "agentship-voice[pipecat]"'
+        ) from None
+
+    from importlib import import_module
+
+    for label, table in (("speech-to-text", STT_PROVIDERS), ("text-to-speech", TTS_PROVIDERS)):
+        click.echo(f"\n{label}")
+        for name, provider in sorted(table.items()):
+            try:
+                import_module(provider.module)
+                installed = True
+            except Exception:  # noqa: BLE001 — any import failure means "not usable here",
+                # and a provider SDK that raises something exotic on import is still absent.
+                installed = False
+            keyed = bool(os.environ.get(provider.env_var))
+            if installed and keyed:
+                mark, note = click.style("ready", fg="green"), ""
+            elif installed:
+                mark, note = click.style("needs key", fg="yellow"), f"set {provider.env_var}"
+            else:
+                mark, note = (
+                    click.style("not installed", fg="red"),
+                    f'pip install "pipecat-ai[{provider.extra}]"',
+                )
+            click.echo(f"  {name:<14} {mark:<22} {note}")
+
+
 @voice.command("serve")
 @click.argument("file", type=click.Path(exists=True, dir_okay=False))
 @click.option(
