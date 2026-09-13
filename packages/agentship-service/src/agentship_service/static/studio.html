@@ -163,6 +163,15 @@ main { flex: 1; display: flex; min-height: 0; }
 /* What the agent did, step by step, one under the other. The last step is in progress
    (pulsing dot); finished ones settle to a static tick so the list reads as a record of the
    turn rather than as part of the reply. */
+.stepbox summary { cursor: pointer; list-style: none; }
+.stepbox summary::-webkit-details-marker { display: none; }
+.stepbox summary::before { content: "▸ "; opacity: .6; }
+.stepbox[open] summary::before { content: "▾ "; }
+.stepdetail {
+  margin: 4px 0 2px 12px; padding: 6px 8px; max-height: 180px; overflow: auto;
+  font-family: var(--mono); font-size: 11px; line-height: 1.45; color: var(--t2);
+  border-left: 2px solid var(--accentb, currentColor); white-space: pre-wrap; word-break: break-word;
+}
 .steps { margin-bottom: 9px; display: flex; flex-direction: column; gap: 3px; }
 .step { display: flex; align-items: center; gap: 7px; color: var(--t2);
   font-size: 12px; letter-spacing: .01em; }
@@ -218,6 +227,13 @@ main { flex: 1; display: flex; min-height: 0; }
 
 /* --- composer ------------------------------------------------------------ */
 #talk.live { background: var(--bad, #c0392b); color: #fff; }
+label.override { display: inline-flex; align-items: center; gap: 5px; margin-right: 10px; }
+label.override input {
+  width: 150px; padding: 2px 6px; font-family: var(--mono); font-size: 11px;
+  color: var(--t1); background: transparent; border: 1px solid var(--line, currentColor);
+  border-radius: 4px;
+}
+.usedmodel { font-family: var(--mono); }
 #composer { flex: none; border-top: 1px solid var(--border); background: var(--surface); padding: 12px 18px 14px; }
 .composerinner { max-width: 780px; margin: 0 auto; display: flex; gap: 9px; align-items: flex-end; }
 #input {
@@ -375,6 +391,10 @@ main { flex: 1; display: flex; min-height: 0; }
           <button id="send">Send</button>
         </div>
         <div class="hint">
+          <label class="override">
+            model override
+            <input id="modeloverride" type="text" spellcheck="false" placeholder="(use the spec's)">
+          </label>
           <span id="modehint">streaming via :stream</span>
           <span id="pausehint"></span>
         </div>
@@ -386,6 +406,7 @@ main { flex: 1; display: flex; min-height: 0; }
       <div id="traceids">
         <div class="idrow"><span class="k">session_id</span><span class="v" id="v-session">—</span></div>
         <div class="idrow"><span class="k">trace_id</span><span class="v" id="v-trace">—</span></div>
+        <div class="idrow"><span class="k">model used</span><span class="v usedmodel" id="v-model">—</span></div>
         <div class="idrow"><span class="k">resume_token</span><span class="v" id="v-resume">—</span></div>
       </div>
       <div class="panelhead" style="margin-top:10px">Latency</div>
@@ -848,7 +869,11 @@ async function invokeTurn(text) {
   try {
     const response = await callApi("/v1/agents/" + encodeURIComponent(chat.selected.name) + ":invoke", {
       method: "POST",
-      body: JSON.stringify({ input: text, session_id: chat.sessionId }),
+      body: JSON.stringify({
+        input: text,
+        session_id: chat.sessionId,
+        overrides: modelOverride(),
+      }),
     });
     await showTurnResult(response);
   } finally {
@@ -895,6 +920,7 @@ async function showTurnResult(response) {
   chat.resumeToken = body.paused ? body.resume_token : null;
   chat.interrupt = body.paused ? body.interrupt : null;
   showTimings(body.timings);
+  showModel(body.model);
   addFrame("done", "", { output: body.output, usage: body.usage });
   showIds(body.trace_id);
   showPauseHint();
@@ -916,7 +942,11 @@ function asText(output) {
 async function streamTurn(text) {
   const response = await callApi("/v1/agents/" + encodeURIComponent(chat.selected.name) + ":stream", {
     method: "POST",
-    body: JSON.stringify({ input: text, session_id: chat.sessionId }),
+    body: JSON.stringify({
+      input: text,
+      session_id: chat.sessionId,
+      overrides: modelOverride(),
+    }),
   });
   if (!response.ok) {
     const problem = await readProblem(response);
@@ -942,7 +972,7 @@ async function streamTurn(text) {
       return;
     }
     const status = statusFor(frame.type, data);
-    if (status) addStep(body, status);
+    if (status) addStep(body, status, detailFor(frame.type, data));
     if (frame.type === "reasoning") {
       // Thinking is not the answer: it goes in its own collapsed panel above the reply, so a
       // reader can watch a slow reasoning model work without it polluting the transcript.
@@ -993,11 +1023,20 @@ function statusFor(type, data) {
   return null;   // null = not a status-bearing frame; leave whatever is showing
 }
 
+/* What a step can show beyond its name: a tool's arguments, or the result it returned.
+   Returns undefined for frames with nothing worth expanding, so those stay plain lines. */
+function detailFor(type, data) {
+  if (type === "tool_call") return data.args;
+  if (type === "tool_result") return data.error !== undefined ? { error: data.error } : data.result;
+  if (type === "guard") return { stage: data.stage, verdict: data.verdict, validator: data.validator };
+  return undefined;
+}
+
 /* Add a step to this message's list of what the agent is doing, one under the other.
    A single line that rewrote itself lost the history: a turn that thought, searched, then
    read a result showed only the last step, and a fast step (a 19ms tool call) was gone
    before it could be read. Stacking leaves a record of the turn. */
-function addStep(body, text) {
+function addStep(body, text, detail) {
   let list = body.parentElement.querySelector(".steps");
   if (!list) {
     list = document.createElement("div");
@@ -1007,11 +1046,28 @@ function addStep(body, text) {
   const previous = list.lastElementChild;
   // Consecutive duplicates are noise, not progress (repeated calls to the same tool are
   // distinguished by their result step landing between them).
-  if (previous && previous.textContent === text) return;
+  if (previous && previous.dataset.label === text) return;
   if (previous) previous.classList.add("done");
   const step = document.createElement("div");
   step.className = "step";
-  step.textContent = text;
+  step.dataset.label = text;
+  if (detail === undefined || detail === null || detail === "") {
+    step.textContent = text;
+  } else {
+    // A name alone says an agent used a tool; the arguments and the result say what it
+    // actually did. Collapsed, because the answer is what a reader came for — but one click
+    // away, because "why did it say that" is the next question when the answer is wrong.
+    const summary = document.createElement("summary");
+    summary.textContent = text;
+    const pre = document.createElement("pre");
+    pre.className = "stepdetail";
+    pre.textContent = typeof detail === "string" ? detail : JSON.stringify(detail, null, 2);
+    const box = document.createElement("details");
+    box.className = "stepbox";
+    box.appendChild(summary);
+    box.appendChild(pre);
+    step.appendChild(box);
+  }
   list.appendChild(step);
 }
 
@@ -1300,6 +1356,19 @@ function showTimings(timings) {
   const ms = (v) => (v === null || v === undefined ? "—" : Math.round(v) + " ms");
   el("v-ttft").textContent = ms(timings && timings.ttft_ms);
   el("v-total").textContent = ms(timings && timings.total_ms);
+}
+
+/* The model override, if the user typed one. Empty means "use the spec's" — the override is a
+ * thing you do for one turn, never a change to what the agent IS. */
+function modelOverride() {
+  const value = el("modeloverride").value.trim();
+  return value ? { model: value } : undefined;
+}
+
+/* Report the model a turn actually used, so an overridden turn can never be read as the
+ * agent's committed configuration. */
+function showModel(model) {
+  el("v-model").textContent = model || "—";
 }
 </script>
 </body>

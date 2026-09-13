@@ -60,6 +60,27 @@ class InvokeRequest(BaseModel):
     stream: bool = Field(
         default=False, description="Hint only; use the :stream endpoint for streaming."
     )
+    overrides: TurnOverrides | None = Field(
+        default=None, description="Per-turn experiment knobs. Never changes the agent's spec."
+    )
+
+
+class TurnOverrides(BaseModel):
+    """Per-turn changes that do NOT alter the agent's spec.
+
+    The spec is the contract: it is what ``doctor`` validates, what ``verify`` proves, and what
+    was committed. An override is for experimenting — comparing two models on the same question
+    without editing and redeploying an agent — so it lasts exactly one turn and the response
+    reports what was actually used. Without that report an override would be indistinguishable
+    from the agent's real configuration, which is how a playground quietly lies about what it
+    tested.
+    """
+
+    model_config = {"extra": "forbid"}
+
+    model: str | None = Field(
+        default=None, description="Model id to use for this turn only, e.g. openai/gpt-4o."
+    )
 
 
 class ResumeRequest(BaseModel):
@@ -141,6 +162,9 @@ class InvokeResponse(BaseModel):
     usage: Usage | None = None
     #: Where this turn's time went. See :class:`Timings`.
     timings: Timings | None = None
+    #: The model this turn actually used. Present so an overridden turn can never be mistaken
+    #: for the agent's committed configuration.
+    model: str | None = None
     trace_id: str | None = None
 
 

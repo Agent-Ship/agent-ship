@@ -51,7 +51,12 @@ logger = logging.getLogger("agentship.service")
 
 
 def _invoke_response(
-    name: str, session_id: str, result: Result, *, timings: Timings | None = None
+    name: str,
+    session_id: str,
+    result: Result,
+    *,
+    timings: Timings | None = None,
+    model: str | None = None,
 ) -> InvokeResponse:
     """Shape an engine :class:`Result` into the wire :class:`InvokeResponse`."""
     return InvokeResponse(
@@ -65,6 +70,8 @@ def _invoke_response(
         paused=result.interrupt is not None,
         interrupt=result.interrupt,
         timings=timings,
+        # What actually ran, so an overridden turn is never mistaken for the spec.
+        model=model,
         trace_id=current_trace_id(),
     )
 
@@ -116,11 +123,17 @@ async def invoke(
     session_id = body.session_id or uuid.uuid4().hex
     started = time.monotonic()
     with log_turn("invoke", name, caller, session_id):
-        result = await agent.run(body.input, caller=caller, session_id=session_id)
+        result = await agent.run(
+            body.input,
+            caller=caller,
+            session_id=session_id,
+            model=body.overrides.model if body.overrides else None,
+        )
     # A non-streaming turn has no first-token moment distinct from its last: the client waits
     # for the whole reply, so ttft and total are the same wait and only one is reported.
     elapsed = Timings(total_ms=(time.monotonic() - started) * 1000)
-    return _invoke_response(name, session_id, result, timings=elapsed)
+    used = (body.overrides.model if body.overrides else None) or agent.spec.model
+    return _invoke_response(name, session_id, result, timings=elapsed, model=used)
 
 
 @router.post("/{name}:resume", response_model=InvokeResponse)
@@ -151,7 +164,7 @@ async def resume(
             session_id=body.session_id,
         )
     elapsed = Timings(total_ms=(time.monotonic() - started) * 1000)
-    return _invoke_response(name, body.session_id, result, timings=elapsed)
+    return _invoke_response(name, body.session_id, result, timings=elapsed, model=agent.spec.model)
 
 
 @router.post("/{name}:stream")
@@ -184,8 +197,11 @@ async def stream(
         )
         seq += 1
         ttft: float | None = None
+        override = body.overrides.model if body.overrides else None
         try:
-            async for event in agent.stream(body.input, caller=caller, session_id=session_id):
+            async for event in agent.stream(
+                body.input, caller=caller, session_id=session_id, model=override
+            ):
                 # The first frame carrying words is the moment the wait ends for a reader, so
                 # that is what ttft measures — not the first frame of any kind, which would
                 # time our own session frame and flatter the number.
@@ -203,6 +219,7 @@ async def stream(
                         "timings": Timings(
                             ttft_ms=ttft, total_ms=(time.monotonic() - started) * 1000
                         ).model_dump(),
+                        "model": override or agent.spec.model,
                     }
                 yield sse(StreamEvent(type=kind, seq=seq, data=data))
                 seq += 1

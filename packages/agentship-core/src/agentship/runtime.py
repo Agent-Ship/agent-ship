@@ -166,8 +166,15 @@ class RunnableAgent:
         user_id: str = "anonymous",
         session_id: str | None = None,
         middlewares: Sequence[Middleware] = (),
+        model: str | None = None,
     ) -> Result:
         """Run one turn and return a :class:`Result`.
+
+        ``model`` overrides the model this ONE turn uses, leaving the spec untouched. It exists
+        for experimenting — comparing two models on the same question without editing and
+        redeploying an agent — and is deliberately per-turn: the spec remains the contract, and
+        an override is a thing you did once, not a change to what the agent is. The result
+        reports the model actually used, so an override can never be mistaken for the spec.
 
         Pass ``caller`` to scope the turn to a full authenticated identity (tenant +
         scopes) — this is how the runtime service threads the request's caller through.
@@ -201,6 +208,10 @@ class RunnableAgent:
             # The ``route`` step: stamp the chosen model id on the context before the
             # engine runs, so the adapter reads it and never routes itself (§13.5).
             stamp_routed_model(self.spec, ctx)
+            if model:
+                # After routing, not instead of it: the router still records what it WOULD have
+                # picked, and this says what was actually used for this one turn.
+                ctx.routed_model = model
             # Open the root ``agent`` span around the whole pipeline so every guard/
             # memory/engine span nests under it, and stamp the trace id on the context
             # so middleware, the engine, and the service (X-Trace-Id) can read it.
@@ -307,6 +318,7 @@ class RunnableAgent:
         caller: Caller | None = None,
         user_id: str = "anonymous",
         session_id: str | None = None,
+        model: str | None = None,
     ) -> AsyncIterator[Event]:
         """Stream events for one turn (allowed only if the engine declares streaming).
 
@@ -327,6 +339,9 @@ class RunnableAgent:
         current_observer.set(self.observer)
         try:
             stamp_routed_model(self.spec, ctx)
+            if model:
+                # A per-turn override; see :meth:`run`. The spec is untouched.
+                ctx.routed_model = model
             # The root span spans the whole generator — opened here, ended when the
             # ``with`` exits (clean finish, mid-stream error, or early disconnect).
             with self.observer.span(

@@ -515,3 +515,54 @@ def test_a_card_publishes_the_spec_the_agent_actually_is() -> None:
     assert card["spec"]["engine"] == "echo"
     # exclude_none: a card shows what the author wrote, not every default the model carries.
     assert "model" not in card["spec"], "an unset field is not configuration anybody chose"
+
+
+def test_a_per_turn_override_changes_the_turn_and_is_reported() -> None:
+    """An override lasts one turn, and the response says what actually ran.
+
+    Without that report an overridden turn is indistinguishable from the agent's committed
+    configuration — which is how a playground quietly lies about what it tested.
+    """
+    client = _client()
+    body = client.post(
+        "/v1/agents/support:invoke",
+        json={"input": "hi", "overrides": {"model": "openai/gpt-4o"}},
+        headers={"x-api-key": "full"},
+    ).json()
+
+    assert body["model"] == "openai/gpt-4o", "the turn reports the model it actually used"
+
+
+def test_an_override_never_edits_the_agent() -> None:
+    """The spec is the contract: a turn's override must not leak into the next turn or the card."""
+    client = _client()
+    client.post(
+        "/v1/agents/support:invoke",
+        json={"input": "hi", "overrides": {"model": "openai/gpt-4o"}},
+        headers={"x-api-key": "full"},
+    )
+
+    after = client.post(
+        "/v1/agents/support:invoke", json={"input": "hi"}, headers={"x-api-key": "full"}
+    ).json()
+    card = client.get("/v1/agents/support", headers={"x-api-key": "full"}).json()
+
+    assert after["model"] != "openai/gpt-4o", "the next turn is back to the spec"
+    assert card["spec"].get("model") != "openai/gpt-4o", "the committed spec is untouched"
+
+
+def test_an_unknown_override_is_refused() -> None:
+    """``extra=forbid``: a misspelled knob fails loudly rather than being silently ignored.
+
+    A playground that accepts `temprature` and changes nothing is worse than one that refuses
+    it — you would read the unchanged result as evidence the setting does not matter.
+    """
+    client = _client()
+    resp = client.post(
+        "/v1/agents/support:invoke",
+        json={"input": "hi", "overrides": {"temprature": 0.9}},
+        headers={"x-api-key": "full"},
+    )
+
+    assert resp.status_code == 422
+    assert resp.json()["code"] == "invalid_request"
