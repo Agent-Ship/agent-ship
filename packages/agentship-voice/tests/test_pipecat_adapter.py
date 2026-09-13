@@ -17,6 +17,7 @@ from agentship_voice.turn import CANCELLED_MARKER, VoiceTurn
 pipecat = pytest.importorskip("pipecat", reason="needs the [pipecat] extra")
 
 from pipecat.frames.frames import (  # noqa: E402
+    InterimTranscriptionFrame,
     InterruptionFrame,
     TextFrame,
     TranscriptionFrame,
@@ -52,6 +53,32 @@ class _Slow:
             yield Event(type="content", data=part)
 
 
+async def _ready(processor) -> None:
+    """Give ``processor`` the task manager a running pipeline would have.
+
+    ``AgentNodeProcessor`` answers on a Pipecat-managed task rather than a raw
+    ``asyncio.create_task``, because a raw one is not tracked by the framework and never runs
+    — the agent stayed silent on the real path until this was fixed. The cost is that the
+    processor can no longer be driven standalone, which is honest: standalone driving is what
+    hid the bug.
+    """
+    from pipecat.clocks.system_clock import SystemClock
+    from pipecat.pipeline.pipeline import Pipeline
+    from pipecat.pipeline.worker import PipelineWorker
+    from pipecat.processors.frame_processor import FrameProcessorSetup
+    from pipecat.utils.asyncio.task_manager import TaskManager, TaskManagerParams
+
+    manager = TaskManager()
+    manager.setup(TaskManagerParams(loop=asyncio.get_running_loop()))
+    await processor.setup(
+        FrameProcessorSetup(
+            clock=SystemClock(),
+            task_manager=manager,
+            pipeline_worker=PipelineWorker(Pipeline([])),
+        )
+    )
+
+
 def _hosted() -> tuple[VoiceTurn, object, object, list]:
     """Return (turn, agent node, witness, frames pushed downstream by the node)."""
     ENGINES.register("slowtalker", _Slow)
@@ -69,17 +96,27 @@ def _hosted() -> tuple[VoiceTurn, object, object, list]:
     return turn, node, witness, pushed
 
 
-def _transcript(text: str, *, final: bool = True) -> TranscriptionFrame:
-    """Build a transcription frame the way an STT service would."""
-    frame = TranscriptionFrame(text=text, user_id="u1", timestamp="now")
-    frame.finalized = final
-    return frame
+def _transcript(text: str) -> TranscriptionFrame:
+    """Build the frame an STT service emits when an utterance is complete."""
+    return TranscriptionFrame(text=text, user_id="u1", timestamp="now")
+
+
+def _partial(text: str) -> InterimTranscriptionFrame:
+    """Build the frame an STT service emits while the human is still talking.
+
+    A separate CLASS, not a flag: Pipecat sends partials as InterimTranscriptionFrame, which
+    is deliberately not a TranscriptionFrame. Gating on the `finalized` field instead looks
+    equivalent and is not — it defaults to False and a segmented STT never sets it, so every
+    real transcript is skipped and the agent never runs.
+    """
+    return InterimTranscriptionFrame(text=text, user_id="u1", timestamp="now")
 
 
 @pytest.mark.asyncio
 async def test_a_final_transcript_is_spoken_back_chunk_by_chunk() -> None:
     """The agent's reply reaches TTS as separate frames, not one block at the end."""
     turn, node, _witness, pushed = _hosted()
+    await _ready(node)
 
     await node.process_frame(_transcript("hello"), FrameDirection.DOWNSTREAM)
     await node._reply
@@ -91,10 +128,16 @@ async def test_a_final_transcript_is_spoken_back_chunk_by_chunk() -> None:
 
 @pytest.mark.asyncio
 async def test_a_partial_transcript_does_not_run_the_agent() -> None:
-    """Partials exist so a UI can show words appearing — acting on them answers too early."""
-    _turn, node, _witness, pushed = _hosted()
+    """Partials exist so a UI can show words appearing — acting on them answers too early.
 
-    await node.process_frame(_transcript("hel", final=False), FrameDirection.DOWNSTREAM)
+    The partial arrives as InterimTranscriptionFrame, which is what a real STT sends; this test
+    used a TranscriptionFrame with finalized=False, a shape no provider ever produces, and so
+    passed while the real path was broken.
+    """
+    _turn, node, _witness, pushed = _hosted()
+    await _ready(node)
+
+    await node.process_frame(_partial("hel"), FrameDirection.DOWNSTREAM)
 
     assert node._reply is None, "no agent turn should have started"
     assert not [f for f in pushed if type(f) is TextFrame]
@@ -104,6 +147,7 @@ async def test_a_partial_transcript_does_not_run_the_agent() -> None:
 async def test_a_noise_triggered_empty_turn_costs_nothing() -> None:
     """A VAD that trips on a door slam must not spend a model call."""
     _turn, node, _witness, pushed = _hosted()
+    await _ready(node)
 
     await node.process_frame(_transcript("   "), FrameDirection.DOWNSTREAM)
 
@@ -120,6 +164,7 @@ async def test_an_interruption_stops_the_reply_and_clips_at_what_was_spoken() ->
     stopped producing.
     """
     turn, node, witness, _pushed = _hosted()
+    await _ready(node)
 
     await node.process_frame(_transcript("hello"), FrameDirection.DOWNSTREAM)
     await asyncio.sleep(0.05)  # let a couple of clauses get out
@@ -139,6 +184,7 @@ async def test_an_interruption_stops_the_reply_and_clips_at_what_was_spoken() ->
 async def test_a_new_utterance_supersedes_the_reply_still_running() -> None:
     """Speaking again mid-reply abandons the old answer instead of interleaving two."""
     _turn, node, _witness, pushed = _hosted()
+    await _ready(node)
 
     await node.process_frame(_transcript("first"), FrameDirection.DOWNSTREAM)
     await asyncio.sleep(0.03)

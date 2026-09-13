@@ -41,6 +41,8 @@ def _build_processors(turn: VoiceTurn):
     from pipecat.frames.frames import (
         Frame,
         InterruptionFrame,
+        LLMFullResponseEndFrame,
+        LLMFullResponseStartFrame,
         TextFrame,
         TranscriptionFrame,
         TTSTextFrame,
@@ -69,16 +71,19 @@ def _build_processors(turn: VoiceTurn):
                 # Only FINAL transcripts run the agent. Partials exist so a UI can show words
                 # appearing; acting on them would run the agent several times per sentence and
                 # answer a question the human had not finished asking.
-                if not getattr(frame, "finalized", True):
-                    await self.push_frame(frame, direction)
-                    return
+                #
+                # The TYPE is the signal: Pipecat sends partials as InterimTranscriptionFrame,
+                # which is a TextFrame and deliberately NOT a TranscriptionFrame, so anything
+                # arriving here is already final. Gating on the `finalized` flag instead looks
+                # equivalent and is not — it defaults to False and a segmented STT never sets
+                # it, so every real transcript was silently skipped and the agent never ran.
                 # A VAD that trips on a door slam produces an empty turn. It must cost nothing:
                 # no agent call, no model spend, no reply to a sound.
                 if not frame.text.strip():
                     logger.debug("empty transcript — no agent call")
                     return
                 await self._interrupt()  # a new utterance supersedes any reply still running
-                self._reply = asyncio.create_task(self._answer(frame.text))
+                self._reply = self.create_task(self._answer(frame.text))
                 return
 
             await self.push_frame(frame, direction)
@@ -90,6 +95,10 @@ def _build_processors(turn: VoiceTurn):
             the opening clause while the model is still producing the rest — the difference
             between a reply that begins in a moment and one that begins after a silence.
             """
+            # A TTS service aggregates text and needs to know where one reply starts and ends:
+            # without these markers it buffers the whole answer waiting for more and speaks
+            # nothing at all. The agent's chunks are an LLM response, so they are framed as one.
+            await self.push_frame(LLMFullResponseStartFrame())
             try:
                 async for chunk in self._turn.say(text):
                     await self.push_frame(TextFrame(chunk))
@@ -100,21 +109,18 @@ def _build_processors(turn: VoiceTurn):
                 # and a dead pipeline is worse than an apology.
                 logger.exception("agent turn failed")
                 await self.push_frame(TextFrame("Sorry — something went wrong on my end."))
+            finally:
+                # Closes the response even when the turn failed or was cut off, so a barge-in
+                # never leaves TTS waiting for the end of a reply that is not coming.
+                await self.push_frame(LLMFullResponseEndFrame())
 
         async def _interrupt(self) -> None:
             """Cancel the in-flight reply, if any, and wait for it to actually stop."""
             if self._reply is None or self._reply.done():
                 self._reply = None
                 return
-            self._reply.cancel()
-            # Awaiting the cancellation matters: returning while the old task is still
-            # producing would let a superseded reply push text after the new turn started.
-            try:
-                await self._reply
-            except asyncio.CancelledError:
-                pass
-            finally:
-                self._reply = None
+            await self.cancel_task(self._reply)
+            self._reply = None
 
     class SpokenWitness(FrameProcessor):
         """Record what TTS actually spoke, so an interruption clips at the right word."""
@@ -123,6 +129,9 @@ def _build_processors(turn: VoiceTurn):
             """Hold the turn whose spoken text this witnesses."""
             super().__init__()
             self._turn = turn
+            #: The last text recorded, so the same words are not counted twice. See
+            #: process_frame for why a service reports each sentence more than once.
+            self._last = None
 
         async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
             """Confirm text that TTS reports it is speaking; pass everything through.
@@ -138,7 +147,17 @@ def _build_processors(turn: VoiceTurn):
             if isinstance(frame, TTSTextFrame | TextFrame) and getattr(
                 frame, "will_be_spoken", True
             ):
-                self._turn.confirm_spoken(frame.text)
+                # Both frame types carry spoken text, because Pipecat reports a sentence twice:
+                # once as the plain TextFrame that `push_text_frames` emits, and again as the
+                # TTS-specific TTSTextFrame. Listening for only one misses whichever services
+                # do not send it; listening for both records every sentence twice, and an
+                # interrupted transcript then claims the agent repeated itself. So the words
+                # are recorded once — a repeat of what was just recorded is the same sentence
+                # arriving in its other shape, not the agent saying it again.
+                spoken = frame.text
+                if spoken and spoken != self._last:
+                    self._last = spoken
+                    self._turn.confirm_spoken(spoken)
             await self.push_frame(frame, direction)
 
     return AgentNodeProcessor, SpokenWitness

@@ -28,7 +28,7 @@ __all__ = ["build_pipecat_pipeline", "processor_order"]
 
 
 def processor_order(
-    *, transport_in=None, stt=None, agent=None, tts=None, witness=None, transport_out=None
+    *, transport_in=None, vad=None, stt=None, agent=None, tts=None, witness=None, transport_out=None
 ) -> list:
     """Return the processors in pipeline order, dropping the stages that are absent.
 
@@ -36,21 +36,24 @@ def processor_order(
     assembly function:
 
     1. ``transport_in`` — audio arrives
-    2. ``stt`` — turns the human's audio into a transcript
-    3. ``agent`` — the AgentShip turn
-    4. ``tts`` — turns the reply into audio
-    5. ``witness`` — records what TTS actually spoke (must be AFTER tts; see the adapter)
-    6. ``transport_out`` — audio leaves
+    2. ``vad`` — decides when the human started and stopped talking
+    3. ``stt`` — turns the human's audio into a transcript
+    4. ``agent`` — the AgentShip turn
+    5. ``tts`` — turns the reply into audio
+    6. ``witness`` — records what TTS actually spoke (must be AFTER tts; see the adapter)
+    7. ``transport_out`` — audio leaves
 
-    **There is no VAD stage, and there cannot be one.** Pipecat's ``VADAnalyzer`` is not a
-    ``FrameProcessor``; it is handed to the transport, which uses it to decide when the human
-    stopped talking and emits the speaking frames that make STT transcribe at all. This slot
-    existed here until a demo proved that a pipeline built with it transcribed nothing.
+    **The VAD stage is a ``VADProcessor``, not a ``VADAnalyzer``.** The analyzer is not a frame
+    processor and cannot be one; the processor wraps it and emits the
+    ``VADUserStartedSpeakingFrame``/``VADUserStoppedSpeakingFrame`` pair that a segmented STT
+    waits for before it transcribes anything. Passing the analyzer to the transport instead —
+    which older Pipecat consumed and 1.8 does not — leaves the VAD never running, and the only
+    symptom is a pipeline that hears audio and transcribes silence.
 
     Stages are optional so the same order can be driven in a test with no transport and no VAD,
     and it stays the one place the sequence is stated.
     """
-    stages = [transport_in, stt, agent, tts, witness, transport_out]
+    stages = [transport_in, vad, stt, agent, tts, witness, transport_out]
     return [stage for stage in stages if stage is not None]
 
 
@@ -59,6 +62,7 @@ def build_pipecat_pipeline(
     *,
     stt,
     tts,
+    vad=None,
     transport_in=None,
     transport_out=None,
 ):
@@ -76,6 +80,7 @@ def build_pipecat_pipeline(
     return Pipeline(
         processor_order(
             transport_in=transport_in,
+            vad=vad,
             stt=stt,
             agent=agent,
             tts=tts,

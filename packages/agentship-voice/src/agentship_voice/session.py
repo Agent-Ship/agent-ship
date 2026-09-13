@@ -28,8 +28,8 @@ async def run_browser_session(websocket, agent, caller: Caller, sample_rate: int
     ``voice:`` block, so the same spec that describes a voice agent on the command line
     describes it here — there is no second configuration surface for the served path.
     """
-    from pipecat.audio.vad.silero import SileroVADAnalyzer
     from pipecat.pipeline.worker import PipelineWorker
+    from pipecat.processors.audio.vad_processor import VADProcessor
     from pipecat.transports.websocket.fastapi import (
         FastAPIWebsocketParams,
         FastAPIWebsocketTransport,
@@ -37,7 +37,7 @@ async def run_browser_session(websocket, agent, caller: Caller, sample_rate: int
     from pipecat.workers.runner import WorkerRunner
 
     from .browser import RawAudioSerializer
-    from .factories import make_stt, make_tts, preflight
+    from .factories import make_stt, make_tts, make_vad, preflight
 
     spec = agent.spec
     problems = preflight(spec.voice)
@@ -53,9 +53,6 @@ async def run_browser_session(websocket, agent, caller: Caller, sample_rate: int
             audio_out_enabled=True,
             audio_in_sample_rate=sample_rate,
             audio_out_sample_rate=sample_rate,
-            # The VAD lives on the transport because it must see raw audio to decide when the
-            # human stopped talking, and it is what makes a segmented STT transcribe at all.
-            vad_analyzer=SileroVADAnalyzer(),
             serializer=RawAudioSerializer(sample_rate=sample_rate),
         ),
     )
@@ -63,6 +60,10 @@ async def run_browser_session(websocket, agent, caller: Caller, sample_rate: int
     turn = VoiceTurn(agent, caller=caller, session_id=f"voice-{id(websocket):x}")
     pipeline = build_pipecat_pipeline(
         turn,
+        # A pipeline STAGE, not a transport parameter: 1.8 moved the VAD into the graph, and an
+        # analyzer handed to the transport is simply never consulted — the pipeline then hears
+        # audio and transcribes silence, with nothing in any log to say why.
+        vad=VADProcessor(vad_analyzer=make_vad(spec.voice)),
         stt=make_stt(spec.voice),
         tts=make_tts(spec.voice),
         transport_in=transport.input(),
