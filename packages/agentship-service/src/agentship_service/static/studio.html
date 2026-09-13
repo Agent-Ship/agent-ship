@@ -234,14 +234,25 @@ label.override input {
   border-radius: 4px;
 }
 .usedmodel { font-family: var(--mono); }
-button.mic { display: inline-flex; align-items: center; gap: 7px; }
-button.mic .level {
-  display: none; width: 34px; height: 4px; border-radius: 999px; background: var(--surface3);
-  overflow: hidden;
+/* The mic is the one thing to press, so it sits centred above the conversation rather than
+   competing with Send inside the composer. */
+#voicestage {
+  flex: none;
+  display: flex; flex-direction: column; align-items: center; gap: 9px;
+  padding: 18px 0 16px; border-bottom: 1px solid var(--border);
 }
-button.mic.live .level { display: inline-block; }
-button.mic .level b { display: block; height: 100%; width: 0%; background: currentColor; transition: width .08s linear; }
-button.mic.live { color: var(--red); border-color: rgba(248,113,113,.45); background: rgba(248,113,113,.10); }
+button.mic {
+  width: 76px; height: 76px; border-radius: 50%; display: grid; place-items: center; padding: 0;
+  color: var(--accent); background: var(--accentdim); border: 1px solid var(--accentb);
+  transition: transform .12s ease, background .2s ease, border-color .2s ease, color .2s ease;
+}
+button.mic:hover { transform: scale(1.04); border-color: var(--accent); }
+button.mic.live { color: var(--red); border-color: rgba(248,113,113,.45); background: rgba(248,113,113,.12); }
+#voicestage .level {
+  width: 148px; height: 4px; border-radius: 999px; background: var(--surface3); overflow: hidden;
+}
+#voicestage .level b { display: block; height: 100%; width: 0%; background: var(--accent); transition: width .08s linear; }
+#voicestage button.mic.live ~ .level b { background: var(--red); }
 /* Pulses only while the human is actually being heard, so the ring means something. */
 button.mic.hearing { animation: micpulse 1.2s ease-in-out infinite; }
 @keyframes micpulse {
@@ -393,6 +404,14 @@ button.mic.hearing { animation: micpulse 1.2s ease-in-out infinite; }
           <span>Clear</span>
         </button>
       </div>
+      <div id="voicestage">
+        <button id="talk" class="mic" title="Talk to this agent out loud" aria-label="Talk">
+          <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="currentColor"
+            d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2Z"/></svg>
+        </button>
+        <div class="level"><b id="level"></b></div>
+        <div id="voicehint">Press the mic to talk — or type below</div>
+      </div>
       <div id="transcript">
         <div class="turns" id="turns">
           <div class="welcome" id="welcome">
@@ -409,12 +428,6 @@ button.mic.hearing { animation: micpulse 1.2s ease-in-out infinite; }
       <div id="composer">
         <div class="composerinner">
           <textarea id="input" rows="1" placeholder="Send a message…  (Enter to send, Shift+Enter for a newline)"></textarea>
-          <button id="talk" class="mic" title="Talk to this agent out loud">
-            <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path fill="currentColor"
-              d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2Z"/></svg>
-            <span id="talklabel">Talk</span>
-            <i class="level"><b id="level"></b></i>
-          </button>
           <button id="send">Send</button>
         </div>
         <div class="hint">
@@ -422,7 +435,6 @@ button.mic.hearing { animation: micpulse 1.2s ease-in-out infinite; }
             model override
             <input id="modeloverride" type="text" spellcheck="false" placeholder="(use the spec's)">
           </label>
-          <span id="voicehint"></span>
           <span id="modehint">streaming via :stream</span>
           <span id="pausehint"></span>
         </div>
@@ -1344,14 +1356,17 @@ function setTalking(live) {
   const mic = el("talk");
   mic.classList.toggle("live", live);
   if (!live) mic.classList.remove("hearing");
-  el("talklabel").textContent = live ? "Stop" : "Talk";
+  mic.title = live ? "Stop talking" : "Talk to this agent out loud";
   el("level").style.width = "0%";
   el("input").placeholder = live
-    ? "Talking — or type here, the agent hears both"
+    ? "Talking — or type here, the agent takes both"
     : "Message " + (chat.selected ? chat.selected.name : "the agent") + "…  (Enter to send, Shift+Enter for a newline)";
 }
 
-function setVoiceHint(text) { el("voicehint").textContent = text; }
+function setVoiceHint(text) {
+  // Idle still says something: a bare circle does not tell a first-time reader it is a button.
+  el("voicehint").textContent = text || "Press the mic to talk — or type below";
+}
 
 /* Server events. Each one either moves the transcript forward or says what the agent is doing
    — the two questions a person staring at a microphone actually has. */
