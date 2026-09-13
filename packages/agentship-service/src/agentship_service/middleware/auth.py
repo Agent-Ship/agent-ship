@@ -36,9 +36,6 @@ _DEFAULT_PUBLIC_PATHS = frozenset(
         "/docs",
         "/redoc",
         "/studio",
-        # The voice room, for the same reason as /studio: it is markup and script, holds no
-        # tenant data, and its own /v1 calls carry the user's key like any other client's.
-        "/studio/voice",
     }
 )
 

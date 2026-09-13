@@ -21,10 +21,6 @@ router = APIRouter()
 #: The shipped page. Read per request rather than at import so editing it during
 #: development shows up on a refresh without restarting the server.
 STUDIO_PAGE = Path(__file__).resolve().parent.parent / "static" / "studio.html"
-#: The voice room. A separate page rather than a panel inside Studio: talking to an agent is a
-#: whole-screen activity with one thing to press, and squeezing an orb into a chat sidebar
-#: serves neither.
-VOICE_PAGE = Path(__file__).resolve().parent.parent / "static" / "voice.html"
 
 
 @router.get("/studio", include_in_schema=False, response_class=HTMLResponse)
@@ -40,15 +36,6 @@ async def studio() -> HTMLResponse:
         # page — and a user who rebuilt the container kept being served the previous UI and
         # reasonably concluded the change had not shipped. Re-reading the file per request
         # (above) only defeats the server's cache; this defeats the browser's.
-        headers={"Cache-Control": "no-store"},
-    )
-
-
-@router.get("/studio/voice", include_in_schema=False, response_class=HTMLResponse)
-async def studio_voice() -> HTMLResponse:
-    """Return the voice page: one microphone, a transcript, and where the time went."""
-    return HTMLResponse(
-        VOICE_PAGE.read_text(encoding="utf-8"),
         headers={"Cache-Control": "no-store"},
     )
 
