@@ -10,5 +10,13 @@ from .agents import router as agents_router
 from .live import router as live_router
 from .studio import router as studio_router
 from .tasks import router as tasks_router
+from .voice import router as voice_router
 
-__all__ = ["a2a_router", "agents_router", "live_router", "studio_router", "tasks_router"]
+__all__ = [
+    "a2a_router",
+    "agents_router",
+    "live_router",
+    "studio_router",
+    "voice_router",
+    "tasks_router",
+]

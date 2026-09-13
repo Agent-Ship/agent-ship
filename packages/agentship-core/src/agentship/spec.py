@@ -256,6 +256,44 @@ class ObservabilitySpec(BaseModel):
         return value
 
 
+class VoiceSpec(BaseModel):
+    """The ``voice`` block on an :class:`AgentSpec`: how to run this agent over live audio.
+
+    Declarative and vendor-neutral, exactly like :class:`ObservabilitySpec`. The kernel owns the
+    authoring surface and never imports a voice framework; the provider *names* are validated by
+    ``agentship-voice``, which knows which ones it can actually build. Keys never live here —
+    they come from the environment — so this block is safe to commit.
+
+    Naming roles (``stt``, ``tts``, ``vad``, ``transport``) rather than import paths is what lets
+    a spec survive a library reorganising its modules, and lets somebody read it who has never
+    seen the framework underneath.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: Which framework hosts the agent. Both run the SAME agent; they differ in where it sits —
+    #: a node in Pipecat's frame graph, or the LLM slot of a LiveKit session.
+    framework: Literal["pipecat", "livekit"] = "pipecat"
+    #: Speech-to-text: the ears.
+    stt: str = "deepgram"
+    #: Text-to-speech: the mouth.
+    tts: str = "cartesia"
+    #: Voice-activity detection — decides when the human has stopped talking. Runs locally.
+    vad: str = "silero"
+    #: How audio reaches the process.
+    transport: str = "websocket"
+    #: Provider voice id for TTS. ``None`` keeps the provider's own default rather than us
+    #: choosing a voice on the author's behalf.
+    voice_id: str | None = None
+    #: Whether the human may cut the agent off mid-utterance. On by default: a voice agent you
+    #: cannot interrupt is worse than a text one, because you must wait out a wrong answer
+    #: instead of skimming past it.
+    allow_interruptions: bool = True
+    #: Target time-to-first-audio, in milliseconds (DESIGN §8). Recorded so a run can be measured
+    #: against the number the design committed to, not against whatever it happens to achieve.
+    latency_budget_ms: int = Field(default=850, ge=0)
+
+
 class AgentSpec(BaseModel):
     """The declarative definition of an agent (the authoring/control layer).
 
@@ -325,6 +363,9 @@ class AgentSpec(BaseModel):
     #: How (and whether) to trace this agent. Absent → untraced (no-op observer); see
     #: :class:`ObservabilitySpec`. Secrets stay in the environment, so this block is safe to commit.
     observability: ObservabilitySpec | None = None
+    #: How to run this agent over live audio. Absent → the agent is text-only; see
+    #: :class:`VoiceSpec`. Keys stay in the environment, so this block is safe to commit.
+    voice: VoiceSpec | None = None
     durability: Literal["none", "checkpoint", "workflow"] = "none"
     # NOTE: the *runtime checkpoint-flush mode* (LangGraph's ``ainvoke(durability=…)``:
     # sync/async/exit) is deliberately NOT a spec field. It is an engine implementation

@@ -218,6 +218,43 @@ def _check_agent(path: Path) -> str | None:
     mcp_reason = _check_mcp_version(spec)
     if mcp_reason is not None:
         return mcp_reason
+    voice_reason = _check_voice(spec)
+    if voice_reason is not None:
+        return voice_reason
+    return None
+
+
+def _check_voice(spec) -> str | None:
+    """Guard an agent that declares ``voice:`` against a missing framework, SDK or key.
+
+    Returns one actionable reason, or ``None`` when the spec has no ``voice:`` block or the
+    stack is ready. A voice agent fails in the worst possible place — the human speaks and
+    hears silence — so the same problems are surfaced here, before anyone dials in.
+
+    Never raises: if the voice package is not importable the guard is skipped rather than
+    failing an otherwise valid text agent, matching how the MCP and autonomous guards behave.
+    """
+    voice = getattr(spec, "voice", None)
+    if voice is None:
+        return None
+    try:
+        from agentship_voice.adapters import get_adapter
+        from agentship_voice.factories import preflight
+    except ImportError:
+        return (
+            "declares `voice:` but the voice package is not installed — "
+            'pip install "agentship-voice[pipecat]"'
+        )
+    try:
+        adapter = get_adapter(voice.framework)
+    except ValueError as exc:
+        return str(exc)
+    missing = adapter.missing_dependency()
+    if missing:
+        return missing
+    problems = preflight(voice)
+    if problems:
+        return "; ".join(problems)
     return None
 
 
@@ -1021,3 +1058,116 @@ def _apply_migrations(migrations: list[Migration], database_url: str | None) -> 
         migration.apply(resolved)
 
     click.echo(f"applied {len(migrations)} migrations (0 pending)")
+
+
+@main.group()
+def voice() -> None:
+    """Run an agent over live audio.
+
+    Needs the voice package and a framework extra:
+    ``pip install "agentship-voice[pipecat]"``.
+    """
+
+
+@voice.command("serve")
+@click.argument("file", type=click.Path(exists=True, dir_okay=False))
+@click.option(
+    "--env-file",
+    "env_file",
+    type=click.Path(dir_okay=False),
+    default=None,
+    help="Load provider keys from this .env instead of ./.env.",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Check dependencies, keys and config, then exit without binding a transport.",
+)
+@click.option("--debug", is_flag=True, help="Re-raise on failure so the full traceback is shown.")
+def voice_serve(file: str, env_file: str | None, dry_run: bool, debug: bool) -> None:
+    """Serve the agent declared in FILE over a live voice session.
+
+    Reads the agent's ``voice:`` block for which framework, ears and mouth to use, checks that
+    each one's SDK is installed and its key is set, then runs until interrupted.
+
+    ``--dry-run`` performs every check and stops before binding a transport, so a deployment can
+    prove its configuration without opening a port or spending a provider call — the same reason
+    ``doctor`` exists for text agents.
+    """
+    try:
+        load_env_for_run(env_file)
+        if debug:
+            configure_logging(logging.DEBUG)
+
+        spec = _spec_from(file)
+        if spec.voice is None:
+            raise click.ClickException(
+                f"{file} has no `voice:` block — add one to run this agent over audio"
+            )
+
+        adapter = _voice_adapter(spec.voice.framework)
+        missing = adapter.missing_dependency()
+        if missing:
+            raise click.ClickException(missing)
+
+        from agentship_voice.factories import preflight
+
+        problems = preflight(spec.voice)
+        if problems:
+            raise click.ClickException("voice cannot start:\n  - " + "\n  - ".join(problems))
+
+        if dry_run:
+            click.echo(
+                f"ok: {spec.name} would serve on {spec.voice.framework} "
+                f"({spec.voice.stt} → agent → {spec.voice.tts}, "
+                f"transport={spec.voice.transport})"
+            )
+            return
+
+        from agentship.runtime import build_agent
+        from agentship_voice import VoiceTurn
+
+        turn = VoiceTurn(build_agent(file), session_id=f"voice-{spec.name}")
+        click.echo(f"serving {spec.name} over voice — ctrl-c to stop")
+        asyncio.run(adapter.run(turn, spec.voice))
+    except KeyboardInterrupt:
+        # Ctrl-C is how a voice session is meant to end, not a failure.
+        click.echo("stopped")
+    except click.ClickException:
+        raise
+    except AgentShipError as exc:
+        if debug:
+            raise
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+    except Exception as exc:
+        if debug:
+            raise
+        click.echo(f"Error: {exc} (run with --debug for the full traceback)", err=True)
+        sys.exit(1)
+
+
+def _spec_from(path: str):
+    """Load an :class:`~agentship.spec.AgentSpec` from a YAML file."""
+    import yaml
+    from agentship.spec import AgentSpec
+
+    return AgentSpec.model_validate(yaml.safe_load(Path(path).read_text(encoding="utf-8")))
+
+
+def _voice_adapter(framework: str):
+    """Return the voice adapter for ``framework``, or fail naming the install.
+
+    The import is inside the function so every other CLI command keeps working on a stack with
+    no voice package at all — the same reason engines are resolved lazily.
+    """
+    try:
+        from agentship_voice.adapters import get_adapter
+    except ImportError as exc:
+        raise click.ClickException(
+            'voice needs the voice package — pip install "agentship-voice[pipecat]"'
+        ) from exc
+    try:
+        return get_adapter(framework)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc

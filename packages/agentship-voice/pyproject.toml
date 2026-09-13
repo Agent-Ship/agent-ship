@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agentship-voice"
+version = "0.0.2"
+description = "AgentShip voice — run the same agent over a live audio stream. A cascaded pipeline (transport/VAD → STT → agent → TTS) with barge-in, hosted in either Pipecat or LiveKit Agents. The agent is the one the REST service runs; only the hosting differs."
+readme = "README.md"
+requires-python = ">=3.13"
+license = "Apache-2.0"
+# The base install carries NO voice framework. `VoiceTurn` is pure asyncio over
+# agentship-core, so the seam, the config surface and their tests run keyless in CI;
+# a framework arrives only with its extra. Same shape as the observability package,
+# where the vendor SDK is never a hard dependency of the contract.
+dependencies = ["agentship-core==0.0.2"]
+
+[project.optional-dependencies]
+# Pipecat hosts the agent as a FrameProcessor in a frame pipeline.
+pipecat = ["pipecat-ai>=1.8,<2"]
+# LiveKit hosts the agent as an llm.LLM inside an AgentSession — a different shape
+# for the same agent, which is exactly why the seam below is text-in/text-out and
+# not a pipeline node. See adapters/base.py.
+livekit = ["livekit-agents>=1.8,<2"]
+all = ["pipecat-ai>=1.8,<2", "livekit-agents>=1.8,<2"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agentship_voice"]
