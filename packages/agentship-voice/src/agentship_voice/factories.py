@@ -113,7 +113,26 @@ def make_stt(config: VoiceSpec, *, sample_rate: int | None = None):
     kwargs = {"api_key": key} if key else {}
     if sample_rate is not None:
         kwargs["sample_rate"] = sample_rate
+    if config.language:
+        # Pinning the language stops per-utterance auto-detection, which mistakes short English
+        # phrases for other languages and makes the agent answer in one nobody spoke.
+        kwargs["language"] = _as_language(config.language)
     return service(**kwargs)
+
+
+def _as_language(code: str):
+    """Map a BCP-47 code onto the provider-neutral ``Language`` enum Pipecat services take.
+
+    An unknown code is passed through as the plain string: a provider that understands it
+    should get its chance, and one that does not will say so — better than us rejecting a
+    language because our enum is out of date.
+    """
+    from pipecat.transcriptions.language import Language
+
+    try:
+        return Language(code)
+    except ValueError:
+        return getattr(Language, code.upper().replace("-", "_"), code)
 
 
 def make_tts(config: VoiceSpec, *, sample_rate: int | None = None):

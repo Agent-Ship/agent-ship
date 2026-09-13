@@ -285,6 +285,11 @@ class VoiceSpec(BaseModel):
     #: Provider voice id for TTS. ``None`` keeps the provider's own default rather than us
     #: choosing a voice on the author's behalf.
     voice_id: str | None = None
+    #: BCP-47 language the human is expected to speak, e.g. ``en``. Left unset, a recogniser
+    #: auto-detects per utterance — and gets short ones wrong, transcribing English "ChatGPT"
+    #: as Urdu script, after which the agent faithfully answers in a language nobody spoke.
+    #: Set this for any agent that knows who it is talking to.
+    language: str | None = None
     #: Whether the human may cut the agent off mid-utterance. On by default: a voice agent you
     #: cannot interrupt is worse than a text one, because you must wait out a wrong answer
     #: instead of skimming past it.

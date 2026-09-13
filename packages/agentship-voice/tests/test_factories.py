@@ -62,3 +62,38 @@ def test_every_registered_provider_declares_how_to_install_it(table) -> None:
     for name, provider in table.items():
         assert provider.extra, f"{name} must name the pipecat extra that installs it"
         assert provider.module.startswith("pipecat."), f"{name} must be a consumed service"
+
+
+def test_a_declared_language_reaches_the_recogniser(monkeypatch) -> None:
+    """``language:`` pins recognition instead of letting it guess per utterance.
+
+    Auto-detection gets short phrases wrong — spoken English "ChatGPT" came back as Urdu
+    script, and the agent then answered in Urdu, which reads as the agent being broken rather
+    than as the microphone being misheard.
+    """
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    service = make_stt(VoiceSpec(stt="openai", language="en"))
+
+    # Asserting the service actually KEPT it, not merely that we passed it: a value dropped on
+    # the floor by the provider would leave auto-detection on and the bug intact.
+    assert service._settings.language == "en", "the recogniser must carry the language given"
+
+
+def test_an_unset_language_is_left_to_the_provider(monkeypatch) -> None:
+    """No language means the provider decides — the old behaviour, still available on purpose.
+
+    An agent that genuinely does not know which language it will hear is better served by
+    auto-detection than by us guessing English for it.
+    """
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    assert make_stt(VoiceSpec(stt="openai")) is not None
+
+
+def test_an_unknown_language_code_is_passed_through(monkeypatch) -> None:
+    """A code our enum does not know still reaches the provider rather than being rejected.
+
+    Our list of languages will go out of date before the providers' does.
+    """
+    from agentship_voice.factories import _as_language
+
+    assert _as_language("zz-XX") == "zz-XX"

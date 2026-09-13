@@ -38,9 +38,14 @@ _CLOSE_FORBIDDEN = 4403
 _CLOSE_NOT_VOICE = 4404
 _CLOSE_UNAVAILABLE = 4503
 
-#: The rate Studio captures and plays at. Browsers resample happily; 16 kHz is what speech
-#: recognition wants and keeps the socket a third the size of 48 kHz for no audible loss.
-SAMPLE_RATE = 16000
+#: The rate the whole socket runs at, capture and playback.
+#:
+#: 24 kHz because that is what OpenAI's speech synthesis produces and it refuses to resample.
+#: Running the socket at 16 kHz meant 24 kHz audio was played back as though it were 16 kHz —
+#: the same samples stretched over 1.5x the time, which sounds like the agent talking slowly in
+#: a deeper voice. Nothing errored; it just sounded wrong, which is the hardest kind of bug to
+#: attribute. Recognition is happy at either rate, so the synthesiser's requirement wins.
+SAMPLE_RATE = 24000
 
 
 @router.websocket("/v1/agents/{name}/voice")

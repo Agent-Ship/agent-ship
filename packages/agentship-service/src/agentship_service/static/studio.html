@@ -1267,7 +1267,10 @@ start();
 /* Not a second UI. A spoken turn lands in this transcript, its steps render through addStep,
  * and its timings fill the same Latency panel a typed turn fills — because it IS the same
  * agent having the same conversation, and two transcripts would make you reconcile them. */
-const VOICE_RATE = 16000;
+// Must match the server's SAMPLE_RATE: playing audio at a rate it was not recorded at
+// stretches or compresses it, which sounds like the agent talking slowly or quickly
+// rather than like a bug.
+const VOICE_RATE = 24000;
 let voice = null;   // { ws, ctx, node, stream, playAt, body } while a call is up
 
 function talking() { return voice !== null; }
