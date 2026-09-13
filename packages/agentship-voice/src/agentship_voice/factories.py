@@ -251,6 +251,8 @@ def make_tts(config: VoiceSpec, *, sample_rate: int | None = None):
         kwargs["sample_rate"] = sample_rate
     if config.tts_model:
         kwargs["model"] = config.tts_model
+    if config.tts_speed is not None:
+        kwargs["speed"] = config.tts_speed
     return service(**kwargs)
 
 

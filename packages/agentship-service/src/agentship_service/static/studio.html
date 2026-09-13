@@ -1274,6 +1274,10 @@ const VOICE_RATE = 24000;
 /* How loud you must be to interrupt the agent while it is talking. Above its own echo, below
  * a raised voice — tuned so a speaker's leakage does not trip it but a spoken word does. */
 const BARGE_IN_LEVEL = 0.055;
+/* How long after the last chunk of the agent's audio the microphone reopens by itself, in
+ * case the "stopped speaking" event never arrives. Longer than a gap between sentences,
+ * shorter than a person waiting to be heard. */
+const SPEAKING_GRACE_MS = 1200;
 let voice = null;   // { ws, ctx, node, stream, playAt, body } while a call is up
 
 function talking() { return voice !== null; }
@@ -1295,6 +1299,10 @@ async function startTalk() {
     // interrupts its own reply.
     audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
   });
+  // Chromium honours a requested rate; Firefox and Safari often ignore it and hand back the
+  // device rate instead. Sending 48kHz samples labelled as 24kHz makes every word arrive at
+  // half speed, which a recogniser hears as slurred nonsense or misses entirely — so the rate
+  // the context ACTUALLY runs at is read back, and audio is resampled if it differs.
   const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: VOICE_RATE });
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
   const ws = new WebSocket(
@@ -1304,7 +1312,8 @@ async function startTalk() {
     ["bearer", apiKey()],
   );
   ws.binaryType = "arraybuffer";
-  voice = { ws, ctx, stream, node: null, playAt: 0, body: null, botSpeaking: false, sources: [] };
+  voice = { ws, ctx, stream, node: null, playAt: 0, body: null, botSpeaking: false,
+            sources: [], lastAudioAt: 0 };
 
   setTalking(true);
   setVoiceHint("connecting…");
@@ -1334,13 +1343,23 @@ async function startTalk() {
   const node = ctx.createScriptProcessor(1024, 1, 1);
   node.onaudioprocess = (event) => {
     if (!voice || ws.readyState !== WebSocket.OPEN) return;
-    const samples = event.inputBuffer.getChannelData(0);
+    const raw = event.inputBuffer.getChannelData(0);
+    const samples = ctx.sampleRate === VOICE_RATE ? raw : downsample(raw, ctx.sampleRate, VOICE_RATE);
     showLevel(samples);
     // While the agent is speaking, its own voice comes back through the microphone, gets
     // transcribed as a new question, and it answers again — forever, drifting language each
     // lap as short echoes are misheard. Browser echo cancellation is not enough on speakers.
     // So audio is only forwarded while the agent is quiet, unless you speak clearly OVER it,
     // which is what barge-in should feel like: talking over someone, not whispering at them.
+    // The gate closes while the agent speaks so it does not hear itself. It must never LATCH:
+    // if the "finished speaking" event is lost — a dropped frame, an error mid-turn — the mic
+    // would stay shut for the rest of the call and the agent would simply stop hearing you,
+    // with nothing on screen to say why. So it reopens on its own shortly after the last
+    // audio arrived.
+    if (voice.botSpeaking && Date.now() - voice.lastAudioAt > SPEAKING_GRACE_MS) {
+      voice.botSpeaking = false;
+      setVoiceHint("listening — say something");
+    }
     if (voice.botSpeaking && rms(samples) < BARGE_IN_LEVEL) return;
     ws.send(toPcm16(samples));
   };
@@ -1435,6 +1454,7 @@ function silence() {
 /* Queue each chunk after the last so a reply plays as one voice instead of overlapping. */
 function playChunk(buffer) {
   if (!voice) return;
+  voice.lastAudioAt = Date.now();
   const pcm = new Int16Array(buffer);
   const frames = voice.ctx.createBuffer(1, pcm.length, VOICE_RATE);
   const channel = frames.getChannelData(0);
@@ -1453,6 +1473,22 @@ function playChunk(buffer) {
     const at = voice && voice.sources.indexOf(source);
     if (voice && at > -1) voice.sources.splice(at, 1);
   };
+}
+
+/* Linear resample to the rate the socket speaks. Good enough for speech and costs nothing;
+   the alternative is a recogniser being fed audio at the wrong speed, which it does not
+   report as an error — it simply returns worse words, or none. */
+function downsample(samples, from, to) {
+  if (from === to) return samples;
+  const ratio = from / to;
+  const out = new Float32Array(Math.round(samples.length / ratio));
+  for (let i = 0; i < out.length; i++) {
+    const at = i * ratio;
+    const low = Math.floor(at);
+    const high = Math.min(low + 1, samples.length - 1);
+    out[i] = samples[low] + (samples[high] - samples[low]) * (at - low);
+  }
+  return out;
 }
 
 /* Loudness of a block of samples, 0..1. */

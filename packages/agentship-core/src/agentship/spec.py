@@ -296,6 +296,10 @@ class VoiceSpec(BaseModel):
     tts: str = "cartesia"
     #: Which model that provider should speak with. Unset takes the provider's default.
     tts_model: str | None = None
+    #: How fast the agent speaks, as a multiplier. ``1.0`` is the provider's normal pace.
+    #: Conversational speech is faster than narration, and a default tuned for audiobooks
+    #: sounds sluggish in a dialogue where the listener is waiting to reply.
+    tts_speed: float | None = Field(default=None, gt=0.25, le=4.0)
     #: Voice-activity detection — decides when the human has stopped talking. Runs locally.
     vad: str = "silero"
     #: How audio reaches the process.
