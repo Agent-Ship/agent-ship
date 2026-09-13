@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Annotated, Any, ClassVar
 
 from agentship.engines.base import Engine, EngineCapabilities, Event, Result, ResumeToken
 from agentship.errors import CapabilityError, ResumeError
@@ -36,6 +36,7 @@ from langchain_core.messages import (
     ToolMessage,
 )
 from langgraph.graph import END, START, StateGraph
+from langgraph.graph.message import add_messages
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
 from typing_extensions import TypedDict
@@ -146,9 +147,18 @@ _CHECKPOINT_FLUSH_MODE = "sync"
 
 
 class _AgentState(TypedDict):
-    """The graph's state: the running list of chat messages for one turn."""
+    """The graph's state: the conversation's messages, across every turn on this thread.
 
-    messages: list
+    ``add_messages`` is the whole of the agent's short-term memory. Without it the channel is
+    a plain value and each turn REPLACES it, so the graph starts from nothing every time: an
+    agent told a name answered "I don't have access to personal information" one message later,
+    which reads as a model limitation rather than as a conversation that was thrown away.
+
+    The reducer is what makes a checkpointer worth having. Threading one through a channel that
+    overwrites itself stores a conversation faithfully and then never reads it.
+    """
+
+    messages: Annotated[list, add_messages]
 
 
 class _CompiledAgent:
@@ -468,6 +478,24 @@ class LangGraphEngine(Engine):
         return os.environ.get("AGENT_SESSION_STORE_URI")
 
     @staticmethod
+    def _with_checkpointer(compiled: _CompiledAgent, saver: Any) -> Any:
+        """Return this agent's graph bound to ``saver``, without rebuilding it.
+
+        Recompiling ``builder`` looks equivalent and is not. A prebuilt graph — which is what
+        ``create_react_agent`` returns — carries configuration that only the prebuilt
+        constructor applies, and a graph rebuilt from its bare builder loses it: state stopped
+        accumulating across turns, so every turn began from nothing. The agent answered "what
+        is my name?" with "I don't have access to personal information" one message after being
+        told, which reads as a model limitation rather than as a lost conversation.
+
+        Attaching the saver to the already-compiled graph keeps the graph the template built
+        and adds only the thing a run needs.
+        """
+        graph = compiled.graph
+        graph.checkpointer = saver
+        return graph
+
+    @staticmethod
     def _thread_config(thread_id: str) -> dict:
         """The LangGraph ``configurable`` config that binds a run to its checkpoint thread.
 
@@ -556,7 +584,7 @@ class LangGraphEngine(Engine):
             "checkpoint store=%s thread=%s flush=%s", store, thread_id, _CHECKPOINT_FLUSH_MODE
         )
         async with open_checkpointer(conninfo) as saver:
-            graph = compiled.builder.compile(checkpointer=saver)
+            graph = self._with_checkpointer(compiled, saver)
             return await self._invoke_and_finalize(
                 graph,
                 {"messages": compiled.initial_messages(text)},
@@ -604,7 +632,7 @@ class LangGraphEngine(Engine):
         invoke_input = Command(resume=resume_value) if resume_value is not None else None
         async with resolve_thread_lock(ctx.caller.tenant_id, thread_id, conninfo=conninfo):
             async with open_checkpointer(conninfo) as saver:
-                graph = compiled.builder.compile(checkpointer=saver)
+                graph = self._with_checkpointer(compiled, saver)
                 existing = await graph.aget_state(cfg)
                 if existing is None or existing.created_at is None:
                     raise ResumeError(
@@ -645,14 +673,29 @@ class LangGraphEngine(Engine):
         never silently yields nothing. When real chunks did arrive, no fallback is
         emitted (no double-emit): the token stream is authoritative.
         """
+        # A streamed turn is threaded through a checkpointer exactly like `run`, because that
+        # is what gives a conversation its memory. Without it the graph starts from nothing
+        # every turn: the agent answered "what do you mean?" with a description of itself,
+        # having no idea what it had just said. Streaming is a delivery mode, not a different
+        # kind of conversation, so it cannot come with a different set of guarantees.
+        thread_id = ctx.session_id
+        async with open_checkpointer(self._conninfo()) as saver:
+            graph = self._with_checkpointer(compiled, saver)
+            async for event in self._stream_graph(graph, compiled, text, thread_id):
+                yield event
+
+    async def _stream_graph(
+        self, graph: Any, compiled: _CompiledAgent, text: str, thread_id: str
+    ) -> AsyncIterator[Event]:
+        """Drive one streamed turn over ``graph``, already bound to a checkpointer."""
         # Two modes, because they carry different things: "messages" gives the model's
         # token stream, "updates" gives each node's state update — which is the only place
         # the tool node's ToolMessage appears. Listening on messages alone is why tool
         # results were invisible to a streaming client.
-        stream = compiled.graph.astream(
+        stream = graph.astream(
             {"messages": compiled.initial_messages(text)},
             stream_mode=["messages", "updates"],
-            config={"callbacks": _run_callbacks()},
+            config=self._thread_config(thread_id),
         )
         streamed_content = False
         last_full_content: Any = None
