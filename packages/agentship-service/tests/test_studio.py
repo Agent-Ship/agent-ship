@@ -188,3 +188,37 @@ def test_a_non_streaming_turn_also_says_it_is_working() -> None:
     invoke = page[page.index("async function invokeTurn") :]
     invoke = invoke[: invoke.index("\n}\n")]
     assert "addStep" in invoke, "the non-streaming path shows no status"
+
+
+def test_the_voice_room_is_served() -> None:
+    """``/studio/voice`` returns the voice page, uncached like Studio itself."""
+    client = _client()
+    resp = client.get("/studio/voice")
+
+    assert resp.status_code == 200
+    assert "AgentShip Voice" in resp.text
+    assert 'id="orb"' in resp.text, "the page's one obvious control"
+    assert resp.headers["cache-control"] == "no-store", "a rebuilt UI must not be cached away"
+
+
+def test_the_voice_room_needs_no_build_step() -> None:
+    """Self-contained like Studio: a deployment serves the UI it was built with.
+
+    No CDN and no bundle means the page works on a network that can reach nothing but this
+    origin — which is the situation an air-gapped or locked-down deployment is actually in.
+    """
+    client = _client()
+    body = client.get("/studio/voice").text
+
+    assert "<script src=" not in body, "no external script"
+    assert "cdn" not in body.lower(), "no CDN dependency"
+
+
+def test_the_voice_room_is_public_like_studio() -> None:
+    """Markup and script, never tenant data — so it loads before a key is entered.
+
+    The page's own /v1 calls still carry the user's key; it is only the shell that is public,
+    exactly as Studio is.
+    """
+    client = _client()
+    assert client.get("/studio/voice").status_code == 200

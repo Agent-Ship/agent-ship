@@ -49,6 +49,8 @@ def _build_processors(turn: VoiceTurn):
     )
     from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
+    from ..browser import TurnTimingsFrame
+
     class AgentNodeProcessor(FrameProcessor):
         """Turn a finalised transcript into the agent's spoken reply."""
 
@@ -113,6 +115,9 @@ def _build_processors(turn: VoiceTurn):
                 # Closes the response even when the turn failed or was cut off, so a barge-in
                 # never leaves TTS waiting for the end of a reply that is not coming.
                 await self.push_frame(LLMFullResponseEndFrame())
+                # Send the turn's timings downstream so a client can show where the time went.
+                # After the end frame: this is a report about the turn, not part of it.
+                await self.push_frame(TurnTimingsFrame(trace=self._turn.trace))
 
         async def _interrupt(self) -> None:
             """Cancel the in-flight reply, if any, and wait for it to actually stop."""

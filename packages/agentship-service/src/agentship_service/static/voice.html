@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgentShip Voice</title>
+<style>
+/* Same tokens as Studio: this is a second room in one building, not a second building. */
+:root {
+  --bg: #0d0d0f; --surface: #131316; --surface2: #16161a; --surface3: #1c1c21;
+  --border: #26262c; --borderh: #35353d;
+  --t1: #e8e8ea; --t2: #9a9aa2; --t3: #7d7d85;
+  --accent: #6e9fff; --accentdim: rgba(110,159,255,.10); --accentb: rgba(110,159,255,.30);
+  --green: #4ade80; --red: #f87171; --amber: #fbbf24;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--t1);
+  font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 18px; border-bottom: 1px solid var(--border); background: var(--surface);
+}
+header .name { font-weight: 600; }
+header .spacer { flex: 1; }
+select, button, input {
+  font: inherit; color: var(--t1); background: var(--surface2);
+  border: 1px solid var(--border); border-radius: 7px; padding: 5px 9px;
+}
+button { cursor: pointer; }
+button:hover { border-color: var(--borderh); }
+.pill {
+  font-family: var(--mono); font-size: 11px; padding: 3px 8px; border-radius: 999px;
+  border: 1px solid var(--border); color: var(--t2);
+}
+
+main {
+  display: grid; grid-template-columns: 1fr 320px; gap: 16px;
+  padding: 16px; align-items: start; max-width: 1200px; margin: 0 auto;
+}
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+.eyebrow {
+  margin: 0 0 12px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--t3);
+}
+
+/* --- the orb: one obvious thing to press ------------------------------------------------ */
+.stage { display: flex; flex-direction: column; align-items: center; }
+.orb {
+  width: 132px; height: 132px; border-radius: 50%; display: grid; place-items: center;
+  border: 1px solid var(--accentb); background: var(--accentdim); color: var(--accent);
+  transition: transform .12s ease, background .2s ease, border-color .2s ease;
+}
+.orb:hover { transform: scale(1.03); }
+.orb.live { background: rgba(248,113,113,.12); border-color: rgba(248,113,113,.45); color: var(--red); }
+/* Pulses only while the human is actually being heard, so the ring means something. */
+.orb.hearing { animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(110,159,255,.28); }
+  50%      { box-shadow: 0 0 0 14px rgba(110,159,255,0); }
+}
+.level { width: 180px; height: 4px; margin-top: 16px; background: var(--surface3); border-radius: 999px; overflow: hidden; }
+.level i { display: block; height: 100%; width: 0%; background: var(--accent); transition: width .08s linear; }
+.phase { margin-top: 10px; font-size: 13px; color: var(--t2); min-height: 20px; }
+
+/* --- transcript ------------------------------------------------------------------------- */
+.transcript { margin-top: 22px; width: 100%; display: flex; flex-direction: column; gap: 10px; }
+.turn { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface2); }
+.turn.you { border-color: var(--accentb); }
+.who { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--t3); margin-bottom: 4px; }
+.turn .said { white-space: pre-wrap; }
+.tools { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.tool { font-family: var(--mono); font-size: 11px; color: var(--t2); }
+.tool summary { cursor: pointer; }
+.tool pre {
+  margin: 4px 0 0 12px; padding: 6px 8px; background: var(--surface3); border-radius: 6px;
+  white-space: pre-wrap; word-break: break-word; max-height: 160px; overflow: auto;
+}
+.empty { color: var(--t3); font-size: 13px; text-align: center; padding: 18px 0; }
+
+/* --- profiling -------------------------------------------------------------------------- */
+.stagerow { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; font-size: 12px; }
+.stagerow .k { width: 84px; color: var(--t2); font-family: var(--mono); font-size: 11px; }
+.bar { flex: 1; height: 7px; background: var(--surface3); border-radius: 999px; overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--accent); }
+.bar i.worst { background: var(--amber); }
+.stagerow .v { width: 54px; text-align: right; font-family: var(--mono); font-size: 11px; color: var(--t2); }
+.ttfa { text-align: center; margin: 6px 0 14px; }
+.ttfa .n { font-size: 34px; font-weight: 600; color: var(--accent); font-family: var(--mono); }
+.ttfa small { display: block; color: var(--t3); font-size: 11px; }
+.budget { text-align: center; font-size: 11px; color: var(--t3); margin-top: 10px; }
+.budget.over { color: var(--amber); }
+.banner {
+  margin: 10px 16px; padding: 9px 12px; border-radius: 8px; font-size: 13px;
+  border: 1px solid rgba(248,113,113,.35); background: rgba(248,113,113,.10); color: var(--t1);
+}
+</style>
+</head>
+<body>
+<header>
+  <span class="name">AgentShip Voice</span>
+  <select id="agent" title="Which agent to talk to"></select>
+  <span class="spacer"></span>
+  <span class="pill" id="status">idle</span>
+  <button id="keybtn" title="API key">key</button>
+  <button id="tostudio" title="Back to the text playground">studio</button>
+</header>
+
+<div id="banner" class="banner" hidden></div>
+
+<main>
+  <section class="card stage">
+    <button id="orb" class="orb" aria-label="Start talking">
+      <svg viewBox="0 0 24 24" width="42" height="42" aria-hidden="true"><path fill="currentColor"
+        d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2Z"/></svg>
+    </button>
+    <div class="level"><i id="level"></i></div>
+    <div id="phase" class="phase">Press the mic and talk</div>
+    <div id="transcript" class="transcript">
+      <div class="empty" id="empty">Nothing said yet.</div>
+    </div>
+  </section>
+
+  <aside class="card">
+    <p class="eyebrow">Time to first audio</p>
+    <div class="ttfa"><span class="n" id="ttfa">—</span><small>ms until the reply starts</small></div>
+    <div id="stages"></div>
+    <div id="budget" class="budget"></div>
+  </aside>
+</main>
+
+<script>
+/* AgentShip Voice — one orb, a transcript, and where the time went.
+ *
+ * Talks to WS /v1/agents/{name}/voice: binary payloads are audio, strings are events. No build
+ * step and no dependency, same as Studio: a deployment serves the UI it was built with. */
+const el = (id) => document.getElementById(id);
+const STORE_KEY = "agentship.studio.key";   // shared with Studio: one key, one browser
+const RATE = 16000;
+
+const state = { agents: [], selected: null, ws: null, ctx: null, node: null, stream: null, playAt: 0, turn: null };
+
+function apiKey() { return localStorage.getItem(STORE_KEY) || ""; }
+function talking() { return state.ws !== null; }
+
+function showBanner(text) { const b = el("banner"); b.textContent = text; b.hidden = false; }
+function hideBanner() { el("banner").hidden = true; }
+
+/* --- agents ------------------------------------------------------------------------------ */
+
+async function loadAgents() {
+  try {
+    const resp = await fetch("/v1/agents", { headers: { "x-api-key": apiKey() } });
+    if (!resp.ok) { showBanner("Could not list agents (" + resp.status + "). Set your API key."); return; }
+    state.agents = await resp.json();
+  } catch (err) { showBanner("Could not reach the service: " + err.message); return; }
+
+  const picker = el("agent");
+  picker.innerHTML = "";
+  // Only agents with a voice: block — the rest cannot be talked to, and offering them would
+  // just be a way to get a 4404 with no explanation.
+  const voiceable = state.agents.filter((a) => a.spec && a.spec.voice);
+  for (const card of voiceable) {
+    const option = document.createElement("option");
+    option.value = card.name;
+    option.textContent = card.name;
+    picker.appendChild(option);
+  }
+  if (!voiceable.length) {
+    showBanner("No agent here declares a `voice:` block, so there is nothing to talk to yet.");
+    el("orb").disabled = true;
+    return;
+  }
+  state.selected = voiceable[0].name;
+  picker.value = state.selected;
+  hideBanner();
+}
+
+/* --- the call ---------------------------------------------------------------------------- */
+
+async function toggle() {
+  if (talking()) { hangUp(); return; }
+  try { await dial(); }
+  catch (err) { hangUp(); showBanner("Could not start: " + (err && err.message ? err.message : err)); }
+}
+
+async function dial() {
+  hideBanner();
+  const stream = await navigator.mediaDevices.getUserMedia({
+    // Echo cancellation matters: without it the agent hears itself through the speakers and
+    // interrupts its own reply.
+    audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+  });
+  const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: RATE });
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  const ws = new WebSocket(
+    proto + "//" + location.host + "/v1/agents/" + encodeURIComponent(state.selected) + "/voice",
+    ["bearer", apiKey()],
+  );
+  ws.binaryType = "arraybuffer";
+  state.ws = ws; state.ctx = ctx; state.stream = stream; state.playAt = 0;
+
+  el("orb").classList.add("live");
+  setPhase("connecting…");
+
+  ws.onmessage = (event) => {
+    if (typeof event.data === "string") onEvent(JSON.parse(event.data));
+    else playChunk(event.data);
+  };
+  ws.onclose = (event) => {
+    const why = {
+      4404: "This agent has no `voice:` block.",
+      4503: "This server has no voice package installed.",
+      4401: "Not authenticated — set your API key.",
+      4403: "Not allowed to talk to this agent.",
+    }[event.code];
+    if (why) showBanner(why);
+    hangUp();
+  };
+  ws.onerror = () => showBanner("Voice socket error.");
+
+  await new Promise((resolve, reject) => {
+    ws.onopen = resolve;
+    setTimeout(() => reject(new Error("timed out opening the socket")), 8000);
+  });
+
+  const source = ctx.createMediaStreamSource(stream);
+  const node = ctx.createScriptProcessor(1024, 1, 1);
+  node.onaudioprocess = (event) => {
+    if (!state.ws || ws.readyState !== WebSocket.OPEN) return;
+    const samples = event.inputBuffer.getChannelData(0);
+    showLevel(samples);
+    ws.send(toPcm16(samples));
+  };
+  source.connect(node);
+  node.connect(ctx.destination);
+  state.node = node;
+  setPhase("listening — say something");
+}
+
+function hangUp() {
+  if (!state.ws) return;
+  const { ws, ctx, node, stream } = state;
+  state.ws = null; state.node = null;
+  try { if (node) node.disconnect(); } catch (e) {}
+  try { stream.getTracks().forEach((t) => t.stop()); } catch (e) {}
+  try { if (ws.readyState === WebSocket.OPEN) ws.close(1000); } catch (e) {}
+  try { ctx.close(); } catch (e) {}
+  el("orb").classList.remove("live", "hearing");
+  el("level").style.width = "0%";
+  setPhase("Press the mic and talk");
+  setStatus("idle");
+}
+
+/* --- what the server tells us ------------------------------------------------------------ */
+
+function onEvent(event) {
+  if (event.type === "listening") { el("orb").classList.add("hearing"); setPhase("listening…"); setStatus("hearing you"); return; }
+  if (event.type === "thinking")  { el("orb").classList.remove("hearing"); setPhase("thinking…"); setStatus("thinking"); return; }
+  if (event.type === "speaking")  { setPhase("speaking…"); setStatus("speaking"); return; }
+  if (event.type === "idle")      { setPhase("listening — say something"); setStatus("listening"); return; }
+  if (event.type === "heard")     { addTurn("you", event.text); return; }
+  if (event.type === "said")      { appendAgent(event.text); return; }
+  if (event.type === "timings")   { showTimings(event.trace, event.biggest); return; }
+}
+
+function setPhase(text) { el("phase").textContent = text; }
+function setStatus(text) { el("status").textContent = text; }
+
+function addTurn(who, text) {
+  el("empty").hidden = true;
+  const turn = document.createElement("div");
+  turn.className = "turn " + who;
+  const label = document.createElement("div");
+  label.className = "who";
+  label.textContent = who === "you" ? "you" : state.selected;
+  const said = document.createElement("div");
+  said.className = "said";
+  said.textContent = text;
+  turn.appendChild(label); turn.appendChild(said);
+  el("transcript").appendChild(turn);
+  turn.scrollIntoView({ block: "end" });
+  state.turn = who === "you" ? null : said;   // the agent's line grows as sentences arrive
+  return said;
+}
+
+/* The agent speaks in sentences, so its reply grows in place rather than becoming a new turn
+   per sentence — otherwise one answer reads as several. */
+function appendAgent(text) {
+  if (!state.turn) state.turn = addTurn("agent", "");
+  state.turn.textContent += (state.turn.textContent ? " " : "") + text;
+  state.turn.scrollIntoView({ block: "end" });
+}
+
+/* --- profiling --------------------------------------------------------------------------- */
+
+/* Render the turn's trace as bars, longest stage highlighted. Stages that were never measured
+   are omitted entirely: showing them as 0 would claim a measurement nobody took. */
+function showTimings(trace, biggest) {
+  const labels = {
+    asr_ms: "hearing", rag_ms: "retrieval", llm_ttft_ms: "first words",
+    llm_total_ms: "whole reply", tool_ms: "tools", tts_ms: "speech", buffer_ms: "buffer",
+  };
+  const measured = Object.keys(labels).filter((k) => trace[k] !== null && trace[k] !== undefined);
+  const peak = Math.max(1, ...measured.map((k) => trace[k]));
+
+  el("ttfa").textContent = trace.llm_ttft_ms == null ? "—" : Math.round(trace.llm_ttft_ms);
+
+  const box = el("stages");
+  box.innerHTML = "";
+  for (const key of measured) {
+    const row = document.createElement("div");
+    row.className = "stagerow";
+    const name = document.createElement("span"); name.className = "k"; name.textContent = labels[key];
+    const bar = document.createElement("span"); bar.className = "bar";
+    const fill = document.createElement("i");
+    fill.style.width = Math.max(2, (trace[key] / peak) * 100) + "%";
+    if (biggest && biggest.stage === key) fill.classList.add("worst");
+    bar.appendChild(fill);
+    const value = document.createElement("span");
+    value.className = "v"; value.textContent = Math.round(trace[key]) + "ms";
+    row.appendChild(name); row.appendChild(bar); row.appendChild(value);
+    box.appendChild(row);
+  }
+  const budget = el("budget");
+  if (biggest) {
+    budget.textContent = "slowest stage: " + labels[biggest.stage] + " (" + Math.round(biggest.ms) + "ms)";
+    budget.className = "budget";
+  } else { budget.textContent = ""; }
+}
+
+/* --- audio plumbing ---------------------------------------------------------------------- */
+
+function toPcm16(samples) {
+  const out = new Int16Array(samples.length);
+  for (let i = 0; i < samples.length; i++) {
+    const clamped = Math.max(-1, Math.min(1, samples[i]));
+    out[i] = clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff;
+  }
+  return out.buffer;
+}
+
+/* Queue each chunk after the last so the reply plays as one voice rather than overlapping. */
+function playChunk(buffer) {
+  if (!state.ctx) return;
+  const pcm = new Int16Array(buffer);
+  const frames = state.ctx.createBuffer(1, pcm.length, RATE);
+  const channel = frames.getChannelData(0);
+  for (let i = 0; i < pcm.length; i++) channel[i] = pcm[i] / 0x8000;
+  const source = state.ctx.createBufferSource();
+  source.buffer = frames;
+  source.connect(state.ctx.destination);
+  const now = state.ctx.currentTime;
+  state.playAt = Math.max(now, state.playAt || now);
+  source.start(state.playAt);
+  state.playAt += frames.duration;
+}
+
+/* A level meter so silence looks different from a dead microphone. */
+function showLevel(samples) {
+  let sum = 0;
+  for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
+  const rms = Math.sqrt(sum / samples.length);
+  el("level").style.width = Math.min(100, rms * 320) + "%";
+}
+
+/* --- wiring ------------------------------------------------------------------------------ */
+
+el("orb").addEventListener("click", toggle);
+el("agent").addEventListener("change", (e) => { if (talking()) hangUp(); state.selected = e.target.value; });
+el("tostudio").addEventListener("click", () => { location.href = "/studio"; });
+el("keybtn").addEventListener("click", () => {
+  const key = prompt("API key for this service", apiKey());
+  if (key !== null) { localStorage.setItem(STORE_KEY, key.trim()); loadAgents(); }
+});
+loadAgents();
+</script>
+</body>
+</html>

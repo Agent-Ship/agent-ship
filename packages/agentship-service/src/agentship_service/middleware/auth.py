@@ -28,7 +28,19 @@ from ..errors import problem_dict
 # "/" is here for the same reason "/studio" is: it only redirects there. Without it the
 # bare host answered "no API key", which is what a browser gets before it has called any
 # API at all — an auth error for a navigation the user never authenticated for.
-_DEFAULT_PUBLIC_PATHS = frozenset({"/", "/healthz", "/openapi.json", "/docs", "/redoc", "/studio"})
+_DEFAULT_PUBLIC_PATHS = frozenset(
+    {
+        "/",
+        "/healthz",
+        "/openapi.json",
+        "/docs",
+        "/redoc",
+        "/studio",
+        # The voice room, for the same reason as /studio: it is markup and script, holds no
+        # tenant data, and its own /v1 calls carry the user's key like any other client's.
+        "/studio/voice",
+    }
+)
 
 
 class AuthMiddleware:

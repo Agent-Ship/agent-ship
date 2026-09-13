@@ -20,6 +20,7 @@ code rather than a traceback.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -685,6 +686,7 @@ def _serve(
     # uninstalled or misconfigured provider (e.g. forwarded-header without an allow-list).
     os.environ[ENV_AGENTS_DIR] = str(agents_dir)
     os.environ[ENV_AUTH_PROVIDER] = auth_provider
+    dev_key = _dev_key_if_unconfigured(auth_provider, host)
     build_auth_provider(auth_provider, _auth_config_from_env(auth_provider))
 
     # Turn the agentship.* logger tree on. Without this every component logger
@@ -697,6 +699,13 @@ def _serve(
     versions = installed_versions()
     click.echo(f"Serving {len(specs)} agent(s) from {agents_dir} on http://{host}:{port}")
     click.echo(f"Auth provider: {auth_provider}   Log level: {log_level}")
+    if dev_key:
+        click.secho(
+            f"No API keys configured — minted a local dev key: {dev_key}\n"
+            f"  Studio: http://{host}:{port}/studio  (paste that key when it asks)\n"
+            "  Set AGENTSHIP_API_KEYS to turn this off. Loopback only; never happens on 0.0.0.0.",
+            fg="yellow",
+        )
     click.echo(
         f"Build: {build_id()}   "
         + "  ".join(f"{n.removeprefix('agentship-')}={v}" for n, v in versions.items())
@@ -1171,3 +1180,38 @@ def _voice_adapter(framework: str):
         return get_adapter(framework)
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
+
+
+#: The environment variable the api_key provider reads its table from.
+DEFAULT_KEYS_ENV = "AGENTSHIP_API_KEYS"
+
+
+#: Hosts that only this machine can reach. A convenience that weakens auth must never be
+#: reachable from anywhere else, so it is gated on the bind address rather than on a flag
+#: somebody could set in production by accident.
+_LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1"})
+
+
+def _dev_key_if_unconfigured(auth_provider: str, host: str) -> str | None:
+    """Mint a throwaway API key when nobody configured one and we are bound to loopback.
+
+    Running `agentship serve` with no keys used to return 401 for everything, including
+    Studio's own calls — a UI you can open and cannot use, with nothing saying why. The fix is
+    not to drop auth: it is to admit that an unconfigured local run still needs A key, and to
+    print one.
+
+    Returns the key so the caller can show it, or ``None`` when keys are already configured or
+    the service is reachable from off-box. Deliberately regenerated per start: it is a
+    convenience for a developer at a terminal, not a credential anything should depend on.
+    """
+    import secrets
+
+    if auth_provider != "api_key" or os.environ.get(DEFAULT_KEYS_ENV):
+        return None
+    if host not in _LOOPBACK:
+        return None
+    key = "dev-" + secrets.token_hex(8)
+    os.environ[DEFAULT_KEYS_ENV] = json.dumps(
+        [{"key": key, "user": "local-dev", "tenant": "local", "scopes": ["*"]}]
+    )
+    return key

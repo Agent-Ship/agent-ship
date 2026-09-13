@@ -387,7 +387,7 @@ label.override input {
       <div id="composer">
         <div class="composerinner">
           <textarea id="input" rows="1" placeholder="Send a message…  (Enter to send, Shift+Enter for a newline)"></textarea>
-          <button id="talk" title="Talk to this agent (needs a voice: block)">Talk</button>
+          <button id="talk" title="Talk to this agent out loud (opens the voice room)">🎤 Talk</button>
           <button id="send">Send</button>
         </div>
         <div class="hint">
@@ -1319,7 +1319,9 @@ function playChunk(buffer) {
   voice.playAt += frames.duration;
 }
 
-el("talk").addEventListener("click", toggleTalk);
+// Voice is its own room: a full screen with one thing to press, a transcript and a latency
+// breakdown. A mic bolted into the chat composer could only ever be a worse version of it.
+el("talk").addEventListener("click", () => { location.href = "/studio/voice"; });
 
 /* --- what you are talking to, and how long it took ------------------------ */
 
