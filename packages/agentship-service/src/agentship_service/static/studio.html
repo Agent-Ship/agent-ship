@@ -1271,6 +1271,9 @@ start();
 // stretches or compresses it, which sounds like the agent talking slowly or quickly
 // rather than like a bug.
 const VOICE_RATE = 24000;
+/* How loud you must be to interrupt the agent while it is talking. Above its own echo, below
+ * a raised voice — tuned so a speaker's leakage does not trip it but a spoken word does. */
+const BARGE_IN_LEVEL = 0.055;
 let voice = null;   // { ws, ctx, node, stream, playAt, body } while a call is up
 
 function talking() { return voice !== null; }
@@ -1301,7 +1304,7 @@ async function startTalk() {
     ["bearer", apiKey()],
   );
   ws.binaryType = "arraybuffer";
-  voice = { ws, ctx, stream, node: null, playAt: 0, body: null };
+  voice = { ws, ctx, stream, node: null, playAt: 0, body: null, botSpeaking: false };
 
   setTalking(true);
   setVoiceHint("connecting…");
@@ -1333,6 +1336,12 @@ async function startTalk() {
     if (!voice || ws.readyState !== WebSocket.OPEN) return;
     const samples = event.inputBuffer.getChannelData(0);
     showLevel(samples);
+    // While the agent is speaking, its own voice comes back through the microphone, gets
+    // transcribed as a new question, and it answers again — forever, drifting language each
+    // lap as short echoes are misheard. Browser echo cancellation is not enough on speakers.
+    // So audio is only forwarded while the agent is quiet, unless you speak clearly OVER it,
+    // which is what barge-in should feel like: talking over someone, not whispering at them.
+    if (voice.botSpeaking && rms(samples) < BARGE_IN_LEVEL) return;
     ws.send(toPcm16(samples));
   };
   source.connect(node);
@@ -1377,8 +1386,8 @@ function onVoiceEvent(event) {
   const mic = el("talk");
   if (event.type === "listening") { mic.classList.add("hearing"); setVoiceHint("listening…"); return; }
   if (event.type === "thinking")  { mic.classList.remove("hearing"); setVoiceHint("thinking…"); return; }
-  if (event.type === "speaking")  { setVoiceHint("speaking…"); return; }
-  if (event.type === "idle")      { setVoiceHint("listening — say something"); return; }
+  if (event.type === "speaking")  { voice.botSpeaking = true; setVoiceHint("speaking… (talk over it to interrupt)"); return; }
+  if (event.type === "idle")      { voice.botSpeaking = false; setVoiceHint("listening — say something"); return; }
   if (event.type === "heard") {
     // What the agent HEARD, in the transcript as a user turn. A wrong answer to a misheard
     // question is a different problem from a wrong answer, and they look identical without it.
@@ -1422,11 +1431,16 @@ function playChunk(buffer) {
   voice.playAt += frames.duration;
 }
 
-/* A level meter so silence looks different from a dead microphone. */
-function showLevel(samples) {
+/* Loudness of a block of samples, 0..1. */
+function rms(samples) {
   let sum = 0;
   for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
-  el("level").style.width = Math.min(100, Math.sqrt(sum / samples.length) * 320) + "%";
+  return Math.sqrt(sum / samples.length);
+}
+
+/* A level meter so silence looks different from a dead microphone. */
+function showLevel(samples) {
+  el("level").style.width = Math.min(100, rms(samples) * 320) + "%";
 }
 
 /* --- what you are talking to, and how long it took ------------------------ */

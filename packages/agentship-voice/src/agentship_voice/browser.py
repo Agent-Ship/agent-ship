@@ -16,33 +16,12 @@ from __future__ import annotations
 import json
 
 from pipecat.frames.frames import (
-    BotStartedSpeakingFrame,
-    BotStoppedSpeakingFrame,
     Frame,
     InputAudioRawFrame,
     OutputAudioRawFrame,
-    TranscriptionFrame,
-    TTSTextFrame,
-    VADUserStartedSpeakingFrame,
-    VADUserStoppedSpeakingFrame,
+    OutputTransportMessageFrame,
 )
 from pipecat.serializers.base_serializer import FrameSerializer
-
-from .trace import LatencyTrace
-
-
-class TurnTimingsFrame(Frame):
-    """Carries a finished turn's :class:`~agentship_voice.trace.LatencyTrace` to the client.
-
-    Our own frame type because Pipecat has no "here is where the time went" frame, and latency
-    is a first-class part of a voice turn rather than a log line: a reply that is correct and
-    slow is a different product from one that is correct and fast.
-    """
-
-    def __init__(self, trace: LatencyTrace) -> None:
-        """Wrap the trace this turn produced."""
-        super().__init__()
-        self.trace = trace
 
 
 class RawAudioSerializer(FrameSerializer):
@@ -59,21 +38,22 @@ class RawAudioSerializer(FrameSerializer):
         self._sample_rate = sample_rate
 
     async def serialize(self, frame: Frame) -> str | bytes | None:
-        """Return audio as bytes, a few events as JSON text, and ``None`` for the rest.
+        """Return audio as bytes, a UI message as JSON text, and ``None`` for the rest.
 
         Two payload kinds on one socket, told apart by type: a browser reads ``ArrayBuffer`` as
-        sound and a string as an event. Audio alone is not enough for a UI — a caller staring
-        at a silent circle cannot tell "not hearing you" from "thinking" from "about to
-        speak", and a transcript they can read is how they find out the agent misheard rather
-        than misunderstood.
+        sound and a string as an event.
 
-        Only frames that change what a person should see are sent. Everything else still
-        travels the pipeline and is simply not this transport's business.
+        Only two frame types are sent, because those are the only two the output transport
+        actually offers a serializer — audio, and ``OutputTransportMessageFrame``. Anything
+        else reaching here would be silently dropped, which is exactly what happened when this
+        tried to serialise transcripts directly: the UI stayed empty while audio played
+        perfectly, and nothing anywhere said why.
         """
         if isinstance(frame, OutputAudioRawFrame):
             return frame.audio
-        event = _event_for(frame)
-        return json.dumps(event) if event else None
+        if isinstance(frame, OutputTransportMessageFrame):
+            return json.dumps(frame.message)
+        return None
 
     async def deserialize(self, data: str | bytes) -> Frame | None:
         """Turn an inbound binary payload into an input audio frame.
@@ -85,36 +65,3 @@ class RawAudioSerializer(FrameSerializer):
         if isinstance(data, str):
             return None
         return InputAudioRawFrame(audio=data, sample_rate=self._sample_rate, num_channels=1)
-
-
-def _event_for(frame: Frame) -> dict | None:
-    """Return the UI event a frame represents, or ``None`` when it is not worth showing.
-
-    Deliberately a small, closed set. A socket that forwarded every frame would make the
-    browser responsible for knowing which of Pipecat's dozens matter, which is exactly the
-    coupling the serializer exists to prevent.
-    """
-    if isinstance(frame, VADUserStartedSpeakingFrame):
-        return {"type": "listening"}
-    if isinstance(frame, VADUserStoppedSpeakingFrame):
-        return {"type": "thinking"}
-    if isinstance(frame, TranscriptionFrame):
-        # What the agent HEARD. Shown because a wrong answer to a misheard question is an
-        # entirely different problem from a wrong answer, and they look identical without it.
-        return {"type": "heard", "text": frame.text}
-    if isinstance(frame, TTSTextFrame):
-        return {"type": "said", "text": frame.text}
-    if isinstance(frame, BotStartedSpeakingFrame):
-        return {"type": "speaking"}
-    if isinstance(frame, BotStoppedSpeakingFrame):
-        return {"type": "idle"}
-    if isinstance(frame, TurnTimingsFrame):
-        worst = frame.trace.biggest_contributor()
-        return {
-            "type": "timings",
-            "trace": frame.trace.as_dict(),
-            # Named here rather than computed in the browser: the rule for "which stage to
-            # optimise next" belongs with the trace, not duplicated in every client.
-            "biggest": {"stage": worst[0], "ms": worst[1]} if worst else None,
-        }
-    return None

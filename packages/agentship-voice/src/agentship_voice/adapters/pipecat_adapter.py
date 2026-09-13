@@ -39,17 +39,20 @@ def _build_processors(turn: VoiceTurn):
     optional extra is a package that cannot be introspected, documented or doctored.
     """
     from pipecat.frames.frames import (
+        BotStartedSpeakingFrame,
+        BotStoppedSpeakingFrame,
         Frame,
         InterruptionFrame,
         LLMFullResponseEndFrame,
         LLMFullResponseStartFrame,
+        OutputTransportMessageFrame,
         TextFrame,
         TranscriptionFrame,
         TTSTextFrame,
+        VADUserStartedSpeakingFrame,
+        VADUserStoppedSpeakingFrame,
     )
     from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
-
-    from ..browser import TurnTimingsFrame
 
     class AgentNodeProcessor(FrameProcessor):
         """Turn a finalised transcript into the agent's spoken reply."""
@@ -63,6 +66,11 @@ def _build_processors(turn: VoiceTurn):
         async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
             """Answer a finalised transcript; abandon the reply when the human cuts in."""
             await super().process_frame(frame, direction)
+
+            if isinstance(frame, VADUserStartedSpeakingFrame):
+                await self._tell("listening")
+            elif isinstance(frame, VADUserStoppedSpeakingFrame):
+                await self._tell("thinking")
 
             if isinstance(frame, InterruptionFrame):
                 await self._interrupt()
@@ -84,6 +92,10 @@ def _build_processors(turn: VoiceTurn):
                 if not frame.text.strip():
                     logger.debug("empty transcript — no agent call")
                     return
+                # What the agent HEARD, sent on to the client: a wrong answer to a MISHEARD
+                # question is a different problem from a wrong answer, and they are
+                # indistinguishable without showing the transcript.
+                await self._tell("heard", text=frame.text)
                 await self._interrupt()  # a new utterance supersedes any reply still running
                 self._reply = self.create_task(self._answer(frame.text))
                 return
@@ -117,7 +129,22 @@ def _build_processors(turn: VoiceTurn):
                 await self.push_frame(LLMFullResponseEndFrame())
                 # Send the turn's timings downstream so a client can show where the time went.
                 # After the end frame: this is a report about the turn, not part of it.
-                await self.push_frame(TurnTimingsFrame(trace=self._turn.trace))
+                worst = self._turn.trace.biggest_contributor()
+                await self._tell(
+                    "timings",
+                    trace=self._turn.trace.as_dict(),
+                    # Named here rather than recomputed in the browser: the rule for "which
+                    # stage to optimise next" belongs with the trace, not in every client.
+                    biggest={"stage": worst[0], "ms": worst[1]} if worst else None,
+                )
+
+        async def _tell(self, kind: str, **data) -> None:
+            """Send one UI event to the client.
+
+            ``OutputTransportMessageFrame`` because it is the only non-audio frame the output
+            transport hands to a serializer; anything else is dropped without a word.
+            """
+            await self.push_frame(OutputTransportMessageFrame(message={"type": kind, **data}))
 
         async def _interrupt(self) -> None:
             """Cancel the in-flight reply, if any, and wait for it to actually stop."""
@@ -138,6 +165,10 @@ def _build_processors(turn: VoiceTurn):
             #: process_frame for why a service reports each sentence more than once.
             self._last = None
 
+        async def _tell(self, kind: str, **data) -> None:
+            """Send one UI event to the client; see the node's method of the same name."""
+            await self.push_frame(OutputTransportMessageFrame(message={"type": kind, **data}))
+
         async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
             """Confirm text that TTS reports it is speaking; pass everything through.
 
@@ -149,6 +180,10 @@ def _build_processors(turn: VoiceTurn):
             the failure this witness exists to prevent.
             """
             await super().process_frame(frame, direction)
+            if isinstance(frame, BotStartedSpeakingFrame):
+                await self._tell("speaking")
+            elif isinstance(frame, BotStoppedSpeakingFrame):
+                await self._tell("idle")
             if isinstance(frame, TTSTextFrame | TextFrame) and getattr(
                 frame, "will_be_spoken", True
             ):
@@ -163,6 +198,7 @@ def _build_processors(turn: VoiceTurn):
                 if spoken and spoken != self._last:
                     self._last = spoken
                     self._turn.confirm_spoken(spoken)
+                    await self._tell("said", text=spoken)
             await self.push_frame(frame, direction)
 
     return AgentNodeProcessor, SpokenWitness
