@@ -511,6 +511,20 @@ class LangGraphEngine(Engine):
 
         Attaching the saver to the already-compiled graph keeps the graph the template built
         and adds only the thing a run needs.
+
+        KNOWN HAZARD, not yet fixed: this mutates the agent's shared graph. The saver belongs
+        to one run — under Postgres it owns a connection pool closed when that run's context
+        exits — so two concurrent turns on one agent overwrite each other's, and whichever
+        finishes first closes a pool the other may still be writing through. Not reachable
+        today: the in-memory saver is a module-level singleton, so every run assigns the same
+        object, and only a Postgres deployment serving concurrent turns is exposed.
+
+        A per-run ``copy.copy`` of the graph was tried and reverted: it leaves LangGraph's
+        Pregel loop missing internals and breaks synchronous checkpoint flushing outright
+        (``AsyncPregelLoop`` has no ``_put_checkpoint_fut``). Trading working durability for a
+        race nobody has hit is a bad exchange, so the hazard is written down instead of
+        papered over. The real fix is a per-run compiled graph that keeps the prebuilt
+        configuration — which is the thing recompiling from ``builder`` loses.
         """
         graph = compiled.graph
         graph.checkpointer = saver
