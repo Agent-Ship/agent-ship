@@ -22,7 +22,14 @@ from sse_starlette.sse import EventSourceResponse
 
 from ..context import current_trace_id
 from ..middleware import get_caller, require_scope
-from ..models.v1 import AgentCard, InvokeRequest, InvokeResponse, ResumeRequest, StreamEvent
+from ..models.v1 import (
+    AgentCard,
+    InvokeRequest,
+    InvokeResponse,
+    ResumeRequest,
+    StreamEvent,
+    Timings,
+)
 from ..registry import AgentRegistry
 from ._common import (
     agent_card,
@@ -43,7 +50,9 @@ router = APIRouter(prefix="/v1/agents", tags=["agents"])
 logger = logging.getLogger("agentship.service")
 
 
-def _invoke_response(name: str, session_id: str, result: Result) -> InvokeResponse:
+def _invoke_response(
+    name: str, session_id: str, result: Result, *, timings: Timings | None = None
+) -> InvokeResponse:
     """Shape an engine :class:`Result` into the wire :class:`InvokeResponse`."""
     return InvokeResponse(
         agent=name,
@@ -55,6 +64,7 @@ def _invoke_response(name: str, session_id: str, result: Result) -> InvokeRespon
         # said something as finished, so a client discarded a live resume token.
         paused=result.interrupt is not None,
         interrupt=result.interrupt,
+        timings=timings,
         trace_id=current_trace_id(),
     )
 
@@ -104,9 +114,13 @@ async def invoke(
     """
     agent = resolve_agent(agents, name)
     session_id = body.session_id or uuid.uuid4().hex
+    started = time.monotonic()
     with log_turn("invoke", name, caller, session_id):
         result = await agent.run(body.input, caller=caller, session_id=session_id)
-    return _invoke_response(name, session_id, result)
+    # A non-streaming turn has no first-token moment distinct from its last: the client waits
+    # for the whole reply, so ttft and total are the same wait and only one is reported.
+    elapsed = Timings(total_ms=(time.monotonic() - started) * 1000)
+    return _invoke_response(name, session_id, result, timings=elapsed)
 
 
 @router.post("/{name}:resume", response_model=InvokeResponse)
@@ -128,6 +142,7 @@ async def resume(
     or a resume on an engine that is not durable, raises rather than pretending to continue.
     """
     agent = resolve_agent(agents, name)
+    started = time.monotonic()
     with log_turn("resume", name, caller, body.session_id):
         result = await agent.resume(
             body.resume_token,
@@ -135,7 +150,8 @@ async def resume(
             caller=caller,
             session_id=body.session_id,
         )
-    return _invoke_response(name, body.session_id, result)
+    elapsed = Timings(total_ms=(time.monotonic() - started) * 1000)
+    return _invoke_response(name, body.session_id, result, timings=elapsed)
 
 
 @router.post("/{name}:stream")
@@ -167,9 +183,28 @@ async def stream(
             StreamEvent(type="session", seq=seq, data={"session_id": session_id, "agent": name})
         )
         seq += 1
+        ttft: float | None = None
         try:
             async for event in agent.stream(body.input, caller=caller, session_id=session_id):
-                yield sse(StreamEvent(type=frame_type(event.type), seq=seq, data=frame_data(event)))
+                # The first frame carrying words is the moment the wait ends for a reader, so
+                # that is what ttft measures — not the first frame of any kind, which would
+                # time our own session frame and flatter the number.
+                if ttft is None and frame_type(event.type) in ("content", "token"):
+                    ttft = (time.monotonic() - started) * 1000
+                kind = frame_type(event.type)
+                data = frame_data(event)
+                if kind == "done":
+                    # Enrich the engine's own terminal frame rather than adding a second one:
+                    # a client that stops at the first `done` would otherwise never see the
+                    # timings, and one that does not would see the turn end twice.
+                    data = {
+                        **data,
+                        "session_id": session_id,
+                        "timings": Timings(
+                            ttft_ms=ttft, total_ms=(time.monotonic() - started) * 1000
+                        ).model_dump(),
+                    }
+                yield sse(StreamEvent(type=kind, seq=seq, data=data))
                 seq += 1
         except Exception as exc:  # noqa: BLE001 — a mid-stream failure becomes an error frame
             logger.warning(

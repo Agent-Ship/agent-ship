@@ -244,6 +244,11 @@ main { flex: 1; display: flex; min-height: 0; }
 .idrow { display: flex; gap: 8px; font-family: var(--mono); font-size: 11px; padding: 2px 0; }
 .idrow .k { color: var(--t3); width: 82px; flex: none; }
 .idrow .v { color: var(--t2); overflow-wrap: anywhere; }
+.specbody {
+  margin: 0; padding: 8px 10px; max-height: 220px; overflow: auto;
+  font-family: var(--mono); font-size: 11px; line-height: 1.5;
+  color: var(--t2); background: var(--panel2, transparent); white-space: pre-wrap; word-break: break-word;
+}
 #frames { flex: 1; overflow-y: auto; padding: 8px 10px; font-family: var(--mono); font-size: 11.5px; }
 .frame { padding: 4px 6px; border-radius: 6px; border-left: 2px solid var(--border); margin-bottom: 3px; }
 .frame:hover { background: var(--surface2); }
@@ -383,6 +388,14 @@ main { flex: 1; display: flex; min-height: 0; }
         <div class="idrow"><span class="k">trace_id</span><span class="v" id="v-trace">—</span></div>
         <div class="idrow"><span class="k">resume_token</span><span class="v" id="v-resume">—</span></div>
       </div>
+      <div class="panelhead" style="margin-top:10px">Latency</div>
+      <div id="timings">
+        <div class="idrow"><span class="k">first words</span><span class="v" id="v-ttft">—</span></div>
+        <div class="idrow"><span class="k">whole turn</span><span class="v" id="v-total">—</span></div>
+      </div>
+      <div class="panelhead" style="margin-top:10px">Spec<span class="spacer"></span><span class="stamp" id="specname"></span></div>
+      <pre id="specbody" class="specbody">—</pre>
+      <div class="panelhead" style="margin-top:10px">Frames</div>
       <div id="frames"></div>
     </aside>
   </main>
@@ -627,6 +640,7 @@ function selectAgent(card) {
   badges.innerHTML = "";
   for (const badge of badgesFor(card)) badges.appendChild(badge);
   el("input").placeholder = "Message " + card.name + "…  (Enter to send, Shift+Enter for a newline)";
+  showSpec(card);
   clearChat();
   el("input").focus();
 }
@@ -880,6 +894,7 @@ async function showTurnResult(response) {
   chat.sessionId = body.session_id || chat.sessionId;
   chat.resumeToken = body.paused ? body.resume_token : null;
   chat.interrupt = body.paused ? body.interrupt : null;
+  showTimings(body.timings);
   addFrame("done", "", { output: body.output, usage: body.usage });
   showIds(body.trace_id);
   showPauseHint();
@@ -935,6 +950,11 @@ async function streamTurn(text) {
       if (thought) appendReasoning(body, thought);
       scrollToEnd();
       return;
+    }
+    if (frame.type === "done" && data.timings) {
+      // The terminal frame carries the turn's timings. On a stream ttft is the number that
+      // matters: it is when words first appeared, not when the reply finished.
+      showTimings(data.timings);
     }
     if (data.paused) {
       chat.resumeToken = data.resume_token;
@@ -1244,6 +1264,43 @@ function playChunk(buffer) {
 }
 
 el("talk").addEventListener("click", toggleTalk);
+
+/* --- what you are talking to, and how long it took ------------------------ */
+
+/* Render the selected agent's declared spec — the contract it IS, not a summary of it.
+ * Secrets never live in a spec (they come from the environment), so this is safe to show. */
+function showSpec(card) {
+  el("specname").textContent = card.name;
+  const spec = card.spec;
+  el("specbody").textContent = spec ? toYamlish(spec) : "(this service does not publish specs)";
+}
+
+/* A small YAML-ish rendering. The spec is authored as YAML, so showing it as JSON would make a
+ * reader translate back to the thing they would actually edit. */
+function toYamlish(value, indent) {
+  const pad = "  ".repeat(indent || 0);
+  if (value === null || value === undefined) return "";
+  if (Array.isArray(value)) {
+    if (!value.length) return " []";
+    return "\n" + value.map((v) => pad + "- " + String(toYamlish(v, (indent || 0) + 1)).trim()).join("\n");
+  }
+  if (typeof value === "object") {
+    return "\n" + Object.keys(value).map((k) => {
+      const rendered = toYamlish(value[k], (indent || 0) + 1);
+      const inline = typeof value[k] === "object" && value[k] !== null;
+      return pad + k + ":" + (inline ? rendered : " " + rendered);
+    }).join("\n");
+  }
+  return String(value);
+}
+
+/* Show where a turn's time went. `null` means not measured — never rendered as 0, because a
+ * zero here would be a measurement nobody took. */
+function showTimings(timings) {
+  const ms = (v) => (v === null || v === undefined ? "—" : Math.round(v) + " ms");
+  el("v-ttft").textContent = ms(timings && timings.ttft_ms);
+  el("v-total").textContent = ms(timings && timings.total_ms);
+}
 </script>
 </body>
 </html>
