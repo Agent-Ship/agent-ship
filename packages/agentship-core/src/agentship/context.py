@@ -119,6 +119,23 @@ class RunContext:
         """
         return (self.tenant_id, self.user_id)
 
+    @property
+    def conversation_key(self) -> str:
+        """Return the key a SHORT-term conversation store must file this turn under.
+
+        Not ``session_id`` alone. A session id is supplied by the client, so on its own it is
+        a shared namespace: two tenants that both use ``"chat-1"`` read each other's
+        conversation, and an agent asked "what did I say?" answers honestly with somebody
+        else's words. Two different agents collide the same way, which is merely wrong rather
+        than dangerous, but wrong in a manner that looks like the model hallucinating.
+
+        Tenant first, because that is the boundary that must never be crossed; then the agent,
+        because a conversation belongs to the agent having it; then the session. Distinct from
+        :attr:`memory_scope`, which is deliberately NOT per-session — long-term memory is
+        supposed to carry across sessions, and short-term memory is supposed not to.
+        """
+        return f"{self.tenant_id}/{self.agent_name}/{self.session_id}"
+
 
 #: The active :class:`RunContext` for the current turn, or unset outside a turn.
 current_run: ContextVar[RunContext] = ContextVar("current_run")

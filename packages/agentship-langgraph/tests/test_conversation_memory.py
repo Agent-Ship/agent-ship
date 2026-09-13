@@ -114,3 +114,57 @@ async def test_a_streamed_turn_remembers_too(echoing_model) -> None:
     )
 
     assert "My name is Harshul." in heard, "a streamed second turn must see the first"
+
+
+@pytest.mark.asyncio
+async def test_two_tenants_sharing_a_session_id_do_not_share_a_conversation(echoing_model) -> None:
+    """The boundary that must never be crossed, and the one most easily crossed here.
+
+    ``session_id`` comes from the CLIENT. Keyed on that alone, a caller who guesses or reuses
+    another tenant's session id asks "what did I say?" and is told, accurately, what somebody
+    else said. Memory not working at all hid this; making it work exposed it.
+    """
+    from agentship.context import Caller
+
+    agent = _agent()
+    acme = Caller(user_id="u1", tenant_id="acme", scopes={"*"})
+    rival = Caller(user_id="u2", tenant_id="rival", scopes={"*"})
+
+    await agent.run("our merger target is Initech", caller=acme, session_id="chat-1")
+    other = await agent.run("what did I say?", caller=rival, session_id="chat-1")
+
+    assert "Initech" not in str(other.output), "a tenant must never read another's conversation"
+
+
+@pytest.mark.asyncio
+async def test_two_agents_sharing_a_session_id_do_not_share_a_conversation(echoing_model) -> None:
+    """Less dangerous than the tenant case, but it reads as the model hallucinating."""
+    support = _agent("support")
+    billing = _agent("billing")
+
+    await support.run("my card ends 4242", session_id="session-1")
+    other = await billing.run("what did I say?", session_id="session-1")
+
+    assert "4242" not in str(other.output), "a conversation belongs to the agent having it"
+
+
+@pytest.mark.asyncio
+async def test_the_system_prompt_is_stored_once_not_once_per_turn(echoing_model) -> None:
+    """Re-seeding it every turn appends a fresh copy, growing what the model must read.
+
+    Twelve turns stored twelve identical system messages: tokens paid on every later turn to
+    repeat an instruction the model already had. Harmless-looking, and it compounds.
+    """
+    from agentship_langgraph.durability import _MEMORY_SAVER
+
+    agent = _agent("once")
+    for i in range(4):
+        await agent.run(f"turn {i}", session_id="prompt-once")
+
+    stored = await _MEMORY_SAVER.aget_tuple(
+        {"configurable": {"thread_id": "default/once/prompt-once"}}
+    )
+    messages = (stored.checkpoint.get("channel_values", {}) or {}).get("messages", [])
+    systems = [m for m in messages if m.__class__.__name__ == "SystemMessage"]
+
+    assert len(systems) == 1, f"the prompt should be stored once, found {len(systems)}"

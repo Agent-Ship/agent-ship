@@ -219,10 +219,17 @@ class _CompiledAgent:
         """
         return self.graph.builder
 
-    def initial_messages(self, text: str) -> list:
-        """Build the seed message list for one turn: optional system + user input."""
+    def initial_messages(self, text: str, *, resuming: bool = False) -> list:
+        """Build the seed messages for one turn: the user's input, and the system prompt once.
+
+        ``resuming`` means this thread already holds a conversation, so the system prompt is
+        already in it. Re-seeding it every turn appended a fresh copy each time — twelve turns
+        stored twelve identical system messages — which grows the context the model must read,
+        costs tokens on every subsequent turn, and repeats an instruction the model has already
+        been given. The message channel accumulates now; it did not when this was written.
+        """
         messages: list = []
-        if self.system_prompt:
+        if self.system_prompt and not resuming:
             messages.append(SystemMessage(content=self.system_prompt))
         messages.append(HumanMessage(content=text))
         return messages
@@ -478,6 +485,20 @@ class LangGraphEngine(Engine):
         return os.environ.get("AGENT_SESSION_STORE_URI")
 
     @staticmethod
+    async def _has_history(saver: Any, thread_id: str) -> bool:
+        """Whether this conversation already holds messages.
+
+        Asked of the checkpointer rather than tracked in memory, because the answer has to
+        survive a restart: the conversation is in the store, and a process that just started
+        would otherwise re-seed a system prompt into a thread that already has one.
+        """
+        try:
+            existing = await saver.aget_tuple({"configurable": {"thread_id": thread_id}})
+        except Exception:  # noqa: BLE001 — a store hiccup must not fail the turn
+            return False
+        return existing is not None
+
+    @staticmethod
     def _with_checkpointer(compiled: _CompiledAgent, saver: Any) -> Any:
         """Return this agent's graph bound to ``saver``, without rebuilding it.
 
@@ -577,7 +598,7 @@ class LangGraphEngine(Engine):
         in-memory), recompiles the graph with it, and invokes with the run's ``thread_id``
         (``ctx.session_id``); checkpoints flush per node in :data:`_CHECKPOINT_FLUSH_MODE`.
         """
-        thread_id = ctx.session_id
+        thread_id = ctx.conversation_key
         conninfo = self._conninfo()
         store = "postgres" if conninfo else "in-memory"
         _engine_logger.info(
@@ -585,9 +606,10 @@ class LangGraphEngine(Engine):
         )
         async with open_checkpointer(conninfo) as saver:
             graph = self._with_checkpointer(compiled, saver)
+            resuming = await self._has_history(saver, thread_id)
             return await self._invoke_and_finalize(
                 graph,
-                {"messages": compiled.initial_messages(text)},
+                {"messages": compiled.initial_messages(text, resuming=resuming)},
                 thread_id,
                 compiled.model_id,
                 durable=compiled.durability == "checkpoint",
@@ -678,14 +700,15 @@ class LangGraphEngine(Engine):
         # every turn: the agent answered "what do you mean?" with a description of itself,
         # having no idea what it had just said. Streaming is a delivery mode, not a different
         # kind of conversation, so it cannot come with a different set of guarantees.
-        thread_id = ctx.session_id
+        thread_id = ctx.conversation_key
         async with open_checkpointer(self._conninfo()) as saver:
             graph = self._with_checkpointer(compiled, saver)
-            async for event in self._stream_graph(graph, compiled, text, thread_id):
+            resuming = await self._has_history(saver, thread_id)
+            async for event in self._stream_graph(graph, compiled, text, thread_id, resuming):
                 yield event
 
     async def _stream_graph(
-        self, graph: Any, compiled: _CompiledAgent, text: str, thread_id: str
+        self, graph: Any, compiled: _CompiledAgent, text: str, thread_id: str, resuming: bool
     ) -> AsyncIterator[Event]:
         """Drive one streamed turn over ``graph``, already bound to a checkpointer."""
         # Two modes, because they carry different things: "messages" gives the model's
@@ -693,7 +716,7 @@ class LangGraphEngine(Engine):
         # the tool node's ToolMessage appears. Listening on messages alone is why tool
         # results were invisible to a streaming client.
         stream = graph.astream(
-            {"messages": compiled.initial_messages(text)},
+            {"messages": compiled.initial_messages(text, resuming=resuming)},
             stream_mode=["messages", "updates"],
             config=self._thread_config(thread_id),
         )
