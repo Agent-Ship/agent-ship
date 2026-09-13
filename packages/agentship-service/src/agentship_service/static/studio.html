@@ -1304,7 +1304,7 @@ async function startTalk() {
     ["bearer", apiKey()],
   );
   ws.binaryType = "arraybuffer";
-  voice = { ws, ctx, stream, node: null, playAt: 0, body: null, botSpeaking: false };
+  voice = { ws, ctx, stream, node: null, playAt: 0, body: null, botSpeaking: false, sources: [] };
 
   setTalking(true);
   setVoiceHint("connecting…");
@@ -1384,7 +1384,15 @@ function setVoiceHint(text) {
    — the two questions a person staring at a microphone actually has. */
 function onVoiceEvent(event) {
   const mic = el("talk");
-  if (event.type === "listening") { mic.classList.add("hearing"); setVoiceHint("listening…"); return; }
+  if (event.type === "listening") {
+    mic.classList.add("hearing");
+    setVoiceHint("listening…");
+    // You started talking, so the agent stops — immediately, including audio already queued.
+    // Cancelling generation is not enough: several seconds of speech can be buffered ahead of
+    // what you can hear, and it would keep playing over you while the server had long stopped.
+    silence();
+    return;
+  }
   if (event.type === "thinking")  { mic.classList.remove("hearing"); setVoiceHint("thinking…"); return; }
   if (event.type === "speaking")  { voice.botSpeaking = true; setVoiceHint("speaking… (talk over it to interrupt)"); return; }
   if (event.type === "idle")      { voice.botSpeaking = false; setVoiceHint("listening — say something"); return; }
@@ -1415,6 +1423,15 @@ function toPcm16(samples) {
   return out.buffer;
 }
 
+/* Stop the agent mid-word and drop everything queued behind it. */
+function silence() {
+  if (!voice) return;
+  for (const source of voice.sources) { try { source.stop(); } catch (e) {} }
+  voice.sources = [];
+  voice.playAt = 0;
+  voice.botSpeaking = false;
+}
+
 /* Queue each chunk after the last so a reply plays as one voice instead of overlapping. */
 function playChunk(buffer) {
   if (!voice) return;
@@ -1429,6 +1446,13 @@ function playChunk(buffer) {
   voice.playAt = Math.max(now, voice.playAt || now);
   source.start(voice.playAt);
   voice.playAt += frames.duration;
+  // Kept so a barge-in can stop them: a scheduled source plays on its own otherwise, and
+  // there is no other handle on audio that has not started yet.
+  voice.sources.push(source);
+  source.onended = () => {
+    const at = voice && voice.sources.indexOf(source);
+    if (voice && at > -1) voice.sources.splice(at, 1);
+  };
 }
 
 /* Loudness of a block of samples, 0..1. */

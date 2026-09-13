@@ -158,10 +158,19 @@ def make_vad(config: VoiceSpec):
 
     The VAD is what decides the human has stopped talking. It runs locally, so it is the one
     stage in the cascade that costs nothing per turn and needs no key.
+
+    ``endpoint_silence_ms`` from the spec sets how long a silence must last before the turn is
+    taken as over. The library default is 200ms, which is shorter than a pause for thought, so
+    an agent using it talks over anyone who hesitates mid-sentence.
     """
     provider = _resolve("vad", config.vad, VAD_PROVIDERS)
     analyzer = _load(provider, "vad", config.vad)
-    return analyzer()
+    from pipecat.audio.vad.vad_analyzer import VADParams
+
+    # Only stop_secs is overridden. start_secs decides how quickly speech is RECOGNISED as
+    # speech, and making that generous only adds latency; the complaint is always about being
+    # cut off, which is the silence at the END of a turn.
+    return analyzer(params=VADParams(stop_secs=config.endpoint_silence_ms / 1000))
 
 
 def preflight(config: VoiceSpec) -> list[str]:

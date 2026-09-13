@@ -5,7 +5,14 @@ from __future__ import annotations
 import pytest
 from agentship.errors import CapabilityError
 from agentship.spec import VoiceSpec
-from agentship_voice.factories import STT_PROVIDERS, TTS_PROVIDERS, make_stt, make_tts, preflight
+from agentship_voice.factories import (
+    STT_PROVIDERS,
+    TTS_PROVIDERS,
+    make_stt,
+    make_tts,
+    make_vad,
+    preflight,
+)
 
 pytest.importorskip("pipecat", reason="needs the [pipecat] extra")
 
@@ -97,3 +104,30 @@ def test_an_unknown_language_code_is_passed_through(monkeypatch) -> None:
     from agentship_voice.factories import _as_language
 
     assert _as_language("zz-XX") == "zz-XX"
+
+
+def test_the_endpoint_silence_is_longer_than_a_pause_for_thought() -> None:
+    """The default must not cut off someone who hesitates mid-sentence.
+
+    Pipecat's own default is 200ms, which is shorter than an ordinary pause, so an agent using
+    it talks over anyone who stops to think. This asserts the DEFAULT rather than the plumbing,
+    because the plumbing was never the bug — the number was.
+    """
+    assert VoiceSpec().endpoint_silence_ms >= 500, "200ms interrupts normal speech"
+    assert make_vad(VoiceSpec()).params.stop_secs >= 0.5
+
+
+def test_the_endpoint_silence_is_the_author_s_to_set() -> None:
+    """A terse exchange and a slow speaker want different numbers, so it is a spec field."""
+    assert make_vad(VoiceSpec(endpoint_silence_ms=1200)).params.stop_secs == 1.2
+
+
+def test_only_the_end_of_a_turn_is_made_patient() -> None:
+    """``start_secs`` is left alone: making speech slower to RECOGNISE only adds latency.
+
+    Every complaint is about being cut off, which is the silence at the end of a turn — so
+    that is the only parameter overridden.
+    """
+    from pipecat.audio.vad.vad_analyzer import VADParams
+
+    assert make_vad(VoiceSpec()).params.start_secs == VADParams().start_secs

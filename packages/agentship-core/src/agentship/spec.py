@@ -294,6 +294,12 @@ class VoiceSpec(BaseModel):
     #: cannot interrupt is worse than a text one, because you must wait out a wrong answer
     #: instead of skimming past it.
     allow_interruptions: bool = True
+    #: How long a silence must last, in milliseconds, before the human is taken to have
+    #: finished speaking. This is the single biggest lever on whether an agent feels snappy or
+    #: rude. The underlying default is 200ms, which is shorter than an ordinary pause for
+    #: thought — so an agent would talk over anyone who hesitated mid-sentence. 700ms lets a
+    #: person gather their thoughts; lower it for terse exchanges, raise it for slower speakers.
+    endpoint_silence_ms: int = Field(default=700, ge=100, le=5000)
     #: Target time-to-first-audio, in milliseconds (DESIGN §8). Recorded so a run can be measured
     #: against the number the design committed to, not against whatever it happens to achieve.
     latency_budget_ms: int = Field(default=850, ge=0)
