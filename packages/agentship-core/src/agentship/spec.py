@@ -281,10 +281,16 @@ class VoiceSpec(BaseModel):
     #: for a voice agent is always: everything downstream is reasoning about these words, so a
     #: misheard sentence is answered confidently and wrongly.
     stt_model: str | None = None
-    #: Words the recogniser should expect — names, jargon, product terms. A recogniser has no
-    #: idea what this agent is about and will map an unfamiliar word onto a familiar one; this
-    #: is how you tell it. Provider term for this is a "prompt"; it is a vocabulary hint, not
-    #: an instruction, and the model never answers it.
+    #: Words the recogniser should expect — names, jargon, product terms.
+    #:
+    #: **Use sparingly, and never for words a caller is unlikely to say.** A hint does not
+    #: merely permit these words, it biases toward them: a recogniser given "AgentShip" will
+    #: hear it in audio that merely rhymes, and insert it into sentences nobody spoke. Listing
+    #: a product vocabulary "just in case" makes transcription worse, not better — measured,
+    #: after doing exactly that. Reach for it only when a specific term is being reliably
+    #: misheard, and list that term alone.
+    #:
+    #: The provider calls this a "prompt", which is misleading: the model never answers it.
     stt_hint: str | None = None
     #: Text-to-speech provider: the mouth.
     tts: str = "cartesia"

@@ -132,6 +132,10 @@ def make_stt(config: VoiceSpec, *, sample_rate: int | None = None):
         kwargs["language"] = _as_language(config.language)
     if config.stt_model:
         kwargs["model"] = config.stt_model
+    # Transcription is a reading task, not a writing one: sampling buys nothing and costs
+    # invented words. Providers default this to their generative setting, which is why a
+    # recogniser will confidently produce a plausible sentence over unclear audio.
+    kwargs.setdefault("temperature", 0.0)
     if config.stt_hint:
         # Biases recognition toward words this agent actually deals in. A recogniser has no
         # idea what the conversation is about and will map an unfamiliar term onto a familiar
