@@ -65,3 +65,4 @@ observability:
   capture_content: true
   # Opik Cloud is off-box, so egress must be opted into. Harmless when shipping nowhere.
   allow_saas_exporter: true
+

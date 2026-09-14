@@ -11,6 +11,7 @@ Run it (with a key set)::
     pytest tests/test_mcp.py -q
 """
 
+
 from __future__ import annotations
 
 import os
@@ -20,6 +21,21 @@ import pytest
 from agentship import build_agent
 from agentship.skills import render_agent_prompt
 from conftest import live_only
+
+# A stdio MCP server declared as `command: python3` is launched through PATH by framework
+# releases before the interpreter fix: outside an activated virtualenv that finds the SYSTEM
+# python, which has no `mcp`, and the server dies on import with only "Connection closed" to
+# show for it. Newer releases resolve a bare `python3` to the interpreter already running.
+# Skipped rather than failed, with the reason, because the demo is installed against a PINNED
+# framework and this is a statement about that pin, not about this repository.
+import agentship_langgraph.mcp as _mcp_module  # noqa: E402
+
+if not hasattr(_mcp_module, "_interpreter_for"):
+    pytest.skip(
+        "the installed agentship-langgraph launches stdio MCP servers through PATH; this demo "
+        "needs the release that resolves a bare `python3` to the running interpreter",
+        allow_module_level=True,
+    )
 
 pytest.importorskip("langchain_mcp_adapters", reason="needs agentship-langgraph[mcp]")
 

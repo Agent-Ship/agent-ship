@@ -1,0 +1,52 @@
+# A voice agent: the SAME agent the REST service runs, with ears and a mouth in front of it.
+#
+# Nothing here is voice-specific except the `voice:` block. The prompt, model and tools are
+# exactly what a text agent would declare — which is the point: memory, tracing and tools are
+# inherited rather than reimplemented for audio.
+#
+#   pip install "agentship-voice[pipecat]" "pipecat-ai[openai]"
+#   agentship voice serve agents/voice/agent.yaml --dry-run   # check deps + keys, bind nothing
+#   agentship voice serve agents/voice/agent.yaml             # serve over websocket
+name: voice-assistant
+engine: langgraph
+model: openai/gpt-4o-mini
+prompt: >-
+  You are a voice assistant. You are being LISTENED to, not read, so answer in one or two
+  short sentences. Never use lists, headings or markdown — they cannot be heard. If you need
+  to give several items, say them in a sentence.
+
+voice:
+  # Which framework hosts the agent. `livekit` runs the same agent in a LiveKit session.
+  framework: pipecat
+  # Ears and mouth. Both are OpenAI here so one key runs the whole demo; deepgram + cartesia
+  # is the lower-latency pairing and changes nothing else in this file.
+  # Deepgram: purpose-built for streaming speech, and markedly more accurate on live
+  # audio than a batch transcriber fed one VAD segment at a time. `agentship voice
+  # providers` shows which of these this machine can actually reach.
+  stt: deepgram
+  # nova-3 is their current best. Naming it matters more here than anywhere else: the
+  # whole agent reasons about whatever words come back, so a misheard sentence is
+  # answered confidently and wrongly.
+  stt_model: nova-3
+  tts: openai
+  tts_model: gpt-4o-mini-tts
+  # Conversational pace. The provider default is tuned for narration, which sounds sluggish
+  # in a dialogue where the listener is waiting for their turn.
+  tts_speed: 1.1
+  voice_id: alloy
+  # What you are expected to speak. Without this the recogniser guesses per utterance and gets
+  # short ones wrong — "ChatGPT" came back as Urdu script, and the agent then answered in Urdu.
+  language: en
+  # Decides when you have stopped talking. Runs locally, costs nothing, needs no key.
+  vad: silero
+  transport: websocket
+  # How long a silence means "I have finished speaking". The library default is 200ms, which
+  # is shorter than an ordinary pause for thought. 1.5s is patient enough to think mid-sentence
+  # — and longer silences also mean longer audio segments, which transcribe markedly better
+  # than the clipped fragments a short endpoint produces.
+  endpoint_silence_ms: 1500
+  # You can cut the agent off mid-sentence. What it had already SAID is what goes into the
+  # conversation history — not what it was going to say.
+  allow_interruptions: true
+  # Target time-to-first-audio. Recorded so a run can be measured against it.
+  latency_budget_ms: 850
