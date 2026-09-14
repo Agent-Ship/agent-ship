@@ -28,7 +28,14 @@ from .middleware import (
     SecurityHeadersMiddleware,
 )
 from .registry import AgentRegistry
-from .routers import a2a_router, agents_router, live_router, studio_router, tasks_router
+from .routers import (
+    a2a_router,
+    agents_router,
+    live_router,
+    studio_router,
+    tasks_router,
+    voice_router,
+)
 from .routers.tasks import TaskStore
 
 
@@ -70,6 +77,7 @@ def create_app(
 
     app.include_router(agents_router)
     app.include_router(live_router)
+    app.include_router(voice_router)
     app.include_router(studio_router)
     app.include_router(tasks_router)
     app.include_router(a2a_router)

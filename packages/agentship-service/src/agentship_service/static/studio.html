@@ -163,6 +163,15 @@ main { flex: 1; display: flex; min-height: 0; }
 /* What the agent did, step by step, one under the other. The last step is in progress
    (pulsing dot); finished ones settle to a static tick so the list reads as a record of the
    turn rather than as part of the reply. */
+.stepbox summary { cursor: pointer; list-style: none; }
+.stepbox summary::-webkit-details-marker { display: none; }
+.stepbox summary::before { content: "▸ "; opacity: .6; }
+.stepbox[open] summary::before { content: "▾ "; }
+.stepdetail {
+  margin: 4px 0 2px 12px; padding: 6px 8px; max-height: 180px; overflow: auto;
+  font-family: var(--mono); font-size: 11px; line-height: 1.45; color: var(--t2);
+  border-left: 2px solid var(--accentb, currentColor); white-space: pre-wrap; word-break: break-word;
+}
 .steps { margin-bottom: 9px; display: flex; flex-direction: column; gap: 3px; }
 .step { display: flex; align-items: center; gap: 7px; color: var(--t2);
   font-size: 12px; letter-spacing: .01em; }
@@ -217,6 +226,47 @@ main { flex: 1; display: flex; min-height: 0; }
 .welcome h2 { margin: 14px 0 6px; font-size: 19px; color: var(--t1); letter-spacing: -.02em; }
 
 /* --- composer ------------------------------------------------------------ */
+#talk.live { background: var(--bad, #c0392b); color: #fff; }
+label.override { display: inline-flex; align-items: center; gap: 5px; margin-right: 10px; }
+label.override input {
+  width: 150px; padding: 2px 6px; font-family: var(--mono); font-size: 11px;
+  color: var(--t1); background: transparent; border: 1px solid var(--line, currentColor);
+  border-radius: 4px;
+}
+.usedmodel { font-family: var(--mono); }
+/* The mic is the one thing to press, so it sits centred above the conversation rather than
+   competing with Send inside the composer. */
+#voicestage {
+  flex: none;
+  display: flex; flex-direction: column; align-items: center; gap: 9px;
+  padding: 18px 0 16px; border-bottom: 1px solid var(--border);
+}
+button.mic {
+  width: 76px; height: 76px; border-radius: 50%; display: grid; place-items: center; padding: 0;
+  color: var(--accent); background: var(--accentdim); border: 1px solid var(--accentb);
+  transition: transform .12s ease, background .2s ease, border-color .2s ease, color .2s ease;
+}
+button.mic:hover { transform: scale(1.04); border-color: var(--accent); }
+button.mic.live { color: var(--red); border-color: rgba(248,113,113,.45); background: rgba(248,113,113,.12); }
+#voicestage .level {
+  width: 148px; height: 4px; border-radius: 999px; background: var(--surface3); overflow: hidden;
+}
+#voicestage .level b { display: block; height: 100%; width: 0%; background: var(--accent); transition: width .08s linear; }
+#voicestage button.mic.live ~ .level b { background: var(--red); }
+/* Pulses only while the human is actually being heard, so the ring means something. */
+button.mic.hearing { animation: micpulse 1.2s ease-in-out infinite; }
+@keyframes micpulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(248,113,113,.30); }
+  50%      { box-shadow: 0 0 0 9px rgba(248,113,113,0); }
+}
+#voicehint { color: var(--accent); }
+/* Per-stage latency bars, shown once a turn reports its trace. */
+.lat { display: flex; align-items: center; gap: 7px; margin-top: 5px; font-size: 11px; }
+.lat .k { width: 74px; color: var(--t3); font-family: var(--mono); }
+.lat .bar { flex: 1; height: 6px; background: var(--surface3); border-radius: 999px; overflow: hidden; }
+.lat .bar i { display: block; height: 100%; background: var(--accent); }
+.lat .bar i.worst { background: var(--amber); }
+.lat .v { width: 48px; text-align: right; font-family: var(--mono); color: var(--t2); }
 #composer { flex: none; border-top: 1px solid var(--border); background: var(--surface); padding: 12px 18px 14px; }
 .composerinner { max-width: 780px; margin: 0 auto; display: flex; gap: 9px; align-items: flex-end; }
 #input {
@@ -243,6 +293,11 @@ main { flex: 1; display: flex; min-height: 0; }
 .idrow { display: flex; gap: 8px; font-family: var(--mono); font-size: 11px; padding: 2px 0; }
 .idrow .k { color: var(--t3); width: 82px; flex: none; }
 .idrow .v { color: var(--t2); overflow-wrap: anywhere; }
+.specbody {
+  margin: 0; padding: 8px 10px; max-height: 220px; overflow: auto;
+  font-family: var(--mono); font-size: 11px; line-height: 1.5;
+  color: var(--t2); background: var(--panel2, transparent); white-space: pre-wrap; word-break: break-word;
+}
 #frames { flex: 1; overflow-y: auto; padding: 8px 10px; font-family: var(--mono); font-size: 11.5px; }
 .frame { padding: 4px 6px; border-radius: 6px; border-left: 2px solid var(--border); margin-bottom: 3px; }
 .frame:hover { background: var(--surface2); }
@@ -349,6 +404,14 @@ main { flex: 1; display: flex; min-height: 0; }
           <span>Clear</span>
         </button>
       </div>
+      <div id="voicestage">
+        <button id="talk" class="mic" title="Talk to this agent out loud" aria-label="Talk">
+          <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="currentColor"
+            d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2Z"/></svg>
+        </button>
+        <div class="level"><b id="level"></b></div>
+        <div id="voicehint">Press the mic to talk — or type below</div>
+      </div>
       <div id="transcript">
         <div class="turns" id="turns">
           <div class="welcome" id="welcome">
@@ -368,6 +431,10 @@ main { flex: 1; display: flex; min-height: 0; }
           <button id="send">Send</button>
         </div>
         <div class="hint">
+          <label class="override">
+            model override
+            <input id="modeloverride" type="text" spellcheck="false" placeholder="(use the spec's)">
+          </label>
           <span id="modehint">streaming via :stream</span>
           <span id="pausehint"></span>
         </div>
@@ -379,8 +446,18 @@ main { flex: 1; display: flex; min-height: 0; }
       <div id="traceids">
         <div class="idrow"><span class="k">session_id</span><span class="v" id="v-session">—</span></div>
         <div class="idrow"><span class="k">trace_id</span><span class="v" id="v-trace">—</span></div>
+        <div class="idrow"><span class="k">model used</span><span class="v usedmodel" id="v-model">—</span></div>
         <div class="idrow"><span class="k">resume_token</span><span class="v" id="v-resume">—</span></div>
       </div>
+      <div class="panelhead" style="margin-top:10px">Latency</div>
+      <div id="timings">
+        <div class="idrow"><span class="k">first words</span><span class="v" id="v-ttft">—</span></div>
+        <div class="idrow"><span class="k">whole turn</span><span class="v" id="v-total">—</span></div>
+      </div>
+      <div id="latstages"></div>
+      <div class="panelhead" style="margin-top:10px">Spec<span class="spacer"></span><span class="stamp" id="specname"></span></div>
+      <pre id="specbody" class="specbody">—</pre>
+      <div class="panelhead" style="margin-top:10px">Frames</div>
       <div id="frames"></div>
     </aside>
   </main>
@@ -618,6 +695,9 @@ function badgesFor(card) {
 /* Select an agent: reset the conversation (a session never crosses agents) and
    redraw the header badges. */
 function selectAgent(card) {
+  // Ending the call first: talking to one agent while reading another's transcript is a bug
+  // that looks like the agent went mad.
+  if (typeof talking === "function" && talking()) stopTalk();
   chat.selected = card;
   showAgents();
   el("agentname").textContent = card.name;
@@ -625,6 +705,7 @@ function selectAgent(card) {
   badges.innerHTML = "";
   for (const badge of badgesFor(card)) badges.appendChild(badge);
   el("input").placeholder = "Message " + card.name + "…  (Enter to send, Shift+Enter for a newline)";
+  showSpec(card);
   clearChat();
   el("input").focus();
 }
@@ -832,7 +913,11 @@ async function invokeTurn(text) {
   try {
     const response = await callApi("/v1/agents/" + encodeURIComponent(chat.selected.name) + ":invoke", {
       method: "POST",
-      body: JSON.stringify({ input: text, session_id: chat.sessionId }),
+      body: JSON.stringify({
+        input: text,
+        session_id: chat.sessionId,
+        overrides: modelOverride(),
+      }),
     });
     await showTurnResult(response);
   } finally {
@@ -878,6 +963,8 @@ async function showTurnResult(response) {
   chat.sessionId = body.session_id || chat.sessionId;
   chat.resumeToken = body.paused ? body.resume_token : null;
   chat.interrupt = body.paused ? body.interrupt : null;
+  showTimings(body.timings);
+  showModel(body.model);
   addFrame("done", "", { output: body.output, usage: body.usage });
   showIds(body.trace_id);
   showPauseHint();
@@ -899,7 +986,11 @@ function asText(output) {
 async function streamTurn(text) {
   const response = await callApi("/v1/agents/" + encodeURIComponent(chat.selected.name) + ":stream", {
     method: "POST",
-    body: JSON.stringify({ input: text, session_id: chat.sessionId }),
+    body: JSON.stringify({
+      input: text,
+      session_id: chat.sessionId,
+      overrides: modelOverride(),
+    }),
   });
   if (!response.ok) {
     const problem = await readProblem(response);
@@ -925,7 +1016,7 @@ async function streamTurn(text) {
       return;
     }
     const status = statusFor(frame.type, data);
-    if (status) addStep(body, status);
+    if (status) addStep(body, status, detailFor(frame.type, data));
     if (frame.type === "reasoning") {
       // Thinking is not the answer: it goes in its own collapsed panel above the reply, so a
       // reader can watch a slow reasoning model work without it polluting the transcript.
@@ -933,6 +1024,12 @@ async function streamTurn(text) {
       if (thought) appendReasoning(body, thought);
       scrollToEnd();
       return;
+    }
+    if (frame.type === "done" && data.timings) {
+      // The terminal frame carries the turn's timings. On a stream ttft is the number that
+      // matters: it is when words first appeared, not when the reply finished.
+      showTimings(data.timings);
+      showStages(data.timings, null);
     }
     if (data.paused) {
       chat.resumeToken = data.resume_token;
@@ -971,11 +1068,20 @@ function statusFor(type, data) {
   return null;   // null = not a status-bearing frame; leave whatever is showing
 }
 
+/* What a step can show beyond its name: a tool's arguments, or the result it returned.
+   Returns undefined for frames with nothing worth expanding, so those stay plain lines. */
+function detailFor(type, data) {
+  if (type === "tool_call") return data.args;
+  if (type === "tool_result") return data.error !== undefined ? { error: data.error } : data.result;
+  if (type === "guard") return { stage: data.stage, verdict: data.verdict, validator: data.validator };
+  return undefined;
+}
+
 /* Add a step to this message's list of what the agent is doing, one under the other.
    A single line that rewrote itself lost the history: a turn that thought, searched, then
    read a result showed only the last step, and a fast step (a 19ms tool call) was gone
    before it could be read. Stacking leaves a record of the turn. */
-function addStep(body, text) {
+function addStep(body, text, detail) {
   let list = body.parentElement.querySelector(".steps");
   if (!list) {
     list = document.createElement("div");
@@ -985,11 +1091,28 @@ function addStep(body, text) {
   const previous = list.lastElementChild;
   // Consecutive duplicates are noise, not progress (repeated calls to the same tool are
   // distinguished by their result step landing between them).
-  if (previous && previous.textContent === text) return;
+  if (previous && previous.dataset.label === text) return;
   if (previous) previous.classList.add("done");
   const step = document.createElement("div");
   step.className = "step";
-  step.textContent = text;
+  step.dataset.label = text;
+  if (detail === undefined || detail === null || detail === "") {
+    step.textContent = text;
+  } else {
+    // A name alone says an agent used a tool; the arguments and the result say what it
+    // actually did. Collapsed, because the answer is what a reader came for — but one click
+    // away, because "why did it say that" is the next question when the answer is wrong.
+    const summary = document.createElement("summary");
+    summary.textContent = text;
+    const pre = document.createElement("pre");
+    pre.className = "stepdetail";
+    pre.textContent = typeof detail === "string" ? detail : JSON.stringify(detail, null, 2);
+    const box = document.createElement("details");
+    box.className = "stepbox";
+    box.appendChild(summary);
+    box.appendChild(pre);
+    step.appendChild(box);
+  }
   list.appendChild(step);
 }
 
@@ -1109,6 +1232,8 @@ function start() {
   el("clearframes").onclick = () => { el("frames").innerHTML = ""; };
   el("showkey").onchange = (event) => { el("keyinput").type = event.target.checked ? "text" : "password"; };
   el("send").onclick = sendTurn;
+  // Voice is a way of taking a turn in this conversation, so its control lives with Send.
+  el("talk").onclick = toggleTalk;
   el("settings").onclick = (event) => { if (event.target === el("settings")) closeKeyDialog(); };
 
   const input = el("input");
@@ -1137,6 +1262,324 @@ function start() {
 }
 
 start();
+
+/* --- voice: another way to say something in the SAME conversation ---------- */
+/* Not a second UI. A spoken turn lands in this transcript, its steps render through addStep,
+ * and its timings fill the same Latency panel a typed turn fills — because it IS the same
+ * agent having the same conversation, and two transcripts would make you reconcile them. */
+// Must match the server's SAMPLE_RATE: playing audio at a rate it was not recorded at
+// stretches or compresses it, which sounds like the agent talking slowly or quickly
+// rather than like a bug.
+const VOICE_RATE = 24000;
+/* How loud you must be to interrupt the agent while it is talking. Above its own echo, below
+ * a raised voice — tuned so a speaker's leakage does not trip it but a spoken word does. */
+const BARGE_IN_LEVEL = 0.055;
+/* How long after the last chunk of the agent's audio the microphone reopens by itself, in
+ * case the "stopped speaking" event never arrives. Longer than a gap between sentences,
+ * shorter than a person waiting to be heard. */
+const SPEAKING_GRACE_MS = 1200;
+let voice = null;   // { ws, ctx, node, stream, playAt, body } while a call is up
+
+function talking() { return voice !== null; }
+
+async function toggleTalk() {
+  if (talking()) { stopTalk(); return; }
+  if (!chat.selected) { showBanner({ detail: "Pick an agent first.", code: "no_agent" }, false); return; }
+  try { await startTalk(); }
+  catch (err) {
+    stopTalk();
+    showBanner({ detail: "Voice failed: " + (err && err.message ? err.message : err), code: "voice_failed" }, false);
+  }
+}
+
+async function startTalk() {
+  hideBanner();
+  const stream = await navigator.mediaDevices.getUserMedia({
+    // Echo cancellation matters: without it the agent hears itself through the speakers and
+    // interrupts its own reply.
+    audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+  });
+  // Chromium honours a requested rate; Firefox and Safari often ignore it and hand back the
+  // device rate instead. Sending 48kHz samples labelled as 24kHz makes every word arrive at
+  // half speed, which a recogniser hears as slurred nonsense or misses entirely — so the rate
+  // the context ACTUALLY runs at is read back, and audio is resampled if it differs.
+  const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: VOICE_RATE });
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  const ws = new WebSocket(
+    proto + "//" + location.host + "/v1/agents/" + encodeURIComponent(chat.selected.name) + "/voice",
+    // A browser cannot set headers on a WebSocket handshake, so the credential rides the
+    // subprotocol — the standard way, and the only one available here.
+    ["bearer", apiKey()],
+  );
+  ws.binaryType = "arraybuffer";
+  voice = { ws, ctx, stream, node: null, playAt: 0, body: null, botSpeaking: false,
+            sources: [], lastAudioAt: 0 };
+
+  setTalking(true);
+  setVoiceHint("connecting…");
+
+  ws.onmessage = (event) => {
+    if (typeof event.data === "string") onVoiceEvent(JSON.parse(event.data));
+    else playChunk(event.data);
+  };
+  ws.onclose = (event) => {
+    const why = {
+      4404: "This agent has no `voice:` block — add one to talk to it.",
+      4503: "This server has no voice package installed.",
+      4401: "Not authenticated — set your API key.",
+      4403: "Not allowed to talk to this agent.",
+    }[event.code];
+    if (why) showBanner({ detail: why, code: "voice_" + event.code }, event.code === 4401);
+    stopTalk();
+  };
+  ws.onerror = () => showBanner({ detail: "Voice socket error.", code: "voice_socket" }, false);
+
+  await new Promise((resolve, reject) => {
+    ws.onopen = resolve;
+    setTimeout(() => reject(new Error("timed out opening the voice socket")), 8000);
+  });
+
+  const source = ctx.createMediaStreamSource(stream);
+  const node = ctx.createScriptProcessor(1024, 1, 1);
+  node.onaudioprocess = (event) => {
+    if (!voice || ws.readyState !== WebSocket.OPEN) return;
+    const raw = event.inputBuffer.getChannelData(0);
+    const samples = ctx.sampleRate === VOICE_RATE ? raw : downsample(raw, ctx.sampleRate, VOICE_RATE);
+    showLevel(samples);
+    // While the agent is speaking, its own voice comes back through the microphone, gets
+    // transcribed as a new question, and it answers again — forever, drifting language each
+    // lap as short echoes are misheard. Browser echo cancellation is not enough on speakers.
+    // So audio is only forwarded while the agent is quiet, unless you speak clearly OVER it,
+    // which is what barge-in should feel like: talking over someone, not whispering at them.
+    // The gate closes while the agent speaks so it does not hear itself. It must never LATCH:
+    // if the "finished speaking" event is lost — a dropped frame, an error mid-turn — the mic
+    // would stay shut for the rest of the call and the agent would simply stop hearing you,
+    // with nothing on screen to say why. So it reopens on its own shortly after the last
+    // audio arrived.
+    if (voice.botSpeaking && Date.now() - voice.lastAudioAt > SPEAKING_GRACE_MS) {
+      voice.botSpeaking = false;
+      setVoiceHint("listening — say something");
+    }
+    if (voice.botSpeaking && rms(samples) < BARGE_IN_LEVEL) return;
+    ws.send(toPcm16(samples));
+  };
+  source.connect(node);
+  node.connect(ctx.destination);
+  voice.node = node;
+  setVoiceHint("listening — say something");
+}
+
+function stopTalk() {
+  if (!voice) return;
+  const { ws, ctx, node, stream } = voice;
+  voice = null;
+  try { if (node) node.disconnect(); } catch (e) {}
+  try { stream.getTracks().forEach((t) => t.stop()); } catch (e) {}
+  try { if (ws.readyState === WebSocket.OPEN) ws.close(1000); } catch (e) {}
+  try { ctx.close(); } catch (e) {}
+  setTalking(false);
+  setVoiceHint("");
+}
+
+/* The mic is the only control that changes shape, so the composer still reads as one thing
+   whether you are typing or talking. */
+function setTalking(live) {
+  const mic = el("talk");
+  mic.classList.toggle("live", live);
+  if (!live) mic.classList.remove("hearing");
+  mic.title = live ? "Stop talking" : "Talk to this agent out loud";
+  el("level").style.width = "0%";
+  el("input").placeholder = live
+    ? "Talking — or type here, the agent takes both"
+    : "Message " + (chat.selected ? chat.selected.name : "the agent") + "…  (Enter to send, Shift+Enter for a newline)";
+}
+
+function setVoiceHint(text) {
+  // Idle still says something: a bare circle does not tell a first-time reader it is a button.
+  el("voicehint").textContent = text || "Press the mic to talk — or type below";
+}
+
+/* Server events. Each one either moves the transcript forward or says what the agent is doing
+   — the two questions a person staring at a microphone actually has. */
+function onVoiceEvent(event) {
+  const mic = el("talk");
+  if (event.type === "listening") {
+    mic.classList.add("hearing");
+    setVoiceHint("listening…");
+    // You started talking, so the agent stops — immediately, including audio already queued.
+    // Cancelling generation is not enough: several seconds of speech can be buffered ahead of
+    // what you can hear, and it would keep playing over you while the server had long stopped.
+    silence();
+    return;
+  }
+  if (event.type === "thinking")  { mic.classList.remove("hearing"); setVoiceHint("thinking…"); return; }
+  if (event.type === "speaking")  { voice.botSpeaking = true; setVoiceHint("speaking… (talk over it to interrupt)"); return; }
+  if (event.type === "idle")      { voice.botSpeaking = false; setVoiceHint("listening — say something"); return; }
+  if (event.type === "heard") {
+    // What the agent HEARD, in the transcript as a user turn. A wrong answer to a misheard
+    // question is a different problem from a wrong answer, and they look identical without it.
+    addMessage("user", event.text);
+    voice.body = null;
+    return;
+  }
+  if (event.type === "said") {
+    // The reply arrives sentence by sentence; it grows in one bubble rather than becoming a
+    // new message per sentence, so one answer reads as one answer.
+    if (!voice.body) voice.body = addMessage("agent", "");
+    voice.body.textContent += (voice.body.textContent ? " " : "") + event.text;
+    scrollToEnd();
+    return;
+  }
+  if (event.type === "timings") { showTimings(event.trace); showStages(event.trace, event.biggest); return; }
+}
+
+function toPcm16(samples) {
+  const out = new Int16Array(samples.length);
+  for (let i = 0; i < samples.length; i++) {
+    const clamped = Math.max(-1, Math.min(1, samples[i]));
+    out[i] = clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff;
+  }
+  return out.buffer;
+}
+
+/* Stop the agent mid-word and drop everything queued behind it. */
+function silence() {
+  if (!voice) return;
+  for (const source of voice.sources) { try { source.stop(); } catch (e) {} }
+  voice.sources = [];
+  voice.playAt = 0;
+  voice.botSpeaking = false;
+}
+
+/* Queue each chunk after the last so a reply plays as one voice instead of overlapping. */
+function playChunk(buffer) {
+  if (!voice) return;
+  voice.lastAudioAt = Date.now();
+  const pcm = new Int16Array(buffer);
+  const frames = voice.ctx.createBuffer(1, pcm.length, VOICE_RATE);
+  const channel = frames.getChannelData(0);
+  for (let i = 0; i < pcm.length; i++) channel[i] = pcm[i] / 0x8000;
+  const source = voice.ctx.createBufferSource();
+  source.buffer = frames;
+  source.connect(voice.ctx.destination);
+  const now = voice.ctx.currentTime;
+  voice.playAt = Math.max(now, voice.playAt || now);
+  source.start(voice.playAt);
+  voice.playAt += frames.duration;
+  // Kept so a barge-in can stop them: a scheduled source plays on its own otherwise, and
+  // there is no other handle on audio that has not started yet.
+  voice.sources.push(source);
+  source.onended = () => {
+    const at = voice && voice.sources.indexOf(source);
+    if (voice && at > -1) voice.sources.splice(at, 1);
+  };
+}
+
+/* Linear resample to the rate the socket speaks. Good enough for speech and costs nothing;
+   the alternative is a recogniser being fed audio at the wrong speed, which it does not
+   report as an error — it simply returns worse words, or none. */
+function downsample(samples, from, to) {
+  if (from === to) return samples;
+  const ratio = from / to;
+  const out = new Float32Array(Math.round(samples.length / ratio));
+  for (let i = 0; i < out.length; i++) {
+    const at = i * ratio;
+    const low = Math.floor(at);
+    const high = Math.min(low + 1, samples.length - 1);
+    out[i] = samples[low] + (samples[high] - samples[low]) * (at - low);
+  }
+  return out;
+}
+
+/* Loudness of a block of samples, 0..1. */
+function rms(samples) {
+  let sum = 0;
+  for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
+  return Math.sqrt(sum / samples.length);
+}
+
+/* A level meter so silence looks different from a dead microphone. */
+function showLevel(samples) {
+  el("level").style.width = Math.min(100, rms(samples) * 320) + "%";
+}
+
+/* --- what you are talking to, and how long it took ------------------------ */
+
+/* Render the selected agent's declared spec — the contract it IS, not a summary of it.
+ * Secrets never live in a spec (they come from the environment), so this is safe to show. */
+function showSpec(card) {
+  el("specname").textContent = card.name;
+  const spec = card.spec;
+  el("specbody").textContent = spec ? toYamlish(spec) : "(this service does not publish specs)";
+}
+
+/* A small YAML-ish rendering. The spec is authored as YAML, so showing it as JSON would make a
+ * reader translate back to the thing they would actually edit. */
+function toYamlish(value, indent) {
+  const pad = "  ".repeat(indent || 0);
+  if (value === null || value === undefined) return "";
+  if (Array.isArray(value)) {
+    if (!value.length) return " []";
+    return "\n" + value.map((v) => pad + "- " + String(toYamlish(v, (indent || 0) + 1)).trim()).join("\n");
+  }
+  if (typeof value === "object") {
+    return "\n" + Object.keys(value).map((k) => {
+      const rendered = toYamlish(value[k], (indent || 0) + 1);
+      const inline = typeof value[k] === "object" && value[k] !== null;
+      return pad + k + ":" + (inline ? rendered : " " + rendered);
+    }).join("\n");
+  }
+  return String(value);
+}
+
+/* Draw the per-stage breakdown under the two headline numbers, slowest stage highlighted.
+   Stages that were never measured are omitted rather than drawn as zero: a zero bar claims a
+   measurement nobody took. */
+function showStages(trace, biggest) {
+  const labels = {
+    asr_ms: "hearing", rag_ms: "retrieval", llm_ttft_ms: "first words",
+    llm_total_ms: "whole reply", tool_ms: "tools", tts_ms: "speech", buffer_ms: "buffer",
+  };
+  const box = el("latstages");
+  box.innerHTML = "";
+  const measured = Object.keys(labels).filter((k) => trace[k] !== null && trace[k] !== undefined);
+  const peak = Math.max(1, ...measured.map((k) => trace[k]));
+  for (const key of measured) {
+    const row = document.createElement("div");
+    row.className = "lat";
+    const name = document.createElement("span"); name.className = "k"; name.textContent = labels[key];
+    const bar = document.createElement("span"); bar.className = "bar";
+    const fill = document.createElement("i");
+    fill.style.width = Math.max(2, (trace[key] / peak) * 100) + "%";
+    if (biggest && biggest.stage === key) fill.classList.add("worst");
+    bar.appendChild(fill);
+    const value = document.createElement("span");
+    value.className = "v"; value.textContent = Math.round(trace[key]) + "ms";
+    row.appendChild(name); row.appendChild(bar); row.appendChild(value);
+    box.appendChild(row);
+  }
+}
+
+/* Show where a turn's time went. `null` means not measured — never rendered as 0, because a
+ * zero here would be a measurement nobody took. */
+function showTimings(timings) {
+  const ms = (v) => (v === null || v === undefined ? "—" : Math.round(v) + " ms");
+  el("v-ttft").textContent = ms(timings && timings.ttft_ms);
+  el("v-total").textContent = ms(timings && timings.total_ms);
+}
+
+/* The model override, if the user typed one. Empty means "use the spec's" — the override is a
+ * thing you do for one turn, never a change to what the agent IS. */
+function modelOverride() {
+  const value = el("modeloverride").value.trim();
+  return value ? { model: value } : undefined;
+}
+
+/* Report the model a turn actually used, so an overridden turn can never be read as the
+ * agent's committed configuration. */
+function showModel(model) {
+  el("v-model").textContent = model || "—";
+}
 </script>
 </body>
 </html>

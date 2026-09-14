@@ -60,6 +60,27 @@ class InvokeRequest(BaseModel):
     stream: bool = Field(
         default=False, description="Hint only; use the :stream endpoint for streaming."
     )
+    overrides: TurnOverrides | None = Field(
+        default=None, description="Per-turn experiment knobs. Never changes the agent's spec."
+    )
+
+
+class TurnOverrides(BaseModel):
+    """Per-turn changes that do NOT alter the agent's spec.
+
+    The spec is the contract: it is what ``doctor`` validates, what ``verify`` proves, and what
+    was committed. An override is for experimenting — comparing two models on the same question
+    without editing and redeploying an agent — so it lasts exactly one turn and the response
+    reports what was actually used. Without that report an override would be indistinguishable
+    from the agent's real configuration, which is how a playground quietly lies about what it
+    tested.
+    """
+
+    model_config = {"extra": "forbid"}
+
+    model: str | None = Field(
+        default=None, description="Model id to use for this turn only, e.g. openai/gpt-4o."
+    )
 
 
 class ResumeRequest(BaseModel):
@@ -91,6 +112,25 @@ class ResumeRequest(BaseModel):
     )
 
 
+class Timings(BaseModel):
+    """How long one turn took, in milliseconds.
+
+    Latency is a first-class part of the answer, not a debug log: a reply that is correct and
+    slow is a different product from one that is correct and fast, and you cannot tune what the
+    API will not tell you. ``ttft_ms`` is tracked apart from ``total_ms`` because the gap
+    between them is what streaming buys — collapsing the two hides whether a turn is overlapped
+    or merely quick.
+
+    A field is ``None`` when it was not measured, never ``0`` — a zero here would be a
+    measurement nobody took.
+    """
+
+    #: Time until the first content reached the client. What a waiting human actually feels.
+    ttft_ms: float | None = None
+    #: Wall clock for the whole turn.
+    total_ms: float | None = None
+
+
 class Usage(BaseModel):
     """Token/turn accounting for one run, when the engine reports it."""
 
@@ -120,6 +160,11 @@ class InvokeResponse(BaseModel):
     paused: bool = False
     interrupt: dict | None = None
     usage: Usage | None = None
+    #: Where this turn's time went. See :class:`Timings`.
+    timings: Timings | None = None
+    #: The model this turn actually used. Present so an overridden turn can never be mistaken
+    #: for the agent's committed configuration.
+    model: str | None = None
     trace_id: str | None = None
 
 
@@ -151,6 +196,11 @@ class AgentCard(BaseModel):
     capabilities: dict[str, Any] = Field(default_factory=dict)
     input_schema: dict[str, Any] | None = None
     output_schema: dict[str, Any] | None = None
+    #: The agent's declared spec, as committed. This is the contract the agent IS — its
+    #: model, tools, members and voice block — so a client can show what it is talking to
+    #: without a second endpoint or a trip to the repository. Secrets never live in a spec
+    #: (they come from the environment), which is what makes it safe to publish here.
+    spec: dict[str, Any] | None = None
 
 
 class TaskCreateRequest(BaseModel):

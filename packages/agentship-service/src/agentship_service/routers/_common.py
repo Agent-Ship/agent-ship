@@ -80,6 +80,9 @@ def agent_card(agent: RunnableAgent) -> AgentCard:
     return AgentCard(
         name=spec.name,
         description=spec.prompt,
+        # `exclude_none` so a card shows what the author actually wrote, not every default the
+        # model carries — a spec padded with nulls reads as configuration nobody chose.
+        spec=spec.model_dump(mode="json", exclude_none=True),
         streaming=agent.engine.capabilities.streaming,
         capabilities=caps,
         input_schema=None,

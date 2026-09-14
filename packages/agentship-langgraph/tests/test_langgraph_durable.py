@@ -66,7 +66,11 @@ async def test_durable_run_mints_a_resume_token(fake_model, monkeypatch):
     assert result.output == "Red, green, and blue."
     tok = result.resume_token
     assert tok is not None and tok.engine == "langgraph"
-    assert tok.blob["thread_id"] == "t-mint"
+    # The thread is namespaced by tenant and agent, not the bare session id. A session id is
+    # client-supplied, so a token carrying one alone would resume into whatever conversation
+    # happened to share that name — including another tenant's.
+    assert tok.blob["thread_id"].endswith("/t-mint")
+    assert tok.blob["thread_id"].startswith("default/")
     assert tok.blob["checkpoint_id"]  # a real checkpoint id was captured
     assert tok.blob["interrupt"] is False  # the run completed
 

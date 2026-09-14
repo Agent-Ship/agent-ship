@@ -20,6 +20,7 @@ code rather than a traceback.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -218,6 +219,43 @@ def _check_agent(path: Path) -> str | None:
     mcp_reason = _check_mcp_version(spec)
     if mcp_reason is not None:
         return mcp_reason
+    voice_reason = _check_voice(spec)
+    if voice_reason is not None:
+        return voice_reason
+    return None
+
+
+def _check_voice(spec) -> str | None:
+    """Guard an agent that declares ``voice:`` against a missing framework, SDK or key.
+
+    Returns one actionable reason, or ``None`` when the spec has no ``voice:`` block or the
+    stack is ready. A voice agent fails in the worst possible place — the human speaks and
+    hears silence — so the same problems are surfaced here, before anyone dials in.
+
+    Never raises: if the voice package is not importable the guard is skipped rather than
+    failing an otherwise valid text agent, matching how the MCP and autonomous guards behave.
+    """
+    voice = getattr(spec, "voice", None)
+    if voice is None:
+        return None
+    try:
+        from agentship_voice.adapters import get_adapter
+        from agentship_voice.factories import preflight
+    except ImportError:
+        return (
+            "declares `voice:` but the voice package is not installed — "
+            'pip install "agentship-voice[pipecat]"'
+        )
+    try:
+        adapter = get_adapter(voice.framework)
+    except ValueError as exc:
+        return str(exc)
+    missing = adapter.missing_dependency()
+    if missing:
+        return missing
+    problems = preflight(voice)
+    if problems:
+        return "; ".join(problems)
     return None
 
 
@@ -648,6 +686,7 @@ def _serve(
     # uninstalled or misconfigured provider (e.g. forwarded-header without an allow-list).
     os.environ[ENV_AGENTS_DIR] = str(agents_dir)
     os.environ[ENV_AUTH_PROVIDER] = auth_provider
+    dev_key = _dev_key_if_unconfigured(auth_provider, host)
     build_auth_provider(auth_provider, _auth_config_from_env(auth_provider))
 
     # Turn the agentship.* logger tree on. Without this every component logger
@@ -660,6 +699,13 @@ def _serve(
     versions = installed_versions()
     click.echo(f"Serving {len(specs)} agent(s) from {agents_dir} on http://{host}:{port}")
     click.echo(f"Auth provider: {auth_provider}   Log level: {log_level}")
+    if dev_key:
+        click.secho(
+            f"No API keys configured — minted a local dev key: {dev_key}\n"
+            f"  Studio: http://{host}:{port}/studio  (paste that key when it asks)\n"
+            "  Set AGENTSHIP_API_KEYS to turn this off. Loopback only; never happens on 0.0.0.0.",
+            fg="yellow",
+        )
     click.echo(
         f"Build: {build_id()}   "
         + "  ".join(f"{n.removeprefix('agentship-')}={v}" for n, v in versions.items())
@@ -1021,3 +1067,201 @@ def _apply_migrations(migrations: list[Migration], database_url: str | None) -> 
         migration.apply(resolved)
 
     click.echo(f"applied {len(migrations)} migrations (0 pending)")
+
+
+@main.group()
+def voice() -> None:
+    """Run an agent over live audio.
+
+    Needs the voice package and a framework extra:
+    ``pip install "agentship-voice[pipecat]"``.
+    """
+
+
+@voice.command("providers")
+@click.option(
+    "--env-file",
+    "env_file",
+    type=click.Path(dir_okay=False),
+    default=None,
+    help="Read keys from this .env instead of ./.env.",
+)
+def voice_providers(env_file: str | None) -> None:
+    """List the speech providers this install can reach, and what each one still needs.
+
+    Answers the question a spec cannot: `stt: deepgram` is easy to write and gives no hint
+    whether this machine can actually run it. Shows SDK and key status per provider so the
+    gap between "supported" and "usable here" is visible before a session fails.
+    """
+    # Load .env first, or this reports "needs key" for keys that are sitting right there and
+    # would be found by `voice serve` — a status command that disagrees with the thing it is
+    # reporting on is worse than no status command.
+    load_env_for_run(env_file)
+    try:
+        from agentship_voice.factories import STT_PROVIDERS, TTS_PROVIDERS
+    except ImportError:
+        raise click.ClickException(
+            'voice needs the voice package — pip install "agentship-voice[pipecat]"'
+        ) from None
+
+    from importlib import import_module
+
+    for label, table in (("speech-to-text", STT_PROVIDERS), ("text-to-speech", TTS_PROVIDERS)):
+        click.echo(f"\n{label}")
+        for name, provider in sorted(table.items()):
+            try:
+                import_module(provider.module)
+                installed = True
+            except Exception:  # noqa: BLE001 — any import failure means "not usable here",
+                # and a provider SDK that raises something exotic on import is still absent.
+                installed = False
+            keyed = bool(os.environ.get(provider.env_var))
+            if installed and keyed:
+                mark, note = click.style("ready", fg="green"), ""
+            elif installed:
+                mark, note = click.style("needs key", fg="yellow"), f"set {provider.env_var}"
+            else:
+                mark, note = (
+                    click.style("not installed", fg="red"),
+                    f'pip install "pipecat-ai[{provider.extra}]"',
+                )
+            click.echo(f"  {name:<14} {mark:<22} {note}")
+
+
+@voice.command("serve")
+@click.argument("file", type=click.Path(exists=True, dir_okay=False))
+@click.option(
+    "--env-file",
+    "env_file",
+    type=click.Path(dir_okay=False),
+    default=None,
+    help="Load provider keys from this .env instead of ./.env.",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Check dependencies, keys and config, then exit without binding a transport.",
+)
+@click.option("--debug", is_flag=True, help="Re-raise on failure so the full traceback is shown.")
+def voice_serve(file: str, env_file: str | None, dry_run: bool, debug: bool) -> None:
+    """Serve the agent declared in FILE over a live voice session.
+
+    Reads the agent's ``voice:`` block for which framework, ears and mouth to use, checks that
+    each one's SDK is installed and its key is set, then runs until interrupted.
+
+    ``--dry-run`` performs every check and stops before binding a transport, so a deployment can
+    prove its configuration without opening a port or spending a provider call — the same reason
+    ``doctor`` exists for text agents.
+    """
+    try:
+        load_env_for_run(env_file)
+        if debug:
+            configure_logging(logging.DEBUG)
+
+        spec = _spec_from(file)
+        if spec.voice is None:
+            raise click.ClickException(
+                f"{file} has no `voice:` block — add one to run this agent over audio"
+            )
+
+        adapter = _voice_adapter(spec.voice.framework)
+        missing = adapter.missing_dependency()
+        if missing:
+            raise click.ClickException(missing)
+
+        from agentship_voice.factories import preflight
+
+        problems = preflight(spec.voice)
+        if problems:
+            raise click.ClickException("voice cannot start:\n  - " + "\n  - ".join(problems))
+
+        if dry_run:
+            click.echo(
+                f"ok: {spec.name} would serve on {spec.voice.framework} "
+                f"({spec.voice.stt} → agent → {spec.voice.tts}, "
+                f"transport={spec.voice.transport})"
+            )
+            return
+
+        from agentship.runtime import build_agent
+        from agentship_voice import VoiceTurn
+
+        turn = VoiceTurn(build_agent(file), session_id=f"voice-{spec.name}")
+        click.echo(f"serving {spec.name} over voice — ctrl-c to stop")
+        asyncio.run(adapter.run(turn, spec.voice))
+    except KeyboardInterrupt:
+        # Ctrl-C is how a voice session is meant to end, not a failure.
+        click.echo("stopped")
+    except click.ClickException:
+        raise
+    except AgentShipError as exc:
+        if debug:
+            raise
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+    except Exception as exc:
+        if debug:
+            raise
+        click.echo(f"Error: {exc} (run with --debug for the full traceback)", err=True)
+        sys.exit(1)
+
+
+def _spec_from(path: str):
+    """Load an :class:`~agentship.spec.AgentSpec` from a YAML file."""
+    import yaml
+    from agentship.spec import AgentSpec
+
+    return AgentSpec.model_validate(yaml.safe_load(Path(path).read_text(encoding="utf-8")))
+
+
+def _voice_adapter(framework: str):
+    """Return the voice adapter for ``framework``, or fail naming the install.
+
+    The import is inside the function so every other CLI command keeps working on a stack with
+    no voice package at all — the same reason engines are resolved lazily.
+    """
+    try:
+        from agentship_voice.adapters import get_adapter
+    except ImportError as exc:
+        raise click.ClickException(
+            'voice needs the voice package — pip install "agentship-voice[pipecat]"'
+        ) from exc
+    try:
+        return get_adapter(framework)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+
+#: The environment variable the api_key provider reads its table from.
+DEFAULT_KEYS_ENV = "AGENTSHIP_API_KEYS"
+
+
+#: Hosts that only this machine can reach. A convenience that weakens auth must never be
+#: reachable from anywhere else, so it is gated on the bind address rather than on a flag
+#: somebody could set in production by accident.
+_LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1"})
+
+
+def _dev_key_if_unconfigured(auth_provider: str, host: str) -> str | None:
+    """Mint a throwaway API key when nobody configured one and we are bound to loopback.
+
+    Running `agentship serve` with no keys used to return 401 for everything, including
+    Studio's own calls — a UI you can open and cannot use, with nothing saying why. The fix is
+    not to drop auth: it is to admit that an unconfigured local run still needs A key, and to
+    print one.
+
+    Returns the key so the caller can show it, or ``None`` when keys are already configured or
+    the service is reachable from off-box. Deliberately regenerated per start: it is a
+    convenience for a developer at a terminal, not a credential anything should depend on.
+    """
+    import secrets
+
+    if auth_provider != "api_key" or os.environ.get(DEFAULT_KEYS_ENV):
+        return None
+    if host not in _LOOPBACK:
+        return None
+    key = "dev-" + secrets.token_hex(8)
+    os.environ[DEFAULT_KEYS_ENV] = json.dumps(
+        [{"key": key, "user": "local-dev", "tenant": "local", "scopes": ["*"]}]
+    )
+    return key
