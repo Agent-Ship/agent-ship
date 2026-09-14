@@ -15,6 +15,19 @@ import pytest
 pytest.importorskip("agentship_voice", reason="needs agentship-voice")
 pytest.importorskip("pipecat", reason="needs the [pipecat] extra")
 
+# A `voice:` block is only understood by a framework that ships VoiceSpec. On an older core
+# the spec is rejected outright (`extra="forbid"`), so this skips with the reason rather than
+# failing — the demo repo is installed against a PINNED framework release, and a demo for an
+# unreleased feature must not turn the whole suite red.
+from agentship.spec import AgentSpec  # noqa: E402
+
+if "voice" not in AgentSpec.model_fields:
+    pytest.skip(
+        "the installed agentship-core has no `voice:` support yet; this demo needs the "
+        "release that carries VoiceSpec",
+        allow_module_level=True,
+    )
+
 from agentship.engines.base import ENGINES, EngineCapabilities, Event  # noqa: E402
 from agentship.runtime import build_agent  # noqa: E402
 from agentship.spec import AgentSpec, load_spec  # noqa: E402

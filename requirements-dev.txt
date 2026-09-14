@@ -1,26 +1,29 @@
-# Dev / editable-local install of the AgentShip framework.
+# The AgentShip framework, from PyPI.
 #
-# The framework is not on PyPI yet, so the pinned `agentship[starter]==0.0.1` in
-# pyproject.toml cannot resolve from an index. Until it publishes, install the three
-# framework packages editable from the sibling monorepo checkout, plus the test
-# tooling. Run this from the demo repo root, inside a venv:
+# This used to install the framework editable from a sibling checkout, because it was not
+# published. It is now — 0.0.2 — and the sibling paths only ever resolved on a machine with
+# both repositories side by side, so CI could not install this repo at all: pip reported
+# "../agentship/packages/agentship-core is not a valid editable requirement" and stopped.
 #
 #     python -m venv .venv && source .venv/bin/activate
-#     pip install -r requirements-dev.txt
+#     pip install -r requirements-dev.txt        # or `make install`
 #
-# (or just `make install`, which does exactly this.)
+# Pinned exactly. The six ship in lockstep and are only ever tested together, so a mixed set
+# is a combination nobody has run.
 
--e ../agentship/packages/agentship-core
--e ../agentship/packages/agentship-langgraph
--e ../agentship/packages/agentship-cli
-# Phase 07 observability slice: the OTel span-tree + exporters (console/Opik/LangFuse/LangSmith).
-# The pinned form is `agentship[starter,observability]`; editable-local it's this sibling package.
--e ../agentship/packages/agentship-observability
-# Phases 06-09 service slices: the /v1 REST/SSE/WS surface, auth providers, tenant
-# isolation and HTTP posture. The pinned form is `agentship[starter,observability,service]`;
-# editable-local it's this sibling package. `[serve]` adds uvicorn, which the service demo
-# needs because it boots a real server on a loopback port rather than using TestClient alone.
--e ../agentship/packages/agentship-service[serve]
+agentship-core==0.0.2
+agentship-langgraph[mcp]==0.0.2
+agentship-cli==0.0.2
+# The OTel span-tree + exporters (console/Opik/LangFuse/LangSmith).
+agentship-observability==0.0.2
+# `[serve]` adds uvicorn: the service demo boots a real server on a loopback port rather than
+# relying on TestClient, because "the ASGI app starts" is part of what it claims to show.
+agentship-service[serve]==0.0.2
+
+# NOT here: agentship-voice. It is unpublished while the voice phase lands, so the voice demo
+# and its tests skip on a clean install rather than failing — `pytest.importorskip` in
+# tests/test_voice.py. Install it from a sibling checkout to run them:
+#     pip install -e ../agentship/packages/agentship-voice[pipecat]
 
 pytest>=8
 pytest-asyncio>=0.24
