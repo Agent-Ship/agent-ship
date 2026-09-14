@@ -48,7 +48,8 @@ jobs:
             -e 'packages/agentship-service[serve,a2a]' \
             -e 'packages/agentship-observability[phoenix]' \
             -e packages/agentship-cli \
-            -e packages/agentship-sdk
+            -e packages/agentship-sdk \
+            -e 'packages/agentship-voice[all]'
           pip install -r requirements-dev.txt
 
       - name: Lint
@@ -86,10 +87,16 @@ jobs:
       - name: Check version lockstep
         run: python scripts/versions.py --check
 
+      # agentship-voice is built and TESTED here but is not in release.yml's publish list: CI
+      # proves what is in the tree, releasing ships what is ready, and those are different
+      # sets while a package is still being built. Leaving it out of this loop meant its tests
+      # were collected against a package that had never been installed, so the job failed on
+      # import with nothing to say about the code.
       - name: Build every wheel and sdist
         run: |
           for pkg in agentship-core agentship-langgraph agentship-service \
-                     agentship-observability agentship-cli agentship-sdk; do
+                     agentship-observability agentship-cli agentship-sdk \
+                     agentship-voice; do
             python -m build --outdir dist "packages/$pkg"
           done
           ls -l dist
@@ -118,7 +125,8 @@ jobs:
             "$(resolve agentship_service)[serve,a2a]" \
             "$(resolve agentship_observability)[phoenix]" \
             "$(resolve agentship_cli)" \
-            "$(resolve agentship_sdk)"
+            "$(resolve agentship_sdk)" \
+            "$(resolve agentship_voice)[all]"
           /tmp/clean/bin/pip install -r requirements-dev.txt
 
       # Without this the job could pass by importing the source tree and prove nothing.
