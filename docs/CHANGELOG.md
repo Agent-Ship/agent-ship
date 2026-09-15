@@ -23,6 +23,49 @@ they were written before the project cut tagged releases.
 
 ## [Unreleased]
 
+## [0.0.3] — 2026-09-15
+
+**Voice, and the conversation memory that never worked.** Adds a seventh distribution,
+`agentship-voice`, and fixes two things in the kernel that were wrong long before it.
+
+### Added
+- **`agentship-voice`** — talk to an agent. A vendor-free seam (`VoiceTurn`: text in, spoken
+  text out) with adapters for **Pipecat** and **LiveKit**, and 16 speech providers behind a
+  registry (Deepgram, ElevenLabs, Cartesia, AssemblyAI, Gladia, Groq, Speechmatics, OpenAI and
+  more). `pip install "agentship-sdk[voice]"`, then a framework extra.
+- **`WS /v1/agents/{name}/voice`** — voice as a capability of the service you already run: same
+  auth, same registry, same tenant scoping. A browser authenticates over the `bearer`
+  subprotocol, because it cannot set headers on a WebSocket handshake.
+- **`voice:` block on an agent spec** — framework, providers, models, language, endpointing and
+  speech rate, beside `observability:` where the kernel owns the authoring surface.
+- **Studio is a playground** — a microphone above the conversation, per-turn latency with a
+  per-stage breakdown, the agent's declared spec, tool steps that expand to their arguments and
+  results, and a per-turn model override that never touches the spec.
+- **`agentship voice serve` and `agentship voice providers`** — the second answers a question a
+  spec cannot: whether this machine can actually reach the provider you named.
+- **Per-turn timings on every response**, `ttft_ms` kept apart from `total_ms`.
+- **A local dev key.** `agentship serve` with no keys configured used to 401 everything,
+  including Studio's own calls. On loopback it now mints one and prints it.
+
+### Fixed
+- **An agent had no conversation memory — on any path.** The graph's message channel was a
+  plain list with no reducer, so every turn replaced the conversation and the agent began from
+  nothing. P03 had been marked done.
+- **Two tenants could read each other's conversations.** The checkpoint thread was the
+  client-supplied `session_id` alone; it is now keyed by tenant and agent as well. Reachable
+  only once memory worked, and found by adversarially reviewing the fix above.
+- **Streamed turns were never checkpointed** — `astream` ran with no thread config, so a voice
+  caller had no memory while a text caller did.
+- **The system prompt was stored once per turn**, twelve copies after twelve turns.
+- **A Python MCP server now runs under the interpreter that spawned it**, instead of whatever
+  `python3` PATH resolves to — which outside a virtualenv is a system Python with no `mcp`.
+- **A malformed `resume_token` is a 422, not a 500**, and an unexpected 500 keeps its security
+  headers and trace id.
+
+### Changed
+- **Seven distributions in lockstep**, not six. `agentship-voice` was held back while the phase
+  moved; holding it back also meant nobody could install a working voice agent from an index.
+
 ## [0.0.2] — 2026-09-07
 
 **The first release that can actually run an agent.** `0.0.1` claimed the six names on PyPI and

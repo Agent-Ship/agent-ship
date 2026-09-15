@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agentship-voice"
-version = "0.0.2"
+version = "0.0.3"
 description = "AgentShip voice — run the same agent over a live audio stream. A cascaded pipeline (transport/VAD → STT → agent → TTS) with barge-in, hosted in either Pipecat or LiveKit Agents. The agent is the one the REST service runs; only the hosting differs."
 readme = "README.md"
 requires-python = ">=3.13"
@@ -13,7 +13,7 @@ license = "Apache-2.0"
 # agentship-core, so the seam, the config surface and their tests run keyless in CI;
 # a framework arrives only with its extra. Same shape as the observability package,
 # where the vendor SDK is never a hard dependency of the contract.
-dependencies = ["agentship-core==0.0.2"]
+dependencies = ["agentship-core==0.0.3"]
 
 [project.optional-dependencies]
 # Pipecat hosts the agent as a FrameProcessor in a frame pipeline.

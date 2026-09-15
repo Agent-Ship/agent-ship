@@ -40,6 +40,10 @@ SIBLINGS = (
     "agentship-service",
     "agentship-observability",
     "agentship-cli",
+    # Joined at 0.0.3. It was held back while the voice phase moved, on the reasoning that an
+    # unreleased package cannot break anyone — true, and it also meant the demo could not
+    # install a working voice agent from an index, which is the only way a stranger gets one.
+    "agentship-voice",
 )
 
 _VERSION_LINE = re.compile(r'^version = "([^"]+)"$', re.M)
