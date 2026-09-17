@@ -24,5 +24,9 @@ pipecat = ["pipecat-ai>=1.8,<2"]
 livekit = ["livekit-agents>=1.8,<2"]
 all = ["pipecat-ai>=1.8,<2", "livekit-agents>=1.8,<2"]
 
+[project.entry-points."agentship.voice_frameworks"]
+pipecat = "agentship_voice.adapters.pipecat_adapter:PipecatAdapter"
+livekit = "agentship_voice.adapters.livekit_adapter:LiveKitAdapter"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/agentship_voice"]

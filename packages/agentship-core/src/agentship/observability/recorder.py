@@ -95,8 +95,15 @@ class RecordingObserver(Observer):
     a per-task current-span stack.
     """
 
-    def __init__(self) -> None:
-        """Start an empty recording with no active span and no trace id yet."""
+    def __init__(self, *, capture_content: bool = False) -> None:
+        """Start an empty recording with no active span and no trace id yet.
+
+        ``capture_content`` mirrors the flag on the OTel observer, so the PHI gate can be
+        exercised with no exporter installed. Callers read it with ``getattr(observer,
+        "capture_content", False)``; without it here, every gated branch was permanently off in
+        tests and the gate's *open* side went unproven — the half that can actually leak.
+        """
+        self.capture_content = capture_content
         self._roots: list[_Recording] = []
         self._current: ContextVar[_Recording | None] = ContextVar("recording_current", default=None)
         self._trace_id: str | None = None

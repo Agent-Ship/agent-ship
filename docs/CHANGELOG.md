@@ -44,6 +44,21 @@ they were written before the project cut tagged releases.
 - **`agentship voice serve` and `agentship voice providers`** — the second answers a question a
   spec cannot: whether this machine can actually reach the provider you named.
 - **Per-turn timings on every response**, `ttft_ms` kept apart from `total_ms`.
+- **A spoken turn is traced like any other turn.** A `voice.turn` span wraps the ordinary
+  `agent <name>` tree — same inner tree a REST call produces, one honest layer on top — carrying
+  the providers in play, the per-stage timings, and the stage that took the largest share. A
+  barge-in is marked `agentship.voice.cancelled` rather than errored, because being interrupted
+  is the feature working. SEMCONV `0.2.0`, additive: every `0.1.0` name and key is unchanged.
+- **Six voice conformance cells** (`CONF-VOICE-1..6`) — the 850 ms first-audio budget, the
+  latency trace, the span tree, REST/voice parity, framework parity, and barge-in honesty. All
+  keyless, driving a real pipeline with stand-ins that subclass Pipecat's own service classes.
+- **`agent.amend_history()`** — rewrite what an agent is recorded as having said. On LangGraph
+  this replaces the last reply by message id, so `add_messages` updates rather than appends.
+- **`greeting`, `max_session_seconds`, `speak_field` and `fallback_text`** on `voice:`. A voice
+  agent that waits in silence reads as broken; an abandoned browser tab otherwise holds its
+  socket and provider connections forever; a schema'd agent would read its own JSON aloud.
+- **Voice adapters register through `agentship.voice_frameworks` entry points**, the mechanism
+  engines already use, so a third framework is a package rather than a patch here.
 - **A local dev key.** `agentship serve` with no keys configured used to 401 everything,
   including Studio's own calls. On loopback it now mints one and prints it.
 
@@ -54,6 +69,18 @@ they were written before the project cut tagged releases.
 - **Two tenants could read each other's conversations.** The checkpoint thread was the
   client-supplied `session_id` alone; it is now keyed by tenant and agent as well. Reachable
   only once memory worked, and found by adversarially reviewing the fix above.
+- **`[cancelled by user]` never reached the conversation.** The marker was built, tested, and
+  read by nothing, so history kept the full intended reply — the model then believed it had
+  said a sentence the human heard three words of, and opened the next turn with "as I
+  mentioned…". An interrupted turn now rewrites history to what was actually spoken.
+- **Only the first utterance of a session was timed.** A session holds one `VoiceTurn`, and the
+  per-utterance state was never cleared: `llm_ttft_ms` is stamped only while unset, so the
+  latency panel showed one real measurement and then froze, while the transcript accumulated
+  the whole conversation and the barge-in clip point drifted with every exchange.
+- **Recognition and synthesis went unmeasured.** The trace carried the model's two numbers and
+  nothing else, so a turn that felt slow because the recogniser was slow appeared as a fast
+  model and an unexplained wait. Both stages are now attributed, and `total_ms` measures the
+  only thing a human feels: silence to first audio.
 - **Streamed turns were never checkpointed** — `astream` ran with no thread config, so a voice
   caller had no memory while a text caller did.
 - **The system prompt was stored once per turn**, twelve copies after twelve turns.

@@ -721,6 +721,47 @@ class LangGraphEngine(Engine):
             async for event in self._stream_graph(graph, compiled, text, thread_id, resuming):
                 yield event
 
+    async def amend_conversation(
+        self, compiled: _CompiledAgent, ctx: RunContext, text: str
+    ) -> bool:
+        """Rewrite the last assistant message in this thread to ``text``. See the base docstring.
+
+        Done by writing a message carrying the **same id** as the one being replaced. That is not
+        a trick: ``add_messages`` treats a matching id as an update rather than an append, which
+        is exactly the "edit what was said" operation, and it is why the reducer is the right
+        substrate for this instead of a bespoke history table.
+
+        Fail-open. The caller is a turn that has already ended — on a barge-in, the human is
+        drawing breath to say the next thing — so a store hiccup is logged and swallowed. A
+        slightly stale history is a far smaller problem than an exception surfacing as silence.
+        """
+        from langchain_core.messages import AIMessage
+
+        thread_id = ctx.conversation_key
+        try:
+            async with open_checkpointer(self._conninfo()) as saver:
+                graph = self._with_checkpointer(compiled, saver)
+                config = {"configurable": {"thread_id": thread_id}}
+                snapshot = await graph.aget_state(config)
+                messages = (snapshot.values or {}).get("messages") or []
+                last = next(
+                    (m for m in reversed(messages) if isinstance(m, AIMessage)),
+                    None,
+                )
+                if last is None or getattr(last, "id", None) is None:
+                    # Nothing was checkpointed for this turn — the interruption landed before the
+                    # node completed, so there is no overstated reply to correct.
+                    return False
+                await graph.aupdate_state(
+                    config, {"messages": [AIMessage(id=last.id, content=text)]}
+                )
+                return True
+        except Exception:  # noqa: BLE001 — correcting history must never break a conversation
+            _engine_logger.warning(
+                "could not amend conversation thread=%s", thread_id, exc_info=True
+            )
+            return False
+
     async def _stream_graph(
         self, graph: Any, compiled: _CompiledAgent, text: str, thread_id: str, resuming: bool
     ) -> AsyncIterator[Event]:

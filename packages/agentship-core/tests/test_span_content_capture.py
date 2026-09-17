@@ -21,12 +21,6 @@ from agentship.runtime import build_agent
 from agentship.spec import AgentSpec, ObservabilitySpec
 
 
-class _CapturingRecorder(RecordingObserver):
-    """A recorder that opts into content, standing in for a configured OTel observer."""
-
-    capture_content = True
-
-
 async def _root(capture: bool):
     """Run one echo turn and return the root span, with content capture on or off."""
     agent = build_agent(
@@ -36,7 +30,7 @@ async def _root(capture: bool):
             observability=ObservabilitySpec(capture_content=capture, exporters=[]),
         )
     )
-    observer = _CapturingRecorder() if capture else RecordingObserver()
+    observer = RecordingObserver(capture_content=capture)
     agent.observer = observer
     await agent.run("what is 6 times 7?")
     return observer.roots[0]

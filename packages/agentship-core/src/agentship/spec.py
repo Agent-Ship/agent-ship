@@ -325,6 +325,23 @@ class VoiceSpec(BaseModel):
     #: Target time-to-first-audio, in milliseconds (DESIGN §8). Recorded so a run can be measured
     #: against the number the design committed to, not against whatever it happens to achieve.
     latency_budget_ms: int = Field(default=850, ge=0)
+    #: What the agent says when a session opens, before the human has spoken. Unset stays silent
+    #: and waits. A greeting is worth setting: on a phone call or a web widget, silence gives the
+    #: human no way to tell a connected agent from a broken one, and they hang up.
+    greeting: str | None = None
+    #: Hard ceiling on one session, in seconds. ``None`` means no limit, which is right for a
+    #: local ``voice serve`` and wrong for anything public: a browser tab left open holds the
+    #: socket and its provider connections indefinitely, and nobody is on the other end.
+    max_session_seconds: int | None = Field(default=None, gt=0)
+    #: Which field of a structured result to speak. An agent with ``output_schema`` returns an
+    #: object, and speaking that object reads its JSON aloud — braces, quotes and all. Naming the
+    #: field here is how a structured agent becomes speakable without giving up its schema.
+    speak_field: str | None = None
+    #: What the agent says when a turn fails. The human is mid-conversation and cannot see the
+    #: traceback; silence reads as a dropped call, so something must be said. Overridable because
+    #: the right apology depends on who is listening — a clinician and a shopper need different
+    #: words, and neither wants ours.
+    fallback_text: str = "Sorry — something went wrong on my end."
 
 
 class AgentSpec(BaseModel):

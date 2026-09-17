@@ -290,6 +290,24 @@ class Engine(ABC):
             f"engine {self.name!r} declares durable execution but has not implemented resume yet"
         )
 
+    async def amend_conversation(self, compiled: Any, ctx: RunContext, text: str) -> bool:
+        """Rewrite this conversation's last assistant message to ``text``; ``True`` if it stuck.
+
+        For when what the agent *said* is not what it *produced*. The one case today is a voice
+        barge-in: the human cuts in after half a sentence, and the half they never heard is still
+        sitting in history. Left there, the next turn opens with "as I mentioned…" about words
+        nobody was ever told — the model is not wrong, it is reading an accurate record of a
+        conversation that did not happen.
+
+        A **rewrite**, not an append: the goal is that history says what was heard, and appending
+        a correction would leave both versions in the thread for the model to reconcile.
+
+        Returns ``False`` rather than raising when the engine keeps no conversation to amend,
+        because every caller is a caller that already finished its turn. A failed correction is
+        worth a warning, never an exception thrown at someone mid-conversation.
+        """
+        return False
+
 
 #: The single shared registry of engines, discovered via the entry-point group.
 ENGINES: Registry[type[Engine]] = Registry("agentship.engines", label="engine")

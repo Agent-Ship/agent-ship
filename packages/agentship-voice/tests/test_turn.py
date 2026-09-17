@@ -148,3 +148,79 @@ async def test_the_session_id_threads_the_conversation_not_the_utterance() -> No
     await _spoken(turn, "second")
 
     assert seen == ["voice-session-1", "voice-session-1"]
+
+
+@pytest.mark.asyncio
+async def test_a_structured_agent_speaks_its_named_field_not_its_json() -> None:
+    """``speak_field`` is what makes a schema'd agent speakable.
+
+    Without it a voice pipeline recites the object — braces, quotes and key names — which is
+    both unusable and the sort of thing nobody discovers until someone is listening.
+    """
+    from agentship.spec import VoiceSpec
+
+    _ScriptedEngine.script = [Event(type="content", data={"answer": "Twelve pounds.", "cited": 3})]
+    ENGINES.register("scripted", _ScriptedEngine)
+    agent = build_agent(
+        AgentSpec(
+            name="talker",
+            engine="scripted",
+            streaming=True,
+            voice=VoiceSpec(speak_field="answer"),
+        )
+    )
+    assert await _spoken(VoiceTurn(agent), "balance?") == ["Twelve pounds."]
+
+
+@pytest.mark.asyncio
+async def test_an_interrupted_turn_corrects_history_to_what_was_heard() -> None:
+    """The marker has to reach the conversation, not just be constructible.
+
+    ``transcript()`` built the right string from the start and nothing ever called it, so
+    history kept the full intended reply: the model then believed it had said a sentence the
+    human heard three words of, and opened the next turn with "as I mentioned…".
+    """
+    amended: list[str] = []
+
+    class _Recording:
+        """An agent that records what its history was corrected to."""
+
+        async def stream(self, text, caller=None, session_id=None):
+            """Two clauses, only one of which will be confirmed as spoken."""
+            yield Event(type="content", data="One. ")
+            yield Event(type="content", data="Two.")
+
+        async def amend_history(self, text, *, caller=None, session_id=None):
+            """Record the correction instead of writing to a checkpoint store."""
+            amended.append(text)
+            return True
+
+    turn = VoiceTurn(_Recording())
+    [chunk async for chunk in turn.say("go")]
+    turn.confirm_spoken("One. ")  # only the first clause actually played
+
+    assert await turn.interrupted() is True
+    assert amended == ["One. [cancelled by user]"]
+
+
+@pytest.mark.asyncio
+async def test_an_interruption_before_the_first_word_corrects_nothing() -> None:
+    """Nothing was heard, so there is no overstatement to walk back.
+
+    Writing a bare marker over a reply that never started would itself misreport the turn.
+    """
+
+    class _Silent:
+        """An agent whose reply was cut off before any audio played."""
+
+        async def stream(self, text, caller=None, session_id=None):
+            """Produce a reply that never reaches the speaker."""
+            yield Event(type="content", data="One. ")
+
+        async def amend_history(self, text, *, caller=None, session_id=None):
+            """Fail loudly if called — it must not be."""
+            raise AssertionError("history must not be corrected when nothing was spoken")
+
+    turn = VoiceTurn(_Silent())
+    [chunk async for chunk in turn.say("go")]
+    assert await turn.interrupted() is False

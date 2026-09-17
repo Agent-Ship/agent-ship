@@ -11,6 +11,7 @@ threading one.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from agentship.context import Caller
@@ -90,4 +91,49 @@ async def run_browser_session(websocket, agent, caller: Caller, sample_rate: int
     )
     runner = WorkerRunner(handle_sigint=False)
     await runner.add_workers(PipelineWorker(pipeline))
-    await runner.run()
+
+    if spec.voice.greeting:
+        # Queued before the runner starts so it is the first thing synthesised. A voice agent
+        # that waits in silence gives the human no way to tell "connected and listening" from
+        # "broken", and the usual response to that ambiguity is to hang up.
+        await _greet(pipeline, spec.voice.greeting)
+
+    await serve_until_done(runner.run(), spec.voice.max_session_seconds, spec.name)
+
+
+async def serve_until_done(session, limit: int | None, agent_name: str) -> None:
+    """Await ``session``, cutting it off after ``limit`` seconds when one is set.
+
+    Hitting the ceiling is a normal ending, not a failure: the socket is closed and the
+    providers released, which is the entire point. A browser tab left open otherwise holds this
+    session and its provider connections for as long as the process lives, with nobody on the
+    other end.
+
+    ``None`` means no limit, which is right for a local ``voice serve`` and wrong for anything
+    public — so it is the deployment's call rather than a number we pick for them.
+    """
+    if limit is None:
+        await session
+        return
+    try:
+        await asyncio.wait_for(session, timeout=limit)
+    except TimeoutError:
+        logger.info("voice session for agent=%s hit max_session_seconds=%s", agent_name, limit)
+
+
+async def _greet(pipeline, greeting: str) -> None:
+    """Speak ``greeting`` before the human has said anything.
+
+    Framed as a complete LLM response because that is what a TTS service is waiting for: it
+    aggregates text and needs an explicit end before it will synthesise, so a bare text frame
+    sits in its buffer and is never spoken.
+    """
+    from pipecat.frames.frames import (
+        LLMFullResponseEndFrame,
+        LLMFullResponseStartFrame,
+        TextFrame,
+    )
+
+    await pipeline.queue_frames(
+        [LLMFullResponseStartFrame(), TextFrame(greeting), LLMFullResponseEndFrame()]
+    )

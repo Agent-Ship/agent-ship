@@ -16,6 +16,7 @@ framework's own answer instead of a second, worse one of our own.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from agentship.spec import VoiceSpec
@@ -126,13 +127,18 @@ class LiveKitAdapter(VoiceAdapter):
         """
 
         def _on_item(event) -> None:
-            """Record an assistant message as spoken."""
+            """Record an assistant message as spoken, and correct history if it was cut off."""
             item = getattr(event, "item", None)
             if item is None or getattr(item, "role", None) != "assistant":
                 return
             text = getattr(item, "text_content", None) or ""
             if text:
                 turn.confirm_spoken(text)
+            if getattr(item, "interrupted", False):
+                # LiveKit says so itself, so there is nothing to infer. Scheduled rather than
+                # awaited because this is a synchronous event callback: blocking it would stall
+                # the session's own event loop while we write to a checkpoint store.
+                asyncio.create_task(turn.interrupted())  # noqa: RUF006 — fire-and-forget by design
 
         session.on("conversation_item_added", _on_item)
 
