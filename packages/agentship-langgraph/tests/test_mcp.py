@@ -105,3 +105,63 @@ async def test_one_agent_uses_a_native_tool_and_an_mcp_tool_in_the_same_turn(mon
     assert "4" in returned["calculator"], returned
     assert "DONE" in returned["shout"], returned
     assert result.output == "2 + 2 is 4, and DONE."
+
+
+async def test_a_real_mcp_tool_call_names_its_server_in_the_trace(monkeypatch):
+    """A tool served by an MCP server is identifiable as such in the trace, and names it.
+
+    The ``agentship.tool.mcp_server`` attribute was defined in the frozen contract, documented,
+    and stamped by code that genuinely ran — onto a map that nothing ever populated. The callback
+    accepted a ``mcp_servers`` argument and **no caller passed one**, so the attribute was always
+    absent and every MCP tool looked like local code in every trace. A slow or failing remote
+    server was therefore indistinguishable from slow code of our own, which is the single thing
+    this attribute exists to tell apart.
+
+    Driven against the real stdio MCP server fixture, not a stand-in, because the bug was in the
+    wiring between discovery and tracing — the two halves either side of it both worked.
+    """
+    from agentship.observability import RecordingObserver, semconv
+    from agentship.runtime import RunnableAgent
+
+    spec = AgentSpec(
+        name="a",
+        engine="langgraph",
+        template="single",
+        model="x",
+        tools=["calculator"],
+        mcp={"echo": McpServerSpec(transport="stdio", command=sys.executable, args=[_FIXTURE])},
+    )
+    calls_both = AIMessage(
+        content="",
+        tool_calls=[
+            {"name": "calculator", "args": {"expression": "2 + 2"}, "id": "c1"},
+            {"name": "shout", "args": {"text": "done"}, "id": "c2"},
+        ],
+    )
+    model = ScriptedModel(script=[calls_both, AIMessage(content="2 + 2 is 4, and DONE.")])
+    monkeypatch.setattr(models_module, "resolve_model", lambda *a, **k: model)
+
+    engine = LangGraphEngine()
+    compiled = engine.build(spec)
+    observer = RecordingObserver()
+    await RunnableAgent(spec, engine, compiled, observer=observer).run(
+        "do both", session_id="mcp-trace"
+    )
+
+    def walk(node):
+        yield node
+        for child in node.children:
+            yield from walk(child)
+
+    tool_spans = {
+        span.name: span for span in walk(observer.roots[0]) if span.name.startswith("tool.")
+    }
+    assert "tool.shout" in tool_spans, f"no MCP tool span recorded; saw {sorted(tool_spans)}"
+    assert "tool.calculator" in tool_spans, "the native tool must still be traced"
+
+    assert tool_spans["tool.shout"].attrs.get(semconv.AS_TOOL_MCP_SERVER) == "echo", (
+        "an MCP tool span must name the server that served it"
+    )
+    assert semconv.AS_TOOL_MCP_SERVER not in tool_spans["tool.calculator"].attrs, (
+        "a native tool has no MCP server, and claiming one would be worse than saying nothing"
+    )

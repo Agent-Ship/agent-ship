@@ -23,6 +23,30 @@ they were written before the project cut tagged releases.
 
 ## [Unreleased]
 
+## [Unreleased]
+
+### Fixed
+- **Streaming an agent with a human approval gate crashed.** LangGraph reports a pending
+  interrupt on its update stream under `__interrupt__`, whose value is a *tuple* where every
+  other update is a node's dict — so the loop reading node updates died on `'tuple' object has
+  no attribute 'get'` and the caller got an error frame naming a type they had never heard of.
+- **A streamed run that paused could never be resumed.** Even without the crash, the turn ended
+  with a bare `done` and **no resume token was ever minted**: the client was told the turn had
+  finished while the run sat waiting in the checkpointer, unresumable by anyone. `:stream` now
+  emits a `paused` event carrying the question and a working token, and the terminal `done`
+  says `paused: true` so a client written before this still terminates and still notices.
+- **Every MCP tool looked like local code in every trace.** `agentship.tool.mcp_server` was in
+  the frozen contract, documented, and stamped by code that genuinely ran — onto a map nothing
+  ever populated, because the callback accepted `mcp_servers` and no caller passed one. A slow
+  or failing remote server was indistinguishable from slow code of our own, which is the one
+  thing the attribute exists to tell apart.
+
+### Added
+- **Every tracing backend proves delivery in CI.** Each of Phoenix, Opik, LangSmith and Langfuse
+  now exports a real span to a throwaway in-process collector, asserting it POSTs to that
+  backend's documented path with its own credential. "Works across all four" had rested on
+  read-back tests that are live-only and skip in CI — asserted, never verified.
+
 ## [0.0.3] — 2026-09-15
 
 **Voice, and the conversation memory that never worked.** Adds a seventh distribution,

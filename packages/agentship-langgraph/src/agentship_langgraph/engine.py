@@ -105,8 +105,14 @@ def split_reasoning(message: Any) -> tuple[str, str]:
 _TOOL_CALL_LOGGER = ToolCallLogger()
 
 
-def _run_callbacks() -> list:
+def _run_callbacks(mcp_servers: dict[str, str] | None = None) -> list:
     """Build the LangChain callback list for one run: the tool logger plus the span tracer.
+
+    ``mcp_servers`` maps tool name to MCP server so a tool span can name the remote it called.
+    The callback has always accepted it and nothing ever passed one, so
+    ``agentship.tool.mcp_server`` was defined, documented, stamped by code that ran — and always
+    absent, because the map it reads from was always empty. In a trace every MCP tool therefore
+    looked like local code, which is the one thing the attribute exists to prevent.
 
     The tool logger is always present (its output is gated by log level). When the runtime has a
     live observer active for the turn — read via :func:`get_observer`, set while the root ``agent``
@@ -125,7 +131,9 @@ def _run_callbacks() -> list:
         return callbacks
     if observer is not None and not isinstance(observer, NoOpObserver):
         capture = bool(getattr(observer, "capture_content", False))
-        callbacks.append(ObservabilityCallback(observer, capture_content=capture))
+        callbacks.append(
+            ObservabilityCallback(observer, capture_content=capture, mcp_servers=mcp_servers)
+        )
     return callbacks
 
 
@@ -144,6 +152,11 @@ _TOKEN_SCHEMA_VERSION = 1
 #: This is an engine detail, not a user knob: a spec asks for ``durability: checkpoint`` (crash
 #: safety), and the engine chooses how to flush. See DESIGN §6.
 _CHECKPOINT_FLUSH_MODE = "sync"
+
+#: The state key LangGraph reports pending HITL interrupts under, on both the invoke result and
+#: the "updates" stream. Named once because the two paths read it for different reasons and a
+#: typo in either silently turns a paused run into a finished-looking one.
+_INTERRUPT_KEY = "__interrupt__"
 
 
 class _AgentState(TypedDict):
@@ -179,6 +192,7 @@ class _CompiledAgent:
         members: list[str] | None = None,
         bound_tools: list[str] | None = None,
         internal_nodes: frozenset[str] = frozenset(),
+        mcp_servers: dict[str, str] | None = None,
     ) -> None:
         """Bind the compiled graph, the optional system prompt, model id, and durability.
 
@@ -187,6 +201,10 @@ class _CompiledAgent:
         streaming every node's tokens sent that label to the client glued to the front of the
         answer — "web_researcherHello! How can I assist you today?". A single-agent loop names
         none: there every token IS the reply.
+
+        ``mcp_servers`` maps a tool name to the MCP server that supplied it, so a tool span can
+        name the remote it called. Without it every tool looks local, and a slow or failing MCP
+        server is indistinguishable in a trace from slow code of our own.
 
         ``model_id`` is the LiteLLM model string (e.g. ``"openai/gpt-4o-mini"``);
         it is kept so a provider failure at run time can be turned into an
@@ -207,6 +225,7 @@ class _CompiledAgent:
         #: ``tool_calling`` capability inspectable on the built artifact.
         self.bound_tools = bound_tools or []
         self.internal_nodes = internal_nodes
+        self.mcp_servers = mcp_servers or {}
 
     @property
     def builder(self) -> Any:
@@ -290,7 +309,10 @@ class LangGraphEngine(Engine):
         confined to this adapter; the core never sees one.
         """
         model = self._resolve_model(spec)
-        tools = self._resolve_tools(spec)
+        # {tool_name: mcp_server_name} for whatever the MCP servers supplied, so a tool span can
+        # name the server it actually called instead of looking like local code.
+        mcp_servers: dict[str, str] = {}
+        tools = self._resolve_tools(spec, mcp_servers)
         # The default single-node graph and custom-authored graphs consume the
         # ``messages`` the run loop seeds, so the engine must seed the system prompt
         # for them. Templates (``single``/``graph``/``autonomous``) build on
@@ -340,6 +362,7 @@ class LangGraphEngine(Engine):
             durability=spec.durability,
             members=members,
             bound_tools=[t.name for t in tools],
+            mcp_servers=mcp_servers,
             # BOTH supervisor paths, which is the bit I got wrong twice. A code-authored
             # supervisor declares `internal_nodes` on itself but has no `spec.members`; a
             # declarative one has `spec.members` but never constructs a SupervisorAgent, so
@@ -369,8 +392,13 @@ class LangGraphEngine(Engine):
         params = spec.params.model_dump(exclude_none=True) if spec.params else {}
         return models.resolve_model(model_id, **params)
 
-    def _resolve_tools(self, spec: AgentSpec) -> list:
+    def _resolve_tools(self, spec: AgentSpec, mcp_servers: dict[str, str] | None = None) -> list:
         """Resolve ``spec.tools`` references into bound LangChain tools (Phase 03 · C1).
+
+        ``mcp_servers``, when given, is filled in with ``{tool_name: server_name}`` for every tool
+        an MCP server supplied. It is filled rather than returned so the many callers that just
+        want the tool list stay unchanged; the build path passes a dict because tracing needs to
+        say which server a tool call actually went to.
 
         Each ``tools:`` entry is resolved to a vendor-neutral :class:`agentship.tools.Tool`
         (:func:`~agentship.tools.resolve_tool` — a built-in skill name or a ``module:attr``
@@ -388,6 +416,8 @@ class LangGraphEngine(Engine):
 
         from .tools import survive_tool_errors, to_langchain_tool
 
+        if mcp_servers is None:
+            mcp_servers = {}
         confirm = spec.confirm_writes
         tools = [
             to_langchain_tool(resolve_tool(ref), confirm_writes=confirm)
@@ -396,13 +426,19 @@ class LangGraphEngine(Engine):
         if spec.mcp:
             from .mcp import discover_mcp_tools_sync
 
-            # Wrapped, because MCP tools arrive already built from the MCP client and so never
-            # pass through to_langchain_tool's error guard. Without this a failing MCP server
-            # crashes the turn while a failing native tool degrades — the two are meant to be
-            # indistinguishable to the agent, including when they fail.
-            tools.extend(
-                survive_tool_errors(discovered) for discovered in discover_mcp_tools_sync(spec.mcp)
-            )
+            # Discovered one server at a time so each tool can be attributed to the server that
+            # served it. That attribution is the whole point of `agentship.tool.mcp_server`: in a
+            # trace an MCP tool is otherwise indistinguishable from a native one, so a slow or
+            # failing remote server looks exactly like slow local code. It also gives each server
+            # its own discovery timeout rather than one shared budget the first slow server eats.
+            for server_name, server_spec in spec.mcp.items():
+                # Wrapped, because MCP tools arrive already built from the MCP client and so never
+                # pass through to_langchain_tool's error guard. Without this a failing MCP server
+                # crashes the turn while a failing native tool degrades — the two are meant to be
+                # indistinguishable to the agent, including when they fail.
+                for discovered in discover_mcp_tools_sync({server_name: server_spec}):
+                    mcp_servers[discovered.name] = server_name
+                    tools.append(survive_tool_errors(discovered))
         if spec.allowed_tools is not None:
             allow = set(spec.allowed_tools)
             before = {t.name for t in tools}
@@ -462,7 +498,7 @@ class LangGraphEngine(Engine):
         try:
             state = await compiled.graph.ainvoke(
                 {"messages": compiled.initial_messages(text)},
-                config={"callbacks": _run_callbacks()},
+                config={"callbacks": _run_callbacks(compiled.mcp_servers)},
             )
         except Exception as exc:
             # Only a genuine provider failure becomes a ModelError. Anything else — a missing
@@ -531,14 +567,20 @@ class LangGraphEngine(Engine):
         return graph
 
     @staticmethod
-    def _thread_config(thread_id: str) -> dict:
+    def _thread_config(thread_id: str, mcp_servers: dict[str, str] | None = None) -> dict:
         """The LangGraph ``configurable`` config that binds a run to its checkpoint thread.
 
         Carries the run's callbacks (:func:`_run_callbacks`): the tool logger — silent at WARNING,
         visible with ``--verbose`` — plus the span tracer when an observer is active, so durable and
         resumed runs are traced on the same footing as a plain ``run``.
+
+        ``mcp_servers`` rides along so a tool span can name the MCP server it called; see
+        :func:`_run_callbacks`.
         """
-        return {"configurable": {"thread_id": thread_id}, "callbacks": _run_callbacks()}
+        return {
+            "configurable": {"thread_id": thread_id},
+            "callbacks": _run_callbacks(mcp_servers),
+        }
 
     def _mint_token(self, thread_id: str, snapshot: Any, *, interrupted: bool) -> ResumeToken:
         """Mint a ``ResumeToken`` from a state snapshot — all LangGraph fields live in ``blob``.
@@ -566,14 +608,21 @@ class LangGraphEngine(Engine):
         ``value`` is exactly what the node passed to ``interrupt(...)``. Wrapped to a dict so the
         client always gets a structured payload.
         """
-        interrupts = state.get("__interrupt__") if isinstance(state, dict) else None
+        interrupts = state.get(_INTERRUPT_KEY) if isinstance(state, dict) else None
         if not interrupts:
             return None
         payload = interrupts[0].value
         return payload if isinstance(payload, dict) else {"payload": payload}
 
     async def _invoke_and_finalize(
-        self, graph: Any, invoke_input: Any, thread_id: str, model_id: str, *, durable: bool = True
+        self,
+        graph: Any,
+        invoke_input: Any,
+        thread_id: str,
+        model_id: str,
+        *,
+        durable: bool = True,
+        mcp_servers: dict[str, str] | None = None,
     ) -> Result:
         """Invoke (or resume) the graph, then surface any interrupt and mint a token if durable.
 
@@ -589,7 +638,7 @@ class LangGraphEngine(Engine):
         this run can be resumed after a crash. Handing one to a non-durable agent would advertise
         a guarantee it does not have.
         """
-        cfg = self._thread_config(thread_id)
+        cfg = self._thread_config(thread_id, mcp_servers)
         try:
             state = await graph.ainvoke(invoke_input, config=cfg, durability=_CHECKPOINT_FLUSH_MODE)
         except Exception as exc:
@@ -627,6 +676,7 @@ class LangGraphEngine(Engine):
                 thread_id,
                 compiled.model_id,
                 durable=compiled.durability == "checkpoint",
+                mcp_servers=compiled.mcp_servers,
             )
 
     async def resume(
@@ -664,7 +714,7 @@ class LangGraphEngine(Engine):
             repr(resume_value) if resume_value is not None else "None (crash-resume)",
         )
         conninfo = self._conninfo()
-        cfg = self._thread_config(thread_id)
+        cfg = self._thread_config(thread_id, compiled.mcp_servers)
         invoke_input = Command(resume=resume_value) if resume_value is not None else None
         async with resolve_thread_lock(ctx.caller.tenant_id, thread_id, conninfo=conninfo):
             async with open_checkpointer(conninfo) as saver:
@@ -682,7 +732,11 @@ class LangGraphEngine(Engine):
                 token_ctx = current_run.set(ctx)
                 try:
                     return await self._invoke_and_finalize(
-                        graph, invoke_input, thread_id, compiled.model_id
+                        graph,
+                        invoke_input,
+                        thread_id,
+                        compiled.model_id,
+                        mcp_servers=compiled.mcp_servers,
                     )
                 finally:
                     current_run.reset(token_ctx)
@@ -773,10 +827,14 @@ class LangGraphEngine(Engine):
         stream = graph.astream(
             {"messages": compiled.initial_messages(text, resuming=resuming)},
             stream_mode=["messages", "updates"],
-            config=self._thread_config(thread_id),
+            config=self._thread_config(thread_id, compiled.mcp_servers),
         )
         streamed_content = False
         last_full_content: Any = None
+        #: The pending interrupts, once the graph reports one. A streamed turn ends the same way
+        #: whether it finished or paused — the events simply stop — so the difference has to be
+        #: captured while it is being told to us.
+        interrupted: Any = None
         try:
             async for mode, payload in stream:
                 if mode == "updates":
@@ -784,8 +842,23 @@ class LangGraphEngine(Engine):
                     # than from the token stream because a streaming chunk carries only a
                     # PARTIAL tool call — the name in one chunk, the arguments dribbling in
                     # over later ones — which emitted a duplicate with an empty name.
-                    for update in (payload or {}).values():
-                        for produced in (update or {}).get("messages", []) or []:
+                    for key, update in (payload or {}).items():
+                        if key == _INTERRUPT_KEY:
+                            # A pause, not a node update. LangGraph reports it here as a TUPLE
+                            # of Interrupt objects, and the loop below assumed every value was
+                            # a node's dict — so streaming any agent with a human approval gate
+                            # died on `'tuple' object has no attribute 'get'`, which reached
+                            # the caller as an error frame naming a type they had never heard
+                            # of. Captured here and reported as a `paused` event at the end,
+                            # because the resume token needs the finished checkpoint.
+                            interrupted = update
+                            continue
+                        if not isinstance(update, dict):
+                            # Any other non-dict update is bookkeeping we do not model. Skipped
+                            # rather than assumed, so a future LangGraph key cannot crash a turn
+                            # the way `__interrupt__` just did.
+                            continue
+                        for produced in update.get("messages", []) or []:
                             if isinstance(produced, ToolMessage):
                                 yield Event(
                                     type="tool_result",
@@ -843,4 +916,40 @@ class LangGraphEngine(Engine):
             raise
         if not streamed_content and last_full_content:
             yield Event(type="content", data=last_full_content)
+        if interrupted:
+            yield await self._pause_event(graph, compiled, thread_id, interrupted)
         yield Event(type="done")
+
+    async def _pause_event(
+        self, graph: Any, compiled: _CompiledAgent, thread_id: str, interrupts: Any
+    ) -> Event:
+        """Build the ``paused`` event for a streamed turn that stopped at a HITL interrupt.
+
+        A streamed run that pauses is indistinguishable from one that finished — the events
+        simply stop — so until this existed the turn ended with ``done`` and **no resume token
+        was ever minted**. The client was told the turn was complete while the run sat waiting in
+        the checkpointer, unresumable by anyone. A human approval gate worked over ``:invoke``
+        and silently broke the moment the same agent was streamed.
+
+        The payload comes from what the stream reported; the token needs the checkpoint id, which
+        only the finished snapshot has. Minting is gated on durability exactly as the
+        non-streaming path gates it: a token promises the run can be picked up again, and only
+        checkpointed durability keeps that promise. A non-durable pause is still reported without
+        one — the run *is* waiting, and saying otherwise is the bug being fixed.
+        """
+        payload = getattr(interrupts[0], "value", interrupts[0]) if interrupts else None
+        if not isinstance(payload, dict):
+            payload = {"value": payload}
+        token = None
+        if compiled.durability == "checkpoint":
+            try:
+                snapshot = await graph.aget_state(self._thread_config(thread_id))
+                token = self._mint_token(thread_id, snapshot, interrupted=True)
+            except Exception:  # noqa: BLE001 — a token we cannot mint must not lose the pause
+                _engine_logger.warning(
+                    "paused thread=%s but could not mint a resume token", thread_id, exc_info=True
+                )
+        return Event(
+            type="paused",
+            data={"interrupt": payload, "resume_token": token.model_dump() if token else None},
+        )

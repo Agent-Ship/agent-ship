@@ -197,6 +197,8 @@ async def stream(
         )
         seq += 1
         ttft: float | None = None
+        #: The pause payload, once the engine reports one. See the `done` frame below.
+        paused: dict | None = None
         override = body.overrides.model if body.overrides else None
         try:
             async for event in agent.stream(
@@ -209,6 +211,11 @@ async def stream(
                     ttft = (time.monotonic() - started) * 1000
                 kind = frame_type(event.type)
                 data = frame_data(event)
+                if kind == "paused":
+                    # Remembered so the terminal frame can say the turn is not really over. A
+                    # client written before `paused` existed stops at `done` and would otherwise
+                    # read a run waiting on a human as a completed one.
+                    paused = data
                 if kind == "done":
                     # Enrich the engine's own terminal frame rather than adding a second one:
                     # a client that stops at the first `done` would otherwise never see the
@@ -220,6 +227,12 @@ async def stream(
                             ttft_ms=ttft, total_ms=(time.monotonic() - started) * 1000
                         ).model_dump(),
                         "model": override or agent.spec.model,
+                        "paused": paused is not None,
+                        # Repeated on the terminal frame so the token is reachable from the one
+                        # frame every client already handles. A resume token nobody received is
+                        # a run nobody can continue.
+                        "resume_token": (paused or {}).get("resume_token"),
+                        "interrupt": (paused or {}).get("interrupt"),
                     }
                 yield sse(StreamEvent(type=kind, seq=seq, data=data))
                 seq += 1

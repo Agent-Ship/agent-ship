@@ -21,12 +21,20 @@ from pydantic import BaseModel, Field
 #: ``session`` (opening frame with ids), ``token`` (an LLM token), ``content`` (a larger
 #: content chunk), ``reasoning`` (the model's thinking, when a reasoning model emits it),
 #: ``tool_call``/``tool_result`` (a tool round-trip), ``guard`` (a guardrail action),
-#: ``done`` (terminal success), ``error`` (terminal failure).
+#: ``paused`` (the run is waiting on a human), ``done`` (terminal success), ``error``
+#: (terminal failure).
 #:
 #: ``reasoning`` is deliberately not ``content``: thinking is not the answer, and a client
 #: that cannot tell them apart has no way to render one as a collapsed aside and the other
 #: as the reply. It is also the channel a UI uses to show that a slow reasoning model is
 #: working rather than hung.
+#:
+#: ``paused`` carries the interrupt payload and the ``resume_token`` needed to continue, so a
+#: streamed approval gate is completable. Without it a streamed run that paused simply ended
+#: with ``done``: the client was told the turn had finished, while the run sat waiting in the
+#: checkpointer with no token ever issued — unresumable by anyone, forever. It is followed by
+#: a terminal ``done`` carrying ``paused: true``, so a client written before this existed
+#: still terminates rather than hanging, and can still see that the turn is not really over.
 StreamEventType = Literal[
     "session",
     "token",
@@ -35,6 +43,7 @@ StreamEventType = Literal[
     "tool_call",
     "tool_result",
     "guard",
+    "paused",
     "done",
     "error",
 ]
