@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 
 from agentship.errors import CapabilityError
 from agentship.spec import VoiceSpec
@@ -31,7 +32,41 @@ from .base import VoiceAdapter
 logger = logging.getLogger("agentship.voice")
 
 
-def _build_processors(turn: VoiceTurn):
+def _fallback_text(turn: VoiceTurn) -> str:
+    """What to say when a turn fails, from the agent's ``voice:`` block.
+
+    Read per failure rather than captured at build time so an author editing the line does not
+    have to think about when it was bound. Falls back to the spec default when a stand-in agent
+    carries no voice block at all — something must be said, and silence reads as a dropped call.
+    """
+    config = getattr(getattr(turn.agent, "spec", None), "voice", None)
+    return getattr(config, "fallback_text", None) or "Sorry — something went wrong on my end."
+
+
+class _TurnClock:
+    """When each stage of the current turn happened, shared by the two processors.
+
+    The stage boundaries are observed at opposite ends of the pipeline — the human falling
+    silent is seen before STT, the first audio leaving is seen after TTS — so neither processor
+    can time a turn alone. This is the one piece of state they genuinely share, kept as its own
+    small object rather than smuggled onto the turn, because it is bookkeeping about frames
+    rather than anything the agent would recognise.
+    """
+
+    def __init__(self) -> None:
+        """Start with no turn in progress."""
+        #: When the human stopped talking — the moment the clock the listener feels starts.
+        self.silence_at: float | None = None
+        #: When the first reply text was handed to TTS, which is where synthesis begins.
+        self.first_text_at: float | None = None
+
+    def begin(self) -> None:
+        """Mark the human as having stopped speaking, starting a fresh turn."""
+        self.silence_at = time.monotonic()
+        self.first_text_at = None
+
+
+def _build_processors(turn: VoiceTurn, clock: _TurnClock):
     """Return ``(AgentNodeProcessor, SpokenWitness)`` classes bound to Pipecat's base classes.
 
     Defined inside a function because the base class comes from Pipecat: at module import
@@ -71,6 +106,11 @@ def _build_processors(turn: VoiceTurn):
             if isinstance(frame, VADUserStartedSpeakingFrame):
                 await self._tell("listening")
             elif isinstance(frame, VADUserStoppedSpeakingFrame):
+                # The turn's clock starts at SILENCE, not at the transcript. Everything after
+                # this — recognising the words, thinking, synthesising — is time the human is
+                # sitting there waiting, and a budget measured from any later point would
+                # exclude the stage most likely to have blown it.
+                clock.begin()
                 await self._tell("thinking")
 
             if isinstance(frame, InterruptionFrame):
@@ -97,13 +137,21 @@ def _build_processors(turn: VoiceTurn):
                 # question is a different problem from a wrong answer, and they are
                 # indistinguishable without showing the transcript.
                 await self._tell("heard", text=frame.text)
+                # Recognition is a network call to another vendor, and on a slow turn it is
+                # often the reason. Attributed rather than spanned: the wait is ours to measure,
+                # the work is not (see SEMCONV §1).
+                asr_ms = (
+                    (time.monotonic() - clock.silence_at) * 1000
+                    if clock.silence_at is not None
+                    else None
+                )
                 await self._interrupt()  # a new utterance supersedes any reply still running
-                self._reply = self.create_task(self._answer(frame.text))
+                self._reply = self.create_task(self._answer(frame.text, asr_ms))
                 return
 
             await self.push_frame(frame, direction)
 
-        async def _answer(self, text: str) -> None:
+        async def _answer(self, text: str, asr_ms: float | None = None) -> None:
             """Stream the agent's reply downstream, one chunk at a time.
 
             Each chunk is pushed as it arrives rather than joined first, so TTS can start on
@@ -115,7 +163,11 @@ def _build_processors(turn: VoiceTurn):
             # nothing at all. The agent's chunks are an LLM response, so they are framed as one.
             await self.push_frame(LLMFullResponseStartFrame())
             try:
-                async for chunk in self._turn.say(text):
+                async for chunk in self._turn.say(text, asr_ms=asr_ms):
+                    if clock.first_text_at is None:
+                        # Synthesis starts when TTS is first given something to say, so this is
+                        # where the TTS stage's clock starts — not when the reply finished.
+                        clock.first_text_at = time.monotonic()
                     await self.push_frame(TextFrame(chunk))
             except asyncio.CancelledError:
                 raise
@@ -123,7 +175,7 @@ def _build_processors(turn: VoiceTurn):
                 # A failed turn must not take down the session: the human is mid-conversation
                 # and a dead pipeline is worse than an apology.
                 logger.exception("agent turn failed")
-                await self.push_frame(TextFrame("Sorry — something went wrong on my end."))
+                await self.push_frame(TextFrame(_fallback_text(self._turn)))
             finally:
                 # Closes the response even when the turn failed or was cut off, so a barge-in
                 # never leaves TTS waiting for the end of a reply that is not coming.
@@ -148,12 +200,21 @@ def _build_processors(turn: VoiceTurn):
             await self.push_frame(OutputTransportMessageFrame(message={"type": kind, **data}))
 
         async def _interrupt(self) -> None:
-            """Cancel the in-flight reply, if any, and wait for it to actually stop."""
+            """Cancel the in-flight reply, if any, and correct history to what was heard.
+
+            The correction runs only for a reply that was genuinely cut off. A turn that had
+            already finished has nothing to walk back — everything it generated was spoken —
+            and rewriting history there would replace a complete reply with the same text plus
+            a marker saying it was interrupted, which is simply false.
+            """
             if self._reply is None or self._reply.done():
                 self._reply = None
                 return
             await self.cancel_task(self._reply)
             self._reply = None
+            # After the cancel, so `spoken` holds everything the witness confirmed before the
+            # audio stopped — that is the clip point, and it is only final once TTS has stopped.
+            await self._turn.interrupted()
 
     class SpokenWitness(FrameProcessor):
         """Record what TTS actually spoke, so an interruption clips at the right word."""
@@ -182,6 +243,15 @@ def _build_processors(turn: VoiceTurn):
             """
             await super().process_frame(frame, direction)
             if isinstance(frame, BotStartedSpeakingFrame):
+                # First audio out: the end of the only latency measurement a human can feel.
+                # Recorded here, after TTS, because this processor is the first thing in the
+                # graph that knows sound is actually leaving — a timer stopped before the
+                # transport would be measuring our intent rather than their experience.
+                now = time.monotonic()
+                if clock.first_text_at is not None:
+                    self._turn.trace.tts_ms = (now - clock.first_text_at) * 1000
+                if clock.silence_at is not None:
+                    self._turn.trace.total_ms = (now - clock.silence_at) * 1000
                 await self._tell("speaking")
             elif isinstance(frame, BotStoppedSpeakingFrame):
                 await self._tell("idle")
@@ -235,7 +305,9 @@ class PipecatAdapter(VoiceAdapter):
         A pair rather than one node because the agent and the confirmation of what was spoken
         belong on opposite sides of TTS; see the module docstring.
         """
-        agent_node, witness = _build_processors(turn)
+        # One clock per hosted turn, shared by both processors: they observe opposite ends of
+        # the same stopwatch, and a turn's timings are only complete when both have reported.
+        agent_node, witness = _build_processors(turn, _TurnClock())
         return agent_node(), witness()
 
     async def run(self, turn: VoiceTurn, config: VoiceSpec) -> None:

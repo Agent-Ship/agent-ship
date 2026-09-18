@@ -251,3 +251,60 @@ async def test_an_unsupported_transport_fails_before_any_provider_is_built(monke
 
     assert "carrier-pigeon" in str(raised.value)
     assert "websocket" in str(raised.value), "say which transports exist"
+
+
+@pytest.mark.asyncio
+async def test_the_turn_records_every_stage_it_can_observe() -> None:
+    """Silence → transcript → first audio: the stages a budget is actually measured from.
+
+    Recognition and synthesis are timed at the frame boundaries, because the two processors
+    see opposite ends of the turn — the human falling silent arrives before STT, the first
+    audio leaving is only visible after TTS. Before this, the trace carried the model's two
+    numbers and nothing else, so a turn that felt slow because the recogniser was slow showed
+    up as a fast model and an unexplained wait.
+    """
+    from pipecat.frames.frames import BotStartedSpeakingFrame, VADUserStoppedSpeakingFrame
+
+    turn, node, witness, _pushed = _hosted()
+    await _ready(node)
+    await _ready(witness)
+
+    await node.process_frame(VADUserStoppedSpeakingFrame(), FrameDirection.DOWNSTREAM)
+    await asyncio.sleep(0.02)  # the recogniser taking its time
+    await node.process_frame(_transcript("hello"), FrameDirection.DOWNSTREAM)
+    await asyncio.sleep(0.05)  # the model producing its opening clause
+    await witness.process_frame(BotStartedSpeakingFrame(), FrameDirection.DOWNSTREAM)
+
+    trace = turn.trace
+    assert trace.asr_ms is not None and trace.asr_ms > 0, "recognition must be attributed"
+    assert trace.tts_ms is not None, "synthesis must be attributed"
+    assert trace.total_ms is not None, "the budget is measured from silence to first audio"
+    assert trace.total_ms >= trace.asr_ms, "the whole turn cannot be shorter than one stage"
+
+
+@pytest.mark.asyncio
+async def test_each_utterance_is_timed_afresh() -> None:
+    """One session speaks many times; the second turn must not report the first one's numbers.
+
+    A session holds ONE ``VoiceTurn``, so per-utterance state has to be cleared as each new
+    utterance starts. It was not, and the failure was quiet: ``llm_ttft_ms`` is only stamped
+    while unset, so every turn after the first kept the first one's figure and the latency
+    panel showed a single real measurement and then froze.
+    """
+    turn, node, _witness, _pushed = _hosted()
+    await _ready(node)
+
+    await node.process_frame(_transcript("first"), FrameDirection.DOWNSTREAM)
+    await asyncio.sleep(0.15)
+    first = turn.trace.llm_ttft_ms
+    first_generated = list(turn.generated)
+
+    await node.process_frame(_transcript("second"), FrameDirection.DOWNSTREAM)
+    await asyncio.sleep(0.15)
+
+    assert first is not None and turn.trace.llm_ttft_ms is not None
+    assert turn.trace.llm_ttft_ms != first, "the second turn was timed, not inherited"
+    assert turn.heard == "second", "the turn describes the utterance in flight"
+    assert turn.generated != first_generated + turn.generated, (
+        "a new utterance starts a fresh transcript rather than appending to the last one"
+    )

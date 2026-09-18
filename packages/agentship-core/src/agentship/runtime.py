@@ -366,6 +366,40 @@ class RunnableAgent:
             current_run.set(previous)  # put the caller's previous run back; never raises
             current_observer.set(previous_observer)
 
+    async def amend_history(
+        self,
+        text: str,
+        *,
+        caller: Caller | None = None,
+        user_id: str = "anonymous",
+        session_id: str | None = None,
+    ) -> bool:
+        """Rewrite this conversation's last assistant message to ``text``; ``True`` if it stuck.
+
+        The correction verb, alongside :meth:`run`, :meth:`stream` and :meth:`resume`. It exists
+        for the case where what the agent *said* differs from what it *produced* — today that is
+        a voice barge-in, where the human cut in and the rest of the sentence was never heard.
+
+        Identity is passed exactly as on the other verbs, and that is not incidental: the
+        conversation key is derived from the caller and session, so a correction sent with the
+        same arguments as the turn lands on the same thread **by construction** rather than by a
+        caller reassembling the key and getting it subtly wrong.
+
+        Returns ``False`` when the engine keeps no conversation to amend, so a caller can treat
+        an unsupported engine and an empty thread the same way: nothing to correct.
+        """
+        amend = getattr(self.engine, "amend_conversation", None)
+        if amend is None:
+            # An engine from before this verb existed, or a stand-in in a test. Correcting
+            # history is a best-effort courtesy to the next turn, never a requirement on an
+            # engine — so its absence means "nothing to correct", not an error at the worst
+            # possible moment.
+            return False
+        ctx = self._make_context(
+            "", caller=_caller_for(caller, user_id), session_id=session_id, mode=RunMode.INVOKE
+        )
+        return await amend(self.compiled, ctx, text)
+
 
 def _resolve_code_spec(spec: AgentSpec) -> tuple[AgentSpec, Any]:
     """Author an agent in Python: call the ``code:`` builder, return (spec, authored).

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from agentship.errors import CapabilityError
 from agentship_voice.adapters import VoiceAdapter, get_adapter
 
 
@@ -20,7 +21,7 @@ def test_a_framework_name_resolves_to_its_adapter(name: str) -> None:
 
 def test_an_unknown_framework_names_the_real_choices() -> None:
     """A typo fails here, listing what exists, rather than deep inside a session."""
-    with pytest.raises(ValueError) as raised:
+    with pytest.raises(CapabilityError) as raised:
         get_adapter("pipcat")
     message = str(raised.value)
     assert "pipcat" in message

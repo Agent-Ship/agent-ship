@@ -25,7 +25,11 @@ single source of truth; this file only restates it where OTel is not on the impo
 from __future__ import annotations
 
 #: The frozen contract version. Bump only with a documented change to SEMCONV.md; P12/P13 pin it.
-SEMCONV_VERSION = "0.1.0"
+#:
+#: 0.2.0 — added the voice span and its attributes (§4.11). Additive only: every 0.1.0 name and
+#: key is unchanged, so a reader pinned to 0.1.0 keeps working and simply sees a span it does not
+#: recognise.
+SEMCONV_VERSION = "0.2.0"
 
 # --- Span names (§4.1) -------------------------------------------------------------------------
 SPAN_AGENT = "agent"  # the root span's PREFIX; see agent_span() for the name actually emitted
@@ -78,6 +82,15 @@ SPAN_GUARDRAIL_OUTPUT = "guardrail.output"
 SPAN_MEMORY_RECALL = "memory.recall"
 SPAN_MEMORY_WRITE = "memory.write"
 SPAN_OUTPUT_VALIDATE = "output.validate"
+
+#: One spoken turn: the human stopped talking, and the agent finished answering. The root of a
+#: voice trace, with the ordinary ``agent <name>`` span as its child — so a voice turn and a REST
+#: turn share the whole inner tree and differ only in what wraps it.
+#:
+#: A voice turn genuinely costs more than the agent inside it. Recognition and synthesis are
+#: network calls to other vendors, and on a slow turn they are usually the reason. A trace that
+#: showed only the agent span would put the blame on the model for time the model never spent.
+SPAN_VOICE_TURN = "voice.turn"
 #: ``node.<name>`` — a LangGraph node / ADK step (repeats per node).
 NODE_PREFIX = "node."
 #: ``tool.<name>`` — one span per tool invocation.
@@ -153,3 +166,34 @@ AS_TOOL_IDEMPOTENT = "agentship.tool.idempotent"
 AS_TOOL_MCP_SERVER = "agentship.tool.mcp_server"
 #: Record/replay cassette key: sha256 of the canonicalized request (§4.10). P12 keys replays here.
 AS_REPLAY_REQUEST_HASH = "agentship.replay.request_hash"
+
+# --- Voice (§4.11) ----------------------------------------------------------------------------
+#: All on the ``voice.turn`` span. Ours rather than ``gen_ai.*`` because OTel's GenAI conventions
+#: describe model calls and have nothing to say about recognition, synthesis or turn-taking.
+#:
+#: The providers are named because a voice stack is four vendors deep and the one that failed is
+#: never obvious from the outside: a wrong answer to a misheard question looks exactly like a
+#: wrong answer until the trace shows which recogniser produced the words the model was given.
+AS_VOICE_FRAMEWORK = "agentship.voice.framework"  # "pipecat" | "livekit"
+AS_VOICE_STT = "agentship.voice.stt"  # provider name, e.g. "deepgram"
+AS_VOICE_STT_MODEL = "agentship.voice.stt.model"
+AS_VOICE_TTS = "agentship.voice.tts"  # provider name, e.g. "cartesia"
+AS_VOICE_TTS_MODEL = "agentship.voice.tts.model"
+AS_VOICE_VOICE_ID = "agentship.voice.voice_id"
+AS_VOICE_LANGUAGE = "agentship.voice.language"
+
+#: Whether the human cut the agent off mid-reply. **Not** an error status: barge-in is the system
+#: working, and marking it errored would bury real faults under normal conversation.
+AS_VOICE_CANCELLED = "agentship.voice.cancelled"
+
+#: The per-stage latency trace (:class:`agentship_voice.trace.LatencyTrace`), stage by stage.
+#: ``ttft`` is time-to-first-token and ``ttfa`` time-to-first-audio; the second is what a human
+#: actually waits through, and the gap between them is what synthesis cost.
+AS_VOICE_ASR_MS = "agentship.voice.asr.ms"
+AS_VOICE_LLM_TTFT_MS = "agentship.voice.llm.ttft.ms"
+AS_VOICE_LLM_TOTAL_MS = "agentship.voice.llm.total.ms"
+AS_VOICE_TTS_MS = "agentship.voice.tts.ms"
+AS_VOICE_TTFA_MS = "agentship.voice.ttfa.ms"
+#: The stage that took the largest share of this turn — the answer to "what do I optimise next",
+#: computed once here rather than re-derived by every trace reader.
+AS_VOICE_SLOWEST_STAGE = "agentship.voice.slowest_stage"

@@ -65,6 +65,7 @@ nav:
       - Tools & MCP: capabilities/tools-and-mcp.md
       - Observability: capabilities/observability.md
       - Service & security: capabilities/service-and-security.md
+      - Voice: capabilities/voice.md
       - Durable resume: capabilities/durable-resume.md
       - Agent gateway / A2A: capabilities/agent-gateway-a2a.md
       - Verify & conformance: capabilities/verify-and-conformance.md
@@ -74,6 +75,7 @@ nav:
       - "0003 — LangGraph checkpointer substrate": decisions/0003-langgraph-checkpointer-as-the-durability-substrate.md
       - "0004 — Consume langchain-mcp-adapters": decisions/0004-consume-langchain-mcp-adapters.md
       - "0005 — Lockstep versioning, tag-triggered releases": decisions/0005-lockstep-versioning-and-tag-triggered-releases.md
+      - "0006 — Voice cascade behind one tiny seam": decisions/0006-voice-cascade-behind-one-tiny-seam.md
   - Releasing: RELEASING.md
   - Changelog: CHANGELOG.md
 

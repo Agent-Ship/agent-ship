@@ -168,3 +168,61 @@ async def test_the_system_prompt_is_stored_once_not_once_per_turn(echoing_model)
     systems = [m for m in messages if m.__class__.__name__ == "SystemMessage"]
 
     assert len(systems) == 1, f"the prompt should be stored once, found {len(systems)}"
+
+
+@pytest.mark.asyncio
+async def test_a_correction_rewrites_what_the_agent_is_recorded_as_having_said(
+    echoing_model,
+) -> None:
+    """``amend_history`` replaces the last reply, so the next turn reads what was heard.
+
+    The case is a voice barge-in: the human cut in and the rest of the sentence never played.
+    Left uncorrected, the model's own record overstates what it said, and it will refer back to
+    words nobody heard — a failure that looks like a hallucination but is the model reading an
+    accurate transcript of a conversation that did not happen.
+    """
+    agent = _agent()
+    session = "interrupted-conversation"
+
+    await agent.run("Tell me about my account.", session_id=session)
+    assert await agent.amend_history("I was saying [cancelled by user]", session_id=session)
+
+    # The stub echoes the conversation it is handed, so what it reports IS the history.
+    third = await agent.run("go on", session_id=session)
+    assert "Tell me about my account." in str(third.output), "the human's turns are untouched"
+
+
+@pytest.mark.asyncio
+async def test_a_correction_replaces_the_reply_rather_than_appending_a_second_one(
+    echoing_model,
+) -> None:
+    """History must hold one version of what was said, not a claim and a retraction.
+
+    Appending would leave both in the thread for the model to reconcile, and the honest record
+    is a single reply that says what was actually heard.
+    """
+    from langchain_core.messages import AIMessage
+
+    agent = _agent()
+    session = "one-version-only"
+    await agent.run("Tell me about my account.", session_id=session)
+    await agent.amend_history("Half a sen [cancelled by user]", session_id=session)
+
+    from agentship_langgraph.durability import open_checkpointer
+
+    async with open_checkpointer(None) as saver:
+        graph = agent.engine._with_checkpointer(agent.compiled, saver)
+        state = await graph.aget_state(
+            {"configurable": {"thread_id": f"default/rememberer/{session}"}}
+        )
+    replies = [m for m in state.values["messages"] if isinstance(m, AIMessage)]
+    assert len(replies) == 1, "the reply was rewritten, not duplicated"
+    assert replies[0].content == "Half a sen [cancelled by user]"
+
+
+@pytest.mark.asyncio
+async def test_correcting_a_conversation_that_never_happened_is_not_an_error(
+    echoing_model,
+) -> None:
+    """Nothing to correct returns ``False``; the caller is a turn that already ended."""
+    assert await _agent().amend_history("whatever", session_id="never-spoke") is False

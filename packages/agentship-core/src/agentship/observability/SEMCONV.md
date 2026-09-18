@@ -1,6 +1,10 @@
 # AgentShip Observability — Semantic Conventions (frozen contract)
 
-**Version:** `0.1.0` · **Owner:** Phase 07 (Observability) · **Consumers:** P12 (evals), P13 (audit)
+**Version:** `0.2.0` · **Owner:** Phase 07 (Observability) · **Consumers:** P12 (evals), P13 (audit)
+
+> **0.2.0** adds the voice span and its attributes (§1, §2.4). Additive only — every 0.1.0 name
+> and key is unchanged, so a reader pinned to 0.1.0 keeps working and simply sees a span it does
+> not recognise.
 
 This is the human-readable golden copy of the tracing contract. Every span name and attribute key
 AgentShip emits is a **public, versioned contract**: downstream phases read a trace by these exact
@@ -34,9 +38,24 @@ agent                     (AGENT)     — root, one per run
 └── memory.write          (INTERNAL)
 ```
 
+On the voice channel one span wraps that whole tree, so a spoken turn and a REST turn differ only
+in what sits on top:
+
+```
+voice.turn                (INTERNAL)  — root, one per spoken turn
+└── agent                 (AGENT)     — the identical tree above, unchanged
+```
+
+Recognition and synthesis are not spans of their own. They are not ours to time from the inside —
+both are vendor calls made by the voice framework, and a span we opened around them would measure
+our wait rather than their work. They are recorded instead as `agentship.voice.asr.ms` /
+`agentship.voice.tts.ms` on the turn, which is the honest claim: elapsed time attributed to a
+stage, measured at the frame boundaries we genuinely observe.
+
 | Span name | Constant | Kind |
 |---|---|---|
 | `agent` | `SPAN_AGENT` | AGENT |
+| `voice.turn` | `SPAN_VOICE_TURN` | INTERNAL |
 | `model` | `SPAN_MODEL` | LLM |
 | `guardrail.input` | `SPAN_GUARDRAIL_INPUT` | INTERNAL |
 | `guardrail.output` | `SPAN_GUARDRAIL_OUTPUT` | INTERNAL |
@@ -90,6 +109,32 @@ agent                     (AGENT)     — root, one per run
 | `agentship.tool.idempotent` | `AS_TOOL_IDEMPOTENT` | tool |
 | `agentship.tool.mcp_server` | `AS_TOOL_MCP_SERVER` | tool |
 | `agentship.replay.request_hash` | `AS_REPLAY_REQUEST_HASH` | model (§5) |
+
+### 2.4 Voice (`agentship.voice.*`, §4.11)
+
+All on the `voice.turn` span. Ours rather than `gen_ai.*` because the GenAI conventions describe
+model calls and say nothing about recognition, synthesis or turn-taking.
+
+| Key | Constant | Notes |
+|---|---|---|
+| `agentship.voice.framework` | `AS_VOICE_FRAMEWORK` | `pipecat` \| `livekit` |
+| `agentship.voice.stt` | `AS_VOICE_STT` | provider name |
+| `agentship.voice.stt.model` | `AS_VOICE_STT_MODEL` | |
+| `agentship.voice.tts` | `AS_VOICE_TTS` | provider name |
+| `agentship.voice.tts.model` | `AS_VOICE_TTS_MODEL` | |
+| `agentship.voice.voice_id` | `AS_VOICE_VOICE_ID` | |
+| `agentship.voice.language` | `AS_VOICE_LANGUAGE` | |
+| `agentship.voice.cancelled` | `AS_VOICE_CANCELLED` | barge-in — **not** an error status |
+| `agentship.voice.asr.ms` | `AS_VOICE_ASR_MS` | silence → final transcript |
+| `agentship.voice.llm.ttft.ms` | `AS_VOICE_LLM_TTFT_MS` | to first token |
+| `agentship.voice.llm.total.ms` | `AS_VOICE_LLM_TOTAL_MS` | |
+| `agentship.voice.tts.ms` | `AS_VOICE_TTS_MS` | first text → first audio |
+| `agentship.voice.ttfa.ms` | `AS_VOICE_TTFA_MS` | **the budget** — silence → first audio, < 850ms |
+| `agentship.voice.slowest_stage` | `AS_VOICE_SLOWEST_STAGE` | what to optimise next |
+
+The spoken text is content, so it rides the existing `input.value` / `output.value` keys under the
+same `capture_content` gate as every other span — a transcript is exactly as sensitive as a prompt,
+and inventing a second pair of keys would mean a second gate to get wrong.
 
 ## 3. `TraceView` read-port (§4.9)
 
