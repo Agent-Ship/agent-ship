@@ -113,3 +113,52 @@ async def test_resume_reject_skips_the_write(fake_model, monkeypatch):
         built.compiled, paused.resume_token, ctx, resume_value={"approved": False}
     )
     assert done.output == "email NOT sent"
+
+
+async def test_streaming_a_run_that_pauses_reports_the_pause_and_a_token(fake_model, monkeypatch):
+    """Streaming an approval gate pauses, says what it is asking, and hands back a token.
+
+    Two faults, one turn. LangGraph reports a pending interrupt on the "updates" stream under
+    ``__interrupt__``, whose value is a **tuple** of Interrupt objects while every other update
+    is a node's dict — so the loop that reads node updates died on ``'tuple' object has no
+    attribute 'get'``, and the caller received an error frame naming a type they had never heard
+    of. Even without that, the turn would have ended with a bare ``done`` and no resume token
+    minted: a run waiting in the checkpointer that nobody could ever continue.
+
+    The same agent over ``run()`` paused correctly throughout, which is what made this easy to
+    miss — the feature worked until a client streamed it.
+    """
+    built = _built(monkeypatch)
+    events = [e async for e in built.stream("send it", session_id="hitl-stream-1")]
+
+    kinds = [e.type for e in events]
+    assert "error" not in kinds, f"streaming a pause must not fail the turn: {kinds}"
+    assert "paused" in kinds, f"a paused run must say so: {kinds}"
+    assert kinds[-1] == "done", "the stream still terminates for a client that stops at done"
+
+    paused = next(e for e in events if e.type == "paused")
+    assert paused.data["interrupt"] == _PAYLOAD, "the human sees the question the node asked"
+    assert paused.data["resume_token"], "a pause without a token cannot be continued"
+    assert paused.data["resume_token"]["blob"]["interrupt"] is True
+
+
+async def test_a_token_from_a_streamed_pause_actually_resumes(fake_model, monkeypatch):
+    """The token handed out mid-stream completes the run — the whole point of issuing one.
+
+    Asserting the token merely exists would pass for a token that resumes nothing. This drives
+    it through ``resume()`` with the human's decision and checks the side effect the gate was
+    guarding actually happens.
+    """
+    from agentship.engines.base import ResumeToken
+
+    built = _built(monkeypatch)
+    events = [e async for e in built.stream("send it", session_id="hitl-stream-2")]
+    token = next(e for e in events if e.type == "paused").data["resume_token"]
+
+    result = await built.engine.resume(
+        built.compiled,
+        ResumeToken(**token),
+        _ctx("hitl-stream-2"),
+        resume_value={"approved": True},
+    )
+    assert "email sent" in str(result.output), "the decision reached the paused node"

@@ -263,11 +263,25 @@ class _PausingEngine:
     """
 
     name = "pausing"
-    capabilities = EngineCapabilities(durability="checkpoint")
+    capabilities = EngineCapabilities(durability="checkpoint", streaming=True)
 
     def build(self, spec, authored=None):
         """Nothing to compile; the tests drive run/resume directly."""
         return object()
+
+    async def stream(self, compiled, text, ctx):
+        """Say something, then pause for a human — the streamed form of the same turn."""
+        from agentship.engines.base import Event, ResumeToken
+
+        yield Event(type="content", data="I drafted the email. Send it?")
+        yield Event(
+            type="paused",
+            data={
+                "interrupt": {"action": "confirm_write", "tool": "send_email"},
+                "resume_token": ResumeToken(engine=self.name, blob={}).model_dump(),
+            },
+        )
+        yield Event(type="done")
 
     async def run(self, compiled, text, ctx):
         """Pause for approval, having already produced some visible output."""
@@ -566,3 +580,70 @@ def test_an_unknown_override_is_refused() -> None:
 
     assert resp.status_code == 422
     assert resp.json()["code"] == "invalid_request"
+
+
+# ---- :stream — a streamed run that pauses must still be completable -----------------------------
+
+
+def _sse_events(response) -> list[dict]:
+    """Parse an SSE response body into the list of JSON payloads it carried."""
+    return [
+        json.loads(line[len("data: ") :])
+        for line in response.text.splitlines()
+        if line.startswith("data: ")
+    ]
+
+
+def test_a_streamed_run_that_pauses_says_so_and_hands_back_a_token() -> None:
+    """A streamed approval gate has to be completable, or it is not a gate at all.
+
+    `:stream` carried no pause signal. A run that stopped at a human approval ended with
+    `done`, exactly like one that had finished, and no resume token was ever sent — so the
+    client believed the turn was complete while the run sat waiting in the checkpointer,
+    unresumable by anyone. The same agent over `:invoke` paused correctly, which is what made
+    it easy to miss: the feature worked until a client streamed it.
+    """
+    response = _pausing_client().post(
+        "/v1/agents/drafter:stream",
+        json={"input": "draft an email"},
+        headers={"x-api-key": "full"},
+    )
+
+    assert response.status_code == 200
+    events = _sse_events(response)
+    paused = [e for e in events if e["type"] == "paused"]
+    assert paused, f"a paused run must say so; got {[e['type'] for e in events]}"
+    assert paused[0]["data"]["interrupt"]["action"] == "confirm_write", "render the real question"
+    assert paused[0]["data"]["resume_token"], "a pause without a token cannot be continued"
+
+
+def test_the_terminal_frame_of_a_paused_stream_does_not_claim_success() -> None:
+    """`done` still arrives — but says the turn is waiting, and repeats the token.
+
+    A client written before `paused` existed stops at the first `done`. Making the pause its
+    own terminal frame would hang that client; leaving `done` unmarked would have it report a
+    finished turn. So `done` terminates as always and carries the pause with it.
+    """
+    response = _pausing_client().post(
+        "/v1/agents/drafter:stream",
+        json={"input": "draft an email"},
+        headers={"x-api-key": "full"},
+    )
+
+    done = [e for e in _sse_events(response) if e["type"] == "done"]
+    assert len(done) == 1, "exactly one terminal frame"
+    assert done[0]["data"]["paused"] is True, "the turn is not finished, and must not look it"
+    assert done[0]["data"]["resume_token"], (
+        "the token is reachable from the frame every client reads"
+    )
+
+
+def test_a_streamed_run_that_finishes_is_not_marked_paused() -> None:
+    """The ordinary path is unchanged: a completed turn says so, with no token to resume."""
+    response = _client().post(
+        "/v1/agents/support:stream", json={"input": "hello"}, headers={"x-api-key": "full"}
+    )
+
+    done = [e for e in _sse_events(response) if e["type"] == "done"]
+    assert done[0]["data"]["paused"] is False
+    assert done[0]["data"]["resume_token"] is None
