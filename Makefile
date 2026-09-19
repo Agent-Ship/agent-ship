@@ -75,3 +75,17 @@ railway-deploy:
 
 railway-logs:
 	railway logs
+
+# --- JOSS paper figures -------------------------------------------------------------------
+# The three C4 diagrams are authored as Mermaid source under figures/ and rendered to PNG for
+# the paper, because JOSS compiles paper.md with Pandoc and will not render a Mermaid block.
+# Committing both means the source stays reviewable and the PNG stays reproducible — the flags
+# below are the ones the figures were rendered with, rather than folklore in a comment.
+#
+#   brew install mermaid-cli     # or: npm i -g @mermaid-js/mermaid-cli
+figures:
+	@for f in architecture capability-grid turn-lifecycle; do \
+		echo "rendering figures/$$f.png"; \
+		mmdc -i figures/$$f.mmd -o figures/$$f.png -b white -s 3 -c figures/mermaid-config.json || exit 1; \
+	done
+.PHONY: figures
