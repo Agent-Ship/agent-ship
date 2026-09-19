@@ -29,7 +29,7 @@ from pathlib import Path
 
 import click
 from agentship.engines.base import ENGINES, assert_spec_supported
-from agentship.errors import AgentShipError
+from agentship.errors import AgentShipError, CapabilityError
 from agentship.logs import configure_logging
 from agentship.runtime import build_agent
 from agentship.spec import load_spec
@@ -187,7 +187,7 @@ async def _stream_turn(agent, input_text: str) -> None:
             click.echo()  # newline terminating the streamed line
 
 
-def _check_agent(path: Path) -> str | None:
+def _check_agent(path: Path, *, check_environment: bool = True) -> str | None:
     """Validate one agent spec; return an error reason string, or ``None`` if OK.
 
     Loads the YAML into an :class:`~agentship.spec.AgentSpec`, resolves its engine
@@ -213,24 +213,35 @@ def _check_agent(path: Path) -> str | None:
         )
     engine = ENGINES.get(spec.engine)()
     assert_spec_supported(engine, spec)  # CapabilityError on mismatch — caught by caller
+    # Everything below asks "can this run on THIS machine" — is the SDK installed, is the key
+    # set. That is doctor's question, not verify's. The engine lookup and capability gate above
+    # stay unconditional: without the engine there is nothing to validate a spec against.
+    # An unknown provider or framework is wrong in the FILE, so it is checked either way.
+    voice_reason = _check_voice(spec, check_environment=check_environment)
+    if voice_reason is not None:
+        return voice_reason
+    # The rest ask "can this run on THIS machine" — is the SDK installed, is the key set. That
+    # is doctor's question, not verify's, which is why they are skipped for the latter. The
+    # engine lookup and capability gate above stay unconditional: without the engine there is
+    # nothing to validate a spec against.
+    if not check_environment:
+        return None
     autonomous_reason = _check_autonomous_version(spec)
     if autonomous_reason is not None:
         return autonomous_reason
-    mcp_reason = _check_mcp_version(spec)
-    if mcp_reason is not None:
-        return mcp_reason
-    voice_reason = _check_voice(spec)
-    if voice_reason is not None:
-        return voice_reason
-    return None
+    return _check_mcp_version(spec)
 
 
-def _check_voice(spec) -> str | None:
+def _check_voice(spec, *, check_environment: bool = True) -> str | None:
     """Guard an agent that declares ``voice:`` against a missing framework, SDK or key.
 
     Returns one actionable reason, or ``None`` when the spec has no ``voice:`` block or the
     stack is ready. A voice agent fails in the worst possible place — the human speaks and
     hears silence — so the same problems are surfaced here, before anyone dials in.
+
+    An unknown framework or provider name is wrong in the spec and is always reported. A missing
+    SDK or unset key is wrong only on this machine, so those are reported for ``doctor`` and
+    ``serve`` and skipped for ``verify`` — see :func:`_check_agent`.
 
     Never raises: if the voice package is not importable the guard is skipped rather than
     failing an otherwise valid text agent, matching how the MCP and autonomous guards behave.
@@ -248,12 +259,11 @@ def _check_voice(spec) -> str | None:
         )
     try:
         adapter = get_adapter(voice.framework)
-    except ValueError as exc:
+    except CapabilityError as exc:
         return str(exc)
-    missing = adapter.missing_dependency()
-    if missing:
+    if check_environment and (missing := adapter.missing_dependency()):
         return missing
-    problems = preflight(voice)
+    problems = preflight(voice, check_environment=check_environment)
     if problems:
         return "; ".join(problems)
     return None

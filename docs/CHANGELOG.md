@@ -23,8 +23,6 @@ they were written before the project cut tagged releases.
 
 ## [Unreleased]
 
-## [Unreleased]
-
 ### Fixed
 - **Streaming an agent with a human approval gate crashed.** LangGraph reports a pending
   interrupt on its update stream under `__interrupt__`, whose value is a *tuple* where every
@@ -35,6 +33,14 @@ they were written before the project cut tagged releases.
   finished while the run sat waiting in the checkpointer, unresumable by anyone. `:stream` now
   emits a `paused` event carrying the question and a working token, and the terminal `done`
   says `paused: true` so a client written before this still terminates and still notices.
+- **`agentship verify` failed a valid spec over this machine's setup.** It shares doctor's
+  per-spec checks, and doctor rightly refuses to start an agent whose provider SDK is absent or
+  whose key is unset — but `verify` asks whether a spec is valid and honest, not whether it can
+  run *here*. A correct voice agent was reported as `invalid spec ... needs DEEPGRAM_API_KEY`,
+  sending a reader to fix a file that was already right and turning the report red on any
+  machine missing any provider extra, CI included. The split is now by what kind of wrong it
+  is: an unknown provider or framework NAME is wrong in the file and is always reported; a
+  missing SDK or unset key is wrong only here, and belongs to `doctor` and `serve`.
 - **Every MCP tool looked like local code in every trace.** `agentship.tool.mcp_server` was in
   the frozen contract, documented, and stamped by code that genuinely ran — onto a map nothing
   ever populated, because the callback accepted `mcp_servers` and no caller passed one. A slow
@@ -42,6 +48,16 @@ they were written before the project cut tagged releases.
   thing the attribute exists to tell apart.
 
 ### Added
+- **A landing page that leads with proof.** The docs front door was a file index; it now opens
+  with the `agentship verify` report, one architecture diagram, and an honest per-capability
+  status table that says `seam only` and `unproven live` where those are the truth.
+- **Studio badges describe the agent, not the engine.** They were drawn from engine
+  capabilities, so all nine demo agents showed the identical six chips and `assistant`
+  advertised `tools` and `team` while declaring neither. They now show the model, the tools by
+  name, voice, durability and team size — what this agent actually asks for.
+- **Studio suggests what to say.** An agent with no messages showed a blank rectangle; it now
+  shows what the agent is for and three starters derived from the tools it declares, so the
+  suggestions cannot drift into offering a search to an agent that cannot search.
 - **Every tracing backend proves delivery in CI.** Each of Phoenix, Opik, LangSmith and Langfuse
   now exports a real span to a throwaway in-process collector, asserting it POSTs to that
   backend's documented path with its own credential. "Works across all four" had rested on

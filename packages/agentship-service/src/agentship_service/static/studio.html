@@ -134,6 +134,8 @@ main { flex: 1; display: flex; min-height: 0; }
 .badge.accent { background: var(--accentdim); color: var(--accent); border-color: var(--accentb); }
 .badge.green { background: var(--greendim); color: var(--green); border-color: transparent; }
 .badge.purple { background: var(--purpledim); color: var(--purple); border-color: transparent; }
+/* Amber reads as "this one costs something" — durability writes checkpoints on every node. */
+.badge.amber { background: var(--amberdim); color: var(--amber); border-color: transparent; }
 
 .empty { padding: 16px 14px; color: var(--t3); font-size: 13px; }
 
@@ -221,6 +223,27 @@ main { flex: 1; display: flex; min-height: 0; }
 }
 @keyframes blink { 50% { opacity: 0; } }
 
+/* The agent-specific empty state. Left-aligned and narrow rather than centred in the void:
+   it reads as the first thing in a conversation, which is what it is about to become. */
+.starters { max-width: 620px; margin: 0 auto; padding: 30px 20px 20px; }
+.starterpurpose {
+  margin: 0 0 26px; color: var(--t2); font-size: 14px; line-height: 1.65;
+}
+.starterlabel {
+  font-size: 11px; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--t3); margin-bottom: 10px;
+}
+.starterlist { display: flex; flex-direction: column; gap: 8px; }
+.starter {
+  text-align: left; font: inherit; font-size: 13.5px; color: var(--t1);
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 11px 14px; cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+}
+.starter:hover { border-color: var(--borderh); background: var(--surface3); transform: translateX(2px); }
+.starter:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .starter { transition: none; } .starter:hover { transform: none; } }
+
 .welcome { text-align: center; color: var(--t2); padding: 64px 20px; }
 .welcome svg { width: 46px; height: 46px; opacity: .75; }
 .welcome h2 { margin: 14px 0 6px; font-size: 19px; color: var(--t1); letter-spacing: -.02em; }
@@ -250,7 +273,11 @@ button.mic:hover { transform: scale(1.04); border-color: var(--accent); }
 button.mic.live { color: var(--red); border-color: rgba(248,113,113,.45); background: rgba(248,113,113,.12); }
 #voicestage .level {
   width: 148px; height: 4px; border-radius: 999px; background: var(--surface3); overflow: hidden;
+  /* Hidden until the mic is live. Sitting there empty, it read as a stray rule under the orb
+     rather than as a meter waiting for a voice — a line with nothing to measure. */
+  opacity: 0; transition: opacity .18s ease;
 }
+#voicestage button.mic.live ~ .level { opacity: 1; }
 #voicestage .level b { display: block; height: 100%; width: 0%; background: var(--accent); transition: width .08s linear; }
 #voicestage button.mic.live ~ .level b { background: var(--red); }
 /* Pulses only while the human is actually being heard, so the ring means something. */
@@ -671,24 +698,45 @@ function showAgents() {
   }
 }
 
-/* Build the badge elements for an agent card. The card exposes capabilities
-   rather than an engine/model name, so the badges describe what the agent can
-   do: its providers, streaming, tools, HITL, durability, teams. */
+/* Build the badge elements for an agent card — from what THIS agent declares.
+
+   These used to be drawn from `card.capabilities`, which is what the ENGINE can do. Every
+   agent on langgraph therefore showed the identical six chips — openai, gemini, streaming,
+   tools, hitl:interrupt, team — so nine agents looked like nine copies of each other, and the
+   badges were worse than decorative: `assistant` advertised `tools` and `team` while declaring
+   neither. A reader cannot tell agents apart by what their engine is capable of; they tell them
+   apart by what each one actually asks for.
+
+   So: the model it runs, the tools it may call BY NAME, whether it can be spoken to, whether
+   it survives a crash, whether it has a team. Absent means absent. */
 function badgesFor(card) {
-  const caps = card.capabilities || {};
+  const spec = card.spec || {};
   const badges = [];
-  const add = (text, tone) => {
+  const add = (text, tone, title) => {
     const span = document.createElement("span");
     span.className = "badge" + (tone ? " " + tone : "");
     span.textContent = text;
+    if (title) span.title = title;
     badges.push(span);
   };
-  for (const provider of (caps.providers || []).slice(0, 2)) add(provider, "accent");
-  if (card.streaming || caps.streaming) add("streaming", "green");
-  if (caps.tool_calling) add("tools", "purple");
-  if (caps.hitl && caps.hitl !== "none") add("hitl:" + caps.hitl, "purple");
-  if (caps.durability && caps.durability !== "none") add(caps.durability);
-  if (caps.multi_agent) add("team");
+
+  // The model, without its provider prefix: "openai/gpt-4o-mini" is mostly prefix, and the
+  // part that differs between two agents is the half after the slash.
+  if (spec.model) add(String(spec.model).split("/").pop(), "accent", spec.model);
+
+  // Named, because "tools" tells you nothing and "web_search" tells you what it will do.
+  for (const tool of (spec.tools || []).slice(0, 3)) add(tool, "purple");
+  const moreTools = (spec.tools || []).length - 3;
+  if (moreTools > 0) add("+" + moreTools, "purple", (spec.tools || []).join(", "));
+
+  for (const server of Object.keys(spec.mcp || {}).slice(0, 2)) add("mcp:" + server, "purple");
+  if (spec.voice) {
+    add("voice", "green", `${spec.voice.stt} → agent → ${spec.voice.tts}`);
+  }
+  if (spec.members && spec.members.length) add("team of " + spec.members.length);
+  if (spec.template && spec.template !== "single") add(spec.template);
+  if (spec.durability && spec.durability !== "none") add(spec.durability, "amber");
+  if (card.streaming) add("streams", "green");
   return badges;
 }
 
@@ -722,6 +770,81 @@ function clearChat() {
   showPauseHint();
   if (!chat.selected) return;
   addFrame("note", "", { agent: chat.selected.name, session_id: chat.sessionId });
+  showStarters(chat.selected);
+}
+
+/* Fill an empty transcript with something worth reading: what this agent is for, and two or
+   three things to actually say to it.
+
+   An empty transcript was a large blank rectangle. That is not just plain — it is the moment a
+   visitor decides whether this is a working tool or a screenshot, and a blank panel answers
+   badly. The starters are derived from what the agent DECLARES, so they cannot drift into
+   suggesting a search to an agent with no search tool. */
+function showStarters(card) {
+  const spec = card.spec || {};
+  const turns = el("turns");
+  const wrap = document.createElement("div");
+  wrap.className = "starters";
+
+  const purpose = (card.description || spec.prompt || "").trim();
+  if (purpose) {
+    const p = document.createElement("p");
+    p.className = "starterpurpose";
+    // One line: the composer is right below, and a wall of system prompt buries it.
+    p.textContent = purpose.length > 180 ? purpose.slice(0, 177) + "…" : purpose;
+    wrap.appendChild(p);
+  }
+
+  const label = document.createElement("div");
+  label.className = "starterlabel";
+  label.textContent = "Try asking";
+  wrap.appendChild(label);
+
+  const list = document.createElement("div");
+  list.className = "starterlist";
+  for (const text of startersFor(spec)) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "starter";
+    b.textContent = text;
+    // Filled in rather than sent: a suggestion the reader can edit before committing to it.
+    b.addEventListener("click", () => {
+      const input = el("input");
+      input.value = text;
+      input.focus();
+      // Reuse the composer's own grow handler rather than duplicating the height maths.
+      if (typeof input.oninput === "function") input.oninput();
+    });
+    list.appendChild(b);
+  }
+  wrap.appendChild(list);
+  turns.appendChild(wrap);
+}
+
+/* Prompts that suit THIS agent, chosen from the tools and blocks it declares.
+
+   Tool-specific first, because those are the ones that show the agent doing something rather
+   than just talking. Everything falls back to questions any agent can answer, so an agent with
+   no tools still gets a usable starting point instead of an empty row. */
+function startersFor(spec) {
+  const tools = spec.tools || [];
+  const out = [];
+  if (tools.includes("web_search")) out.push("What shipped in the MCP spec most recently?");
+  if (tools.includes("scrape_url")) out.push("Summarise https://modelcontextprotocol.io in three points.");
+  if (tools.includes("calculator")) out.push("What is 17.5% of 2,480?");
+  if (Object.keys(spec.mcp || {}).length) out.push("Which tools do you have, and where do they come from?");
+  if (spec.members && spec.members.length) out.push("My invoice is wrong and the app keeps crashing.");
+  if (spec.voice) out.push("Tell me what you can do — I might ask this out loud next.");
+  while (out.length < 3) {
+    for (const fallback of [
+      "What can you do?",
+      "Explain what you are for in two sentences.",
+      "What are you not able to help with?",
+    ]) {
+      if (!out.includes(fallback)) { out.push(fallback); break; }
+    }
+  }
+  return out.slice(0, 3);
 }
 
 // A fresh conversation id, minted client-side so the ids line up in the trace panel.

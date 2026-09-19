@@ -9,7 +9,10 @@
 #   make docs-build   # static HTML into site/
 
 site_name: AgentShip
-site_description: A thin, vendor-free contract over best-of-breed agent libraries.
+site_description: Declarative agents you can verify — one YAML file, any engine, nothing it claims left unproven.
+repo_url: https://github.com/Agent-Ship/agent-ship
+repo_name: Agent-Ship/agent-ship
+edit_uri: edit/main/docs/
 docs_dir: docs
 site_dir: site
 use_directory_urls: false
@@ -32,20 +35,45 @@ theme:
     - navigation.instant     # no full page reload between docs
     - navigation.sections    # capabilities/decisions render as titled groups
     - navigation.top
+    - navigation.tabs        # top-level sections as tabs: the front door stops looking like a file tree
+    - navigation.tracking    # the URL follows the heading you are reading, so a link lands where you were
     - content.code.copy      # every YAML/python block gets a copy button
+    - content.code.annotate  # numbered callouts inside a code block, explained beside it
+    - content.tabs.link      # picking "YAML" once keeps every other block on YAML
     - search.highlight
+    - search.suggest
     - toc.follow
+
+  # The repo, one click from every page. A docs site that does not obviously lead back to the
+  # source reads as marketing rather than as documentation.
+  icon:
+    repo: fontawesome/brands/github
+
+extra_css:
+  - stylesheets/extra.css
 
 markdown_extensions:
   - admonition
+  # Lets a block of markdown live inside a <div> that carries our own class — how the landing
+  # hero and the capability status pills are built without inventing a plugin for either.
+  - md_in_html
   - attr_list
   - tables
   - toc: {permalink: true}
   - pymdownx.details
-  - pymdownx.superfences
   - pymdownx.highlight: {anchor_linenums: true}
   - pymdownx.inlinehilite
   - pymdownx.tabbed: {alternate_style: true}
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  # Architecture diagrams as text, versioned beside the code they describe — so a diagram
+  # cannot quietly drift from the system the way an exported PNG does.
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
 
 plugins:
   - search

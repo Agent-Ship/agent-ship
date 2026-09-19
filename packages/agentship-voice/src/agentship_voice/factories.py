@@ -276,11 +276,20 @@ def make_vad(config: VoiceSpec):
     return analyzer(params=VADParams(stop_secs=config.endpoint_silence_ms / 1000))
 
 
-def preflight(config: VoiceSpec) -> list[str]:
+def preflight(config: VoiceSpec, *, check_environment: bool = True) -> list[str]:
     """Return one message per missing dependency or key, or an empty list when ready.
 
     Collects every problem instead of raising on the first, so a first-time setup is one list
     to work through rather than run-fix-run-fix. This is what ``agentship doctor`` reports.
+
+    Two kinds of problem live here and they are not the same kind. A provider NAME that does
+    not exist is wrong in the file — no machine anywhere can run ``stt: depgram``. A missing SDK
+    or unset key is wrong on this machine only: the spec naming Deepgram is correct whether or
+    not this laptop has the extra installed.
+
+    ``check_environment=False`` therefore keeps the name check and drops the other two, which is
+    what ``verify`` wants — otherwise "the spec is valid" would mean no more than "it parsed".
+    ``doctor`` and ``serve`` run the lot, because they are about to actually start the thing.
     """
     problems: list[str] = []
     for kind, name, table in (
@@ -290,8 +299,9 @@ def preflight(config: VoiceSpec) -> list[str]:
     ):
         try:
             provider = _resolve(kind, name, table)
-            _load(provider, kind, name)
-            _require_key(provider, kind, name)
+            if check_environment:
+                _load(provider, kind, name)
+                _require_key(provider, kind, name)
         except CapabilityError as exc:
             problems.append(str(exc))
     return problems

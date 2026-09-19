@@ -126,6 +126,13 @@ def _section_spec_validation(agents_dir: Path | None) -> Section:
     the shared :func:`agentship_cli.main._check_agent` helper (no duplication of
     doctor's logic): a spec passes iff that returns ``None``. Every invalid spec is
     listed with its reason and the section fails.
+
+    **Installed SDKs and provider credentials are deliberately not checked here.** ``verify``
+    asks whether a spec is valid and whether engines honour what they declare; ``doctor`` asks
+    whether it can run on *this* machine. Conflating them made a correct voice agent fail
+    verification with "needs DEEPGRAM_API_KEY" — telling a reader to fix a file that was already
+    right, and making the report red on any machine missing any provider extra, CI included. A
+    missing dependency is a deployment fact, not an over-claim.
     """
     if agents_dir is None:
         return Section("spec validation", 0, 0, "no --agents-dir given (nothing to validate)")
@@ -143,7 +150,7 @@ def _section_spec_validation(agents_dir: Path | None) -> Section:
     details: list[str] = []
     for path in files:
         try:
-            reason = _check_agent(path)
+            reason = _check_agent(path, check_environment=False)
         except AgentShipError as exc:
             reason = str(exc)
         if reason is None:

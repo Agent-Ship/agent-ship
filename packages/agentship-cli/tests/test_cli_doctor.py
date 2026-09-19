@@ -166,3 +166,58 @@ def test_doctor_empty_dir_is_a_clean_error(tmp_path):
     result = runner.invoke(main, ["doctor", "--agents-dir", str(agents)])
     assert result.exit_code == 1
     assert "Traceback" not in result.output
+
+
+def test_verify_does_not_fail_a_valid_spec_over_this_machines_setup(tmp_path, monkeypatch):
+    """A missing SDK or key is a deployment fact, not an invalid spec.
+
+    `verify` shares doctor's per-spec checks, and doctor rightly refuses to start an agent whose
+    provider SDK is absent or whose key is unset. Sharing that wholesale made `verify` report a
+    perfectly correct voice agent as invalid — sending a reader to fix a file that was already
+    right, and turning the report red on any machine missing any provider extra. CI is exactly
+    such a machine, which is how this test caught its own first version: it asserted only that
+    keys were exempt, passed locally where the Deepgram extra happens to be installed, and
+    failed on a runner where it is not.
+
+    The two commands answer different questions: `verify` asks whether the spec is valid and
+    honest, `doctor` asks whether it can run *here*.
+    """
+    from agentship_cli.main import _check_agent
+
+    monkeypatch.delenv("DEEPGRAM_API_KEY", raising=False)
+    monkeypatch.delenv("CARTESIA_API_KEY", raising=False)
+    spec = tmp_path / "talker.yaml"
+    spec.write_text(
+        "name: talker\nengine: echo\nvoice:\n  stt: deepgram\n  tts: cartesia\n",
+        encoding="utf-8",
+    )
+
+    assert _check_agent(spec, check_environment=False) is None, "the spec itself is valid"
+
+    doctor_reason = _check_agent(spec, check_environment=True)
+    assert doctor_reason is not None, "doctor must still refuse to start it"
+    # Which complaint comes back depends on what this machine has installed — the SDK is
+    # checked before the key. Asserting on either specifically is what tied the first version
+    # of this test to one machine's setup.
+    assert "deepgram" in doctor_reason.lower(), (
+        f"doctor must name the provider that cannot run here; got {doctor_reason!r}"
+    )
+
+
+def test_an_unknown_provider_is_a_spec_error_even_for_verify(tmp_path):
+    """A provider that does not exist is wrong in the file itself, not in the environment.
+
+    This is the line the exemption must not cross. No machine anywhere can run `stt: depgram`,
+    so it is a typo in the spec and `verify` has to keep catching it — otherwise "the spec is
+    valid" would mean nothing more than "it parsed".
+    """
+    from agentship_cli.main import _check_agent
+
+    spec = tmp_path / "typo.yaml"
+    spec.write_text("name: talker\nengine: echo\nvoice:\n  stt: depgram\n", encoding="utf-8")
+
+    # Asserted for VERIFY specifically: doctor catching it was never in doubt, and the risk the
+    # exemption introduced was verify quietly waving it through.
+    reason = _check_agent(spec, check_environment=False)
+    assert reason is not None and "depgram" in reason, f"verify must still catch it; got {reason!r}"
+    assert "available:" in reason, "and must list the providers that do exist"
