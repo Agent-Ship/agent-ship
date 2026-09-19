@@ -1,38 +1,58 @@
-%% Figure 3 — C4 Dynamic: one voice turn end to end (full-vision harness).
-%% Render:  mmdc -i figures/turn-lifecycle.mmd -o figures/turn-lifecycle.png -b white -s 3 -c figures/mermaid-config.json
 sequenceDiagram
+%% Figure 3 — C4 Level 3 (Dynamic): one HTTP turn through the triage harness, end to end.
+%% -
+%% Render:
+%%   mmdc -i figures/turn-lifecycle.mmd -o figures/turn-lifecycle.png
+%%        -b white -s 3 -c figures/mermaid-config.json
+%% -
+%% This traces the request the paper describes in "One turn end to end": a POST to
+%% :invoke against triage.yaml, through authentication and tenant scoping, into the
+%% supervisor graph, out to a specialist and its tools, and back — emitting exactly one
+%% OpenTelemetry trace.
+%% -
+%% Every participant here is a component that EXISTS. The previous version of this figure
+%% showed an agentship-memory container, which has never been written, and depicted a
+%% voice turn while the surrounding prose described this HTTP one.
   autonumber
-  actor Caller as End User
-  participant VOICE as agentship-voice<br/>[ASR + TTS + VAD]
+  actor U as End user
   participant SVC as agentship-service<br/>[FastAPI /v1]
   participant ENG as agentship-langgraph<br/>[reference engine]
-  participant MEM as agentship-memory<br/>[short + long term]
-  participant LLM as LLM Provider<br/>[LiteLLM]
-  participant TOOL as Tool / MCP server
-  participant CKPT as Checkpointer<br/>[Postgres]
-  participant OBS as agentship-observability<br/>[OTel exporter]
+  participant LLM as LLM provider<br/>[via LiteLLM]
+  participant TOOL as Tool or MCP server
+  participant CKPT as Checkpointer<br/>[Postgres or memory]
+  participant OBS as agentship-observability<br/>[OTel pipeline]
 
-  Caller->>VOICE: audio stream (mic)
-  VOICE->>VOICE: VAD endpoint, barge-in check
-  VOICE->>SVC: text input + trace_id
-  SVC->>SVC: AuthProvider → Caller<br/>TenantScope binds contextvar
-  SVC->>ENG: engine.run(spec, input, ctx)
-  ENG->>MEM: recall(short_term + long_term)
-  MEM-->>ENG: prior turns + relevant facts
-  ENG->>OBS: span memory.read
-  ENG->>LLM: model.invoke(messages)
-  LLM-->>ENG: reply (with tool_call)
-  ENG->>OBS: span model
-  ENG->>TOOL: tool.invoke(args)
-  TOOL-->>ENG: result
-  ENG->>OBS: span tool.<name>
-  opt confirm_writes: true
-    ENG->>SVC: interrupt() → ResumeToken
+  U->>SVC: POST /v1/agents/triage:invoke
+  activate SVC
+  SVC->>SVC: AuthProvider resolves the caller
+  Note over SVC: tenant id is bound into a contextvar —<br/>every later store read is scoped by it
+  SVC->>OBS: open root span "agent triage"
+  SVC->>ENG: run(spec, input, RunContext)
+  activate ENG
+
+  ENG->>CKPT: load conversation<br/>(tenant / agent / session)
+  CKPT-->>ENG: prior messages
+
+  rect rgb(236, 253, 245)
+    Note over ENG,LLM: supervisor graph — one span per node
+    ENG->>LLM: classify: which specialist?
+    LLM-->>ENG: "billing"
+    ENG->>ENG: lookup_route → billing specialist
+    ENG->>LLM: dispatch: specialist answers
+    LLM->>TOOL: tool call
+    TOOL-->>LLM: result
+    LLM-->>ENG: draft answer
+    ENG->>ENG: resolve: merge specialist answers
   end
-  ENG->>MEM: writeback(new facts, summary)
-  ENG->>OBS: span memory.write
-  ENG->>CKPT: save state
-  ENG-->>SVC: Result (text + trace_id)
-  SVC->>VOICE: stream text to TTS
-  VOICE->>Caller: audio out (streaming)
-  OBS->>OBS: export agent → node → model →<br/>tool → memory spans<br/>to Phoenix / Langfuse / Opik
+
+  ENG->>CKPT: checkpoint after every node
+  ENG->>OBS: model + tool spans,<br/>tokens, cost, latency
+  ENG-->>SVC: Result(output, resume_token?)
+  deactivate ENG
+
+  SVC->>OBS: close root span
+  OBS-->>OBS: export one trace (OTLP)
+  SVC-->>U: 200 with answer,<br/>session id, X-Trace-Id
+  deactivate SVC
+
+  Note over U,OBS: A paused run returns a resume token instead, and :resume<br/>continues it from the last checkpoint — over REST and over the stream alike.

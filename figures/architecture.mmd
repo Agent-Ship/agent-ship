@@ -1,43 +1,65 @@
-%% Figure 1 — C4 Context: AgentShip in its environment (full-vision harness).
-%% Render:  mmdc -i figures/architecture.mmd -o figures/architecture.png -b white -s 3 -c figures/mermaid-config.json
+%% Figure 1 — C4 Level 1 (System Context): AgentShip in its environment.
+%% -
+%% Render:
+%%   mmdc -i figures/architecture.mmd -o figures/architecture.png \
+%%        -b white -s 3 -c figures/mermaid-config.json
+%% -
+%% Shared notation across all three figures:
+%%   amber   = person          green = AgentShip (ours)      grey  = external system
+%%   violet  = speech provider blue  = state / datastore     pink  = observability
+%%   dashed border + "[planned]" = specified but NOT yet implemented. Marked rather than
+%%   omitted so the architecture reads whole, and rather than drawn solid so the figure
+%%   never claims software that does not exist.
+%% -
+%% Every node carries black text on a pastel fill with a same-hue border, so the figure
+%% survives greyscale printing: the shapes stay distinguishable by border weight and the
+%% labels stay legible at column width.
 flowchart TB
-  classDef person   fill:#fef3c7,stroke:#b45309,stroke-width:2px,color:#7c2d12
-  classDef system   fill:#ccfbf1,stroke:#0f766e,stroke-width:2.5px,color:#134e4a
-  classDef ext      fill:#f1f5f9,stroke:#64748b,stroke-width:1.5px,color:#334155
-  classDef voice    fill:#ede9fe,stroke:#6d28d9,stroke-width:1.5px,color:#4c1d95
-  classDef mem      fill:#dcfce7,stroke:#15803d,stroke-width:1.5px,color:#14532d
-  classDef obs      fill:#dbeafe,stroke:#1e40af,stroke-width:1.5px,color:#1e3a8a
+  classDef person  fill:#FDE68A,stroke:#B45309,stroke-width:2px,color:#000000
+  classDef system  fill:#A7F3D0,stroke:#047857,stroke-width:3px,color:#000000
+  classDef ext     fill:#E5E7EB,stroke:#4B5563,stroke-width:2px,color:#000000
+  classDef voice   fill:#DDD6FE,stroke:#6D28D9,stroke-width:2px,color:#000000
+  classDef store   fill:#BFDBFE,stroke:#1D4ED8,stroke-width:2px,color:#000000
+  classDef obs     fill:#FBCFE8,stroke:#BE185D,stroke-width:2px,color:#000000
+  classDef planned fill:#F8FAFC,stroke:#94A3B8,stroke-width:2px,stroke-dasharray:6 4,color:#000000
 
-  P1["<b>Practitioner / Researcher</b><br/><i>[Person]</i><br/>Authors an AgentSpec"]:::person
-  P2["<b>End User</b><br/><i>[Person]</i><br/>Voice or HTTP caller"]:::person
-  P3["<b>Evaluator / Reviewer</b><br/><i>[Person]</i><br/>Runs eval suites, reads traces"]:::person
+  subgraph PEOPLE["Who uses it"]
+    direction LR
+    P1["<b>Practitioner</b><br/><i>[Person]</i><br/>Authors an AgentSpec"]:::person
+    P2["<b>End user</b><br/><i>[Person]</i><br/>Speaks or calls the API"]:::person
+  end
 
   SYS["<b>AgentShip</b><br/><i>[Software System]</i><br/>Declarative integration layer<br/>for the agentic harness"]:::system
 
-  V1["<b>ASR Provider</b><br/><i>[External, streaming]</i><br/>Deepgram / Whisper"]:::voice
-  V2["<b>TTS Provider</b><br/><i>[External, streaming]</i><br/>ElevenLabs / Cartesia"]:::voice
+  subgraph REASON["Reasoning and tools"]
+    direction LR
+    E1["<b>LLM providers</b><br/><i>[External, via LiteLLM]</i>"]:::ext
+    E2["<b>MCP servers</b><br/><i>[External]</i><br/>local stdio or remote"]:::ext
+    E3["<b>Identity provider</b><br/><i>[External, OIDC]</i>"]:::ext
+  end
 
-  E1["<b>LLM Providers</b><br/><i>[External, via LiteLLM]</i>"]:::ext
-  E2["<b>MCP Servers</b><br/><i>[External]</i>"]:::ext
-  E3["<b>Identity Provider</b><br/><i>[External, OIDC]</i>"]:::ext
-  E4["<b>Remote A2A Agents</b><br/><i>[External]</i>"]:::ext
+  subgraph SPEECH["Speech"]
+    direction LR
+    V1["<b>Speech-to-text</b><br/><i>[External, streaming]</i><br/>Deepgram, 7 others"]:::voice
+    V2["<b>Text-to-speech</b><br/><i>[External, streaming]</i><br/>Cartesia, 7 others"]:::voice
+  end
 
-  M1["<b>Short-term Memory</b><br/><i>[Checkpoint store]</i><br/>Postgres / in-memory"]:::mem
-  M2["<b>Long-term Memory</b><br/><i>[Vector + KV store]</i><br/>pgvector / mem0 / Redis"]:::mem
-  M3["<b>Eval Store</b><br/><i>[Dataset + results]</i><br/>Ragas / Braintrust / local"]:::mem
+  subgraph STATE["State and telemetry"]
+    direction LR
+    M1["<b>Conversation store</b><br/><i>[Checkpoints]</i><br/>Postgres or in-memory"]:::store
+    O1["<b>Tracing backends</b><br/><i>[External, OTLP]</i><br/>Phoenix, Langfuse,<br/>LangSmith, Opik"]:::obs
+    M2["<b>Long-term memory</b><br/><i>[planned]</i>"]:::planned
+  end
 
-  O1["<b>Observability Backends</b><br/><i>[External, OTLP]</i><br/>Phoenix / Langfuse / Opik"]:::obs
+  P1 -->|"declares a harness in YAML"| SYS
+  P2 -->|"speaks or calls /v1"| SYS
 
-  P1 -->|declares harness in YAML| SYS
-  P2 -->|voice or HTTP| SYS
-  P3 -->|agentship eval, reads traces| SYS
-  SYS -->|streams audio in| V1
-  SYS -->|streams audio out| V2
-  SYS -->|routes model calls| E1
-  SYS -->|binds tools| E2
-  SYS -->|validates identity| E3
-  SYS -->|consults specialists| E4
-  SYS -->|persists checkpoints in| M1
-  SYS -->|recalls / writes facts to| M2
-  SYS -->|runs eval scenarios against| M3
-  SYS -->|emits OTel spans + traces| O1
+  SYS -->|"routes model calls"| E1
+  SYS -->|"binds tools"| E2
+  SYS -->|"validates callers"| E3
+  SYS -->|"streams audio in"| V1
+  SYS -->|"streams audio out"| V2
+  SYS -->|"checkpoints turns"| M1
+  SYS -->|"emits one trace per turn"| O1
+  SYS -.->|"recalls facts"| M2
+
