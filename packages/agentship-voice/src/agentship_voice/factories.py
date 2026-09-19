@@ -276,11 +276,16 @@ def make_vad(config: VoiceSpec):
     return analyzer(params=VADParams(stop_secs=config.endpoint_silence_ms / 1000))
 
 
-def preflight(config: VoiceSpec) -> list[str]:
+def preflight(config: VoiceSpec, *, require_keys: bool = True) -> list[str]:
     """Return one message per missing dependency or key, or an empty list when ready.
 
     Collects every problem instead of raising on the first, so a first-time setup is one list
     to work through rather than run-fix-run-fix. This is what ``agentship doctor`` reports.
+
+    ``require_keys=False`` checks only what is wrong with the *spec* — an unknown provider, an
+    uninstalled SDK — and ignores unset credentials. That distinction matters: a spec naming
+    Deepgram is correct whether or not this particular machine has a Deepgram key, and reporting
+    it as an invalid spec tells someone to fix a file that has nothing wrong with it.
     """
     problems: list[str] = []
     for kind, name, table in (
@@ -291,7 +296,8 @@ def preflight(config: VoiceSpec) -> list[str]:
         try:
             provider = _resolve(kind, name, table)
             _load(provider, kind, name)
-            _require_key(provider, kind, name)
+            if require_keys:
+                _require_key(provider, kind, name)
         except CapabilityError as exc:
             problems.append(str(exc))
     return problems

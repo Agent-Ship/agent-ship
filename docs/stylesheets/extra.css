@@ -1,0 +1,133 @@
+/* AgentShip docs — a thin layer over Material, not a reskin of it.
+ *
+ * Material is already a well-made theme; the only things worth adding are the ones it has no
+ * opinion about because they are ours: the landing hero, the verify panel that carries the
+ * project's whole claim, and the status pills the capability pages use to stay honest.
+ *
+ * Everything below is built from Material's own CSS variables (--md-*), so the light/dark
+ * toggle keeps working and a future theme upgrade does not leave these stranded at the wrong
+ * colours. Hard-coded hex appears only where a colour means something specific — a passing
+ * check, a partial one — and is picked to stay legible on both schemes.
+ */
+
+:root {
+  --as-pass: #16a34a;
+  --as-partial: #d97706;
+  --as-open: #64748b;
+  --as-radius: 10px;
+}
+
+[data-md-color-scheme="slate"] {
+  --as-pass: #4ade80;
+  --as-partial: #fbbf24;
+  --as-open: #94a3b8;
+}
+
+/* ---- Landing hero -------------------------------------------------------------------------
+ * One statement, one proof, two buttons. Deliberately not a marketing banner: the page has
+ * about four seconds to say what this is and show that the claim is checkable.
+ */
+
+.as-hero {
+  padding: 2.2rem 0 1rem;
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+  margin-bottom: 2rem;
+}
+
+.as-hero h1 {
+  font-size: 2.6rem;
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.6rem;
+}
+
+.as-hero .as-tagline {
+  font-size: 1.05rem;
+  line-height: 1.6;
+  color: var(--md-default-fg-color--light);
+  max-width: 34rem;
+  margin: 0 0 1.4rem;
+}
+
+/* ---- The verify panel ---------------------------------------------------------------------
+ * The project's central claim, rendered as the terminal output that produces it. A screenshot
+ * would say the same thing and would rot; this is text, so it is searchable, copyable, and
+ * legible to a screen reader.
+ */
+
+.as-verify {
+  /* `pre`, because the alignment of those dotted leaders IS the content — reflowed as prose
+   * they become an unreadable run-on, which is exactly what happened the first time. */
+  white-space: pre;
+  font-family: var(--md-code-font-family, monospace);
+  font-size: 0.74rem;
+  line-height: 1.85;
+  background: var(--md-code-bg-color);
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: var(--as-radius);
+  padding: 1rem 1.2rem;
+  margin: 1.4rem 0;
+  overflow-x: auto;
+}
+
+.as-verify .as-cmd { color: var(--md-default-fg-color--light); }
+.as-verify .as-ok { color: var(--as-pass); font-weight: 600; }
+.as-verify .as-skip { color: var(--as-open); }
+.as-verify .as-rule {
+  color: var(--md-default-fg-color--lightest);
+  user-select: none;
+}
+
+/* ---- Status pills -------------------------------------------------------------------------
+ * Used on the capability index. A capability that is half-built says so at a glance, which is
+ * the entire point — a table of uniform green ticks would be easier to write and worth less.
+ */
+
+.as-pill {
+  display: inline-block;
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  white-space: nowrap;
+  border: 1px solid currentColor;
+}
+
+.as-pill--pass { color: var(--as-pass); }
+.as-pill--partial { color: var(--as-partial); }
+.as-pill--open { color: var(--as-open); }
+
+/* ---- Grid cards ---------------------------------------------------------------------------
+ * Material ships `.grid.cards`; these only soften the corners to match the panels above and
+ * give the hover a little lift, so a card reads as something to click.
+ */
+
+.md-typeset .grid.cards > ul > li {
+  border-radius: var(--as-radius);
+  transition: border-color 160ms ease, transform 160ms ease;
+}
+
+.md-typeset .grid.cards > ul > li:hover {
+  border-color: var(--md-accent-fg-color);
+  transform: translateY(-2px);
+}
+
+/* Respecting a reader who has asked the system to stop moving things. */
+@media (prefers-reduced-motion: reduce) {
+  .md-typeset .grid.cards > ul > li {
+    transition: none;
+  }
+  .md-typeset .grid.cards > ul > li:hover {
+    transform: none;
+  }
+}
+
+/* ---- Small screens ------------------------------------------------------------------------ */
+
+@media screen and (max-width: 44.9375em) {
+  .as-hero h1 { font-size: 2rem; }
+  .as-verify { font-size: 0.66rem; }
+}

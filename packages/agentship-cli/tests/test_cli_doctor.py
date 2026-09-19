@@ -166,3 +166,30 @@ def test_doctor_empty_dir_is_a_clean_error(tmp_path):
     result = runner.invoke(main, ["doctor", "--agents-dir", str(agents)])
     assert result.exit_code == 1
     assert "Traceback" not in result.output
+
+
+def test_verify_does_not_fail_a_valid_spec_for_a_key_this_machine_lacks(tmp_path, monkeypatch):
+    """A missing provider credential is a deployment fact, not an invalid spec.
+
+    `verify` shares doctor's per-spec checks, and doctor rightly refuses to start an agent whose
+    provider key is unset. Sharing that wholesale made `verify` report a perfectly correct voice
+    agent as `invalid spec ... needs DEEPGRAM_API_KEY` — sending a reader to fix a file that was
+    already right, and turning the report red on any machine without every provider key,
+    including CI. The two commands answer different questions: `verify` asks whether the spec is
+    valid and honest, `doctor` asks whether it can run *here*.
+    """
+    from agentship_cli.main import _check_agent
+
+    monkeypatch.delenv("DEEPGRAM_API_KEY", raising=False)
+    monkeypatch.delenv("CARTESIA_API_KEY", raising=False)
+    spec = tmp_path / "talker.yaml"
+    spec.write_text(
+        "name: talker\nengine: echo\nvoice:\n  stt: deepgram\n  tts: cartesia\n",
+        encoding="utf-8",
+    )
+
+    assert _check_agent(spec, require_keys=False) is None, "the spec itself is valid"
+
+    doctor_reason = _check_agent(spec, require_keys=True)
+    assert doctor_reason is not None, "doctor must still refuse to start it"
+    assert "DEEPGRAM_API_KEY" in doctor_reason, "and must still name the key that is missing"

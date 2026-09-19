@@ -29,7 +29,7 @@ from pathlib import Path
 
 import click
 from agentship.engines.base import ENGINES, assert_spec_supported
-from agentship.errors import AgentShipError
+from agentship.errors import AgentShipError, CapabilityError
 from agentship.logs import configure_logging
 from agentship.runtime import build_agent
 from agentship.spec import load_spec
@@ -187,7 +187,7 @@ async def _stream_turn(agent, input_text: str) -> None:
             click.echo()  # newline terminating the streamed line
 
 
-def _check_agent(path: Path) -> str | None:
+def _check_agent(path: Path, *, require_keys: bool = True) -> str | None:
     """Validate one agent spec; return an error reason string, or ``None`` if OK.
 
     Loads the YAML into an :class:`~agentship.spec.AgentSpec`, resolves its engine
@@ -219,18 +219,24 @@ def _check_agent(path: Path) -> str | None:
     mcp_reason = _check_mcp_version(spec)
     if mcp_reason is not None:
         return mcp_reason
-    voice_reason = _check_voice(spec)
+    voice_reason = _check_voice(spec, require_keys=require_keys)
     if voice_reason is not None:
         return voice_reason
     return None
 
 
-def _check_voice(spec) -> str | None:
+def _check_voice(spec, *, require_keys: bool = True) -> str | None:
     """Guard an agent that declares ``voice:`` against a missing framework, SDK or key.
 
     Returns one actionable reason, or ``None`` when the spec has no ``voice:`` block or the
     stack is ready. A voice agent fails in the worst possible place — the human speaks and
     hears silence — so the same problems are surfaced here, before anyone dials in.
+
+    ``require_keys=False`` drops the credential check, leaving only what is genuinely wrong
+    with the file. ``verify`` asks whether a spec is valid and honest; ``doctor`` and ``serve``
+    ask whether it can run *here*. Only the second question is about this machine's keys, and
+    answering the first with "you have no DEEPGRAM_API_KEY" sends someone to fix a spec that
+    was already correct.
 
     Never raises: if the voice package is not importable the guard is skipped rather than
     failing an otherwise valid text agent, matching how the MCP and autonomous guards behave.
@@ -248,12 +254,12 @@ def _check_voice(spec) -> str | None:
         )
     try:
         adapter = get_adapter(voice.framework)
-    except ValueError as exc:
+    except CapabilityError as exc:
         return str(exc)
     missing = adapter.missing_dependency()
     if missing:
         return missing
-    problems = preflight(voice)
+    problems = preflight(voice, require_keys=require_keys)
     if problems:
         return "; ".join(problems)
     return None
