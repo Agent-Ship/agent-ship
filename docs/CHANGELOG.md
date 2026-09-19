@@ -23,8 +23,6 @@ they were written before the project cut tagged releases.
 
 ## [Unreleased]
 
-## [Unreleased]
-
 ### Fixed
 - **Streaming an agent with a human approval gate crashed.** LangGraph reports a pending
   interrupt on its update stream under `__interrupt__`, whose value is a *tuple* where every
@@ -35,12 +33,14 @@ they were written before the project cut tagged releases.
   finished while the run sat waiting in the checkpointer, unresumable by anyone. `:stream` now
   emits a `paused` event carrying the question and a working token, and the terminal `done`
   says `paused: true` so a client written before this still terminates and still notices.
-- **`agentship verify` failed a valid spec over a key this machine lacked.** It shares
-  doctor's per-spec checks, and doctor rightly refuses to start an agent whose provider key is
-  unset — but `verify` asks whether a spec is valid and honest, not whether it can run here. A
-  correct voice agent was reported as `invalid spec ... needs DEEPGRAM_API_KEY`, sending a
-  reader to fix a file that was already right and turning the report red on any machine
-  without every provider key, CI included.
+- **`agentship verify` failed a valid spec over this machine's setup.** It shares doctor's
+  per-spec checks, and doctor rightly refuses to start an agent whose provider SDK is absent or
+  whose key is unset — but `verify` asks whether a spec is valid and honest, not whether it can
+  run *here*. A correct voice agent was reported as `invalid spec ... needs DEEPGRAM_API_KEY`,
+  sending a reader to fix a file that was already right and turning the report red on any
+  machine missing any provider extra, CI included. The split is now by what kind of wrong it
+  is: an unknown provider or framework NAME is wrong in the file and is always reported; a
+  missing SDK or unset key is wrong only here, and belongs to `doctor` and `serve`.
 - **Every MCP tool looked like local code in every trace.** `agentship.tool.mcp_server` was in
   the frozen contract, documented, and stamped by code that genuinely ran — onto a map nothing
   ever populated, because the callback accepted `mcp_servers` and no caller passed one. A slow
