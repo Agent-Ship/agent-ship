@@ -204,8 +204,8 @@ def test_studio_only_offers_the_microphone_to_an_agent_that_declares_voice() -> 
     studio = STUDIO_PAGE.read_text(encoding="utf-8")
 
     assert "function showVoiceAffordance" in studio, "the gate must exist"
-    assert 'mic.disabled = !speakable' in studio, "a non-speakable agent's mic is disabled"
-    assert 'Boolean((card.spec || {}).voice)' in studio, (
+    assert "mic.disabled = !speakable" in studio, "a non-speakable agent's mic is disabled"
+    assert "Boolean((card.spec || {}).voice)" in studio, (
         "speakable is read from the agent's own spec, not from engine capabilities — every "
         "agent on one engine shares those, which is how the badges got this wrong before"
     )
