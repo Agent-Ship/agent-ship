@@ -271,6 +271,11 @@ button.mic {
 }
 button.mic:hover { transform: scale(1.04); border-color: var(--accent); }
 button.mic.live { color: var(--red); border-color: rgba(248,113,113,.45); background: rgba(248,113,113,.12); }
+/* A mic that cannot be used still shows where voice WOULD be, faded and unclickable, rather
+   than vanishing — the absence is then a property of this agent, not a missing feature. */
+#voicestage.mute { opacity: .45; }
+#voicestage.mute button.mic { cursor: not-allowed; }
+#voicestage.mute button.mic:hover { transform: none; border-color: var(--border); }
 #voicestage .level {
   width: 148px; height: 4px; border-radius: 999px; background: var(--surface3); overflow: hidden;
   /* Hidden until the mic is live. Sitting there empty, it read as a stray rule under the orb
@@ -753,9 +758,34 @@ function selectAgent(card) {
   badges.innerHTML = "";
   for (const badge of badgesFor(card)) badges.appendChild(badge);
   el("input").placeholder = "Message " + card.name + "…  (Enter to send, Shift+Enter for a newline)";
+  showVoiceAffordance(card);
   showSpec(card);
   clearChat();
   el("input").focus();
+}
+
+/* Offer the microphone only to an agent that can answer it.
+
+   The mic used to be enabled for every agent, so pressing it on a text-only one opened a
+   socket whose only possible outcome was a refusal — "agent has no `voice:` block". The
+   catalog already says which agents declare voice (it is where the `voice` badge comes from),
+   so the UI had the answer before the click and asked the server anyway. An affordance that
+   can only fail is worse than no affordance: it reads as a broken feature rather than an
+   absent one. */
+function showVoiceAffordance(card) {
+  const speakable = Boolean((card.spec || {}).voice);
+  const mic = el("talk");
+  const stage = el("voicestage");
+  mic.disabled = !speakable;
+  stage.classList.toggle("mute", !speakable);
+  mic.title = speakable
+    ? "Talk to this agent out loud"
+    : card.name + " has no `voice:` block — add one to talk to it";
+  setVoiceHint(
+    speakable
+      ? null
+      : "Type below. Add a `voice:` block to " + card.name + " to talk to it out loud."
+  );
 }
 
 /* --- transcript ---------------------------------------------------------- */
