@@ -159,10 +159,35 @@ run:
 	$(VENV)/bin/agentship run agents/assistant.yaml --input "$(if $(INPUT),$(INPUT),Give one productivity tip.)"
 
 ## ui: open AgentShip Studio — the branded chat/debug UI the SERVICE serves at /studio.
-##   Needs the service running (`make docker-up`). There is no UI in this repo: Studio ships
-##   with agentship-service, so the demo never maintains its own.
+##   Starts the service first if it is not already up. There is no UI in this repo: Studio
+##   ships with agentship-service, so the demo never maintains its own.
+##
+##   This used to open a browser unconditionally. With nothing listening on :7005 that is a
+##   dead tab and no explanation — the target appeared broken when the only problem was that
+##   nobody had run `make docker-up` yet.
 ui:
-	@echo "Opening AgentShip Studio at $(STUDIO_URL) (API key: dev)"
+	@if curl -fsS --max-time 2 http://localhost:7005/healthz >/dev/null 2>&1; then \
+		echo "Service already up."; \
+	else \
+		echo "Nothing on :7005 — starting the service (first run builds the image)…"; \
+		$(MAKE) --no-print-directory docker-up; \
+		printf "Waiting for the service"; \
+		for i in $$(seq 1 60); do \
+			if curl -fsS --max-time 2 http://localhost:7005/healthz >/dev/null 2>&1; then \
+				echo " ready."; break; \
+			fi; \
+			printf "."; sleep 2; \
+		done; \
+		if ! curl -fsS --max-time 2 http://localhost:7005/healthz >/dev/null 2>&1; then \
+			echo ""; \
+			echo "The service did not come up. See what it said:  make docker-logs"; \
+			exit 1; \
+		fi; \
+	fi
+	@echo ""
+	@echo "  Studio   $(STUDIO_URL)"
+	@echo "  API key  dev        <- paste this when Studio asks"
+	@echo ""
 	@python3 -c "import webbrowser,sys; webbrowser.open(sys.argv[1])" $(STUDIO_URL)
 
 ## clean: remove the venv and caches

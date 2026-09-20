@@ -5,8 +5,8 @@
 # inherited rather than reimplemented for audio.
 #
 #   pip install "agentship-voice[pipecat]" "pipecat-ai[openai]"
-#   agentship voice serve agents/voice/agent.yaml --dry-run   # check deps + keys, bind nothing
-#   agentship voice serve agents/voice/agent.yaml             # serve over websocket
+#   agentship voice serve agents/voice_assistant.yaml --dry-run   # check deps + keys, bind nothing
+#   agentship voice serve agents/voice_assistant.yaml             # serve over websocket
 name: voice-assistant
 engine: langgraph
 model: openai/gpt-4o-mini
@@ -50,3 +50,11 @@ voice:
   allow_interruptions: true
   # Target time-to-first-audio. Recorded so a run can be measured against it.
   latency_budget_ms: 850
+  # Said as soon as a session opens, before you have spoken. Worth setting: silence gives a
+  # caller no way to tell a connected agent from a broken one, and the usual response is to
+  # hang up.
+  greeting: Hi — what can I help you with?
+  # Hard ceiling on one session. Unset means no limit, which is right on a laptop and wrong in
+  # public: an abandoned browser tab otherwise holds this socket and its provider connections
+  # open for as long as the process lives, with nobody on the other end.
+  max_session_seconds: 900

@@ -45,7 +45,11 @@ from pipecat.services.stt_service import STTService  # noqa: E402
 from pipecat.services.tts_service import TTSService  # noqa: E402
 from pipecat.workers.runner import WorkerRunner  # noqa: E402
 
-AGENT = Path(__file__).resolve().parents[1] / "agents" / "voice_assistant.yaml"
+# One directory down from the other agents, and deliberately so: `agentship serve` reads the
+# specs directly under `agents/`, and a voice spec's provider keys are checked before the
+# socket binds — so an unset DEEPGRAM_API_KEY there stopped the whole service rather than that
+# one agent. The spec is still tested here; see agents/voice/README.md.
+AGENT = Path(__file__).resolve().parents[1] / "agents" / "voice" / "agent.yaml"
 RATE = 24000
 
 

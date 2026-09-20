@@ -34,6 +34,7 @@ RUN pip install --no-cache-dir --upgrade pip \
         /tmp/agentship/agentship-service \
         /tmp/agentship/agentship-cli \
         /tmp/agentship/agentship-observability \
+        '/tmp/agentship/agentship-voice[pipecat]' \
     && rm -rf /tmp/agentship
 
 # The demo's own agents' tool dependencies. agents/deep_research.yaml and
@@ -41,7 +42,7 @@ RUN pip install --no-cache-dir --upgrade pip \
 # package — without it the tools return {"error": "needs the 'firecrawl-py' package"} and the
 # agent quietly answers from its own knowledge, which reads to a user as "I can't browse the
 # web" rather than as a missing dependency.
-RUN pip install --no-cache-dir 'firecrawl-py>=4'
+RUN pip install --no-cache-dir 'firecrawl-py>=4' 'pipecat-ai[deepgram,openai,silero]'
 
 # --- The demo app itself ------------------------------------------------------------------
 # Only what the running service needs: the agent specs and the Python `code:` factories they

@@ -63,10 +63,12 @@ services:
     # Create the checkpoint tables before serving. Without this the first turn against any
     # durable agent fails with `relation "checkpoints" does not exist`. Every migration is
     # idempotent, so running it on each start is a no-op once applied.
-    command: >-
-      sh -c "agentship db upgrade --allow-migrations &&
-             agentship serve --host 0.0.0.0 --port $${PORT}
-               --agents-dir $${AGENTSHIP_AGENTS_DIR} --auth $${AGENTSHIP_AUTH_PROVIDER}"
+    # One line on purpose. As a folded block (`>-`) the continuation was indented further
+    # than the line above it, and YAML keeps the newline on a more-indented line rather than
+    # folding it — so `--agents-dir …` arrived as line 3 of the script and the shell tried to
+    # run it as a command: `sh: 3: --agents-dir: not found`. The container then crash-looped
+    # with the real error scrolled past.
+    command: ["sh", "-c", "agentship db upgrade --allow-migrations && agentship serve --host 0.0.0.0 --port $${PORT} --agents-dir $${AGENTSHIP_AGENTS_DIR} --auth $${AGENTSHIP_AUTH_PROVIDER}"]
     depends_on:
       postgres:
         condition: service_healthy
