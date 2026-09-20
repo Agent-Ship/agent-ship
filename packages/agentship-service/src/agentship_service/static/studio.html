@@ -1445,22 +1445,39 @@ async function startTalk() {
     if (typeof event.data === "string") onVoiceEvent(JSON.parse(event.data));
     else playChunk(event.data);
   };
+  // Resolved by onopen, rejected by a close or an error — declared before the handlers so a
+  // refusal that arrives BEFORE the socket opens can settle the wait below rather than leave
+  // it running. Without this the server could say exactly what was wrong and the UI still
+  // reported "timed out opening the voice socket" eight seconds later, because the only thing
+  // that ever settled the promise was the timer.
+  let openSettled;
+  const opened = new Promise((resolve, reject) => {
+    openSettled = { resolve, reject };
+    setTimeout(() => reject(new Error("timed out opening the voice socket")), 8000);
+  });
+
+  ws.onopen = () => openSettled.resolve();
   ws.onclose = (event) => {
-    const why = {
+    const known = {
       4404: "This agent has no `voice:` block — add one to talk to it.",
       4503: "This server has no voice package installed.",
       4401: "Not authenticated — set your API key.",
       4403: "Not allowed to talk to this agent.",
     }[event.code];
+    // The server's own reason first: on a failed start it names the missing provider key,
+    // which is the one sentence that fixes the problem. The table is the fallback for codes
+    // that carry none.
+    const why = event.reason || known;
     if (why) showBanner({ detail: why, code: "voice_" + event.code }, event.code === 4401);
+    openSettled.reject(new Error(why || "the voice socket closed before it opened"));
     stopTalk();
   };
-  ws.onerror = () => showBanner({ detail: "Voice socket error.", code: "voice_socket" }, false);
+  ws.onerror = () => {
+    showBanner({ detail: "Voice socket error.", code: "voice_socket" }, false);
+    openSettled.reject(new Error("voice socket error"));
+  };
 
-  await new Promise((resolve, reject) => {
-    ws.onopen = resolve;
-    setTimeout(() => reject(new Error("timed out opening the voice socket")), 8000);
-  });
+  await opened;
 
   const source = ctx.createMediaStreamSource(stream);
   const node = ctx.createScriptProcessor(1024, 1, 1);
