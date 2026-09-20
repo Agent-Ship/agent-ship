@@ -13,6 +13,7 @@
   <a href="https://www.langchain.com/langgraph"><img src="https://img.shields.io/badge/LangGraph-engine-121212?style=flat&logo=langchain&logoColor=white" alt="LangGraph"></a>
   <a href="https://modelcontextprotocol.io/"><img src="https://img.shields.io/badge/MCP-tools-FF6B35?style=flat" alt="MCP"></a>
   <a href="https://opentelemetry.io/"><img src="https://img.shields.io/badge/OpenTelemetry-tracing-425CC7?style=flat&logo=opentelemetry&logoColor=white" alt="OpenTelemetry"></a>
+  <a href="https://docs.agent-ship.dev"><img src="https://img.shields.io/badge/docs-agent--ship.dev-0F766E?style=flat" alt="Documentation"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-yellow.svg" alt="License: Apache 2.0"></a>
 </p>
 
@@ -97,6 +98,39 @@ prompt: A stand-in agent that needs no provider.
 
 ---
 
+## Studio, included
+
+`agentship serve` ships a playground at `/studio`: every agent you declared, what each one
+actually asks for, the reply as it streams, the tool steps it took, and where the time went.
+Press the microphone and talk to the same agent instead.
+
+<p align="center">
+  <img src="docs/assets/studio.png" alt="AgentShip Studio — the agent list with each agent's model and tools, suggested prompts, and the trace, latency and spec panels" width="100%">
+</p>
+
+---
+
+## Proof, not adjectives
+
+Most frameworks describe what they support. This one checks, and ships the checker:
+
+```console
+$ agentship verify --agents-dir agents/
+  engine×capability grid ...... 11/11 ✓
+  spec validation ............. 10/10 ✓
+  observability span-tree ..... 4/4   ✓
+  service contracts ........... 9/9   ✓
+  A2A interop ................. SKIPPED (no spec exposes a2a)
+  → all declared capabilities proven, 0 over-claims
+```
+
+Every engine declares its capabilities, and a conformance grid tries to catch it lying — an
+engine claiming durable resume that inherited the base implementation fails its own suite.
+The `SKIPPED` line is doing real work too: nothing here reports a pass for something it did
+not run.
+
+---
+
 ## How it fits together
 
 One YAML spec is compiled by an **engine adapter** into somebody else's graph, and run through
@@ -105,11 +139,12 @@ are seams with a contract and one implementation, not roadmap.
 
 ```mermaid
 flowchart TB
-  classDef spec    fill:#fef3c7,stroke:#b45309,stroke-width:2px,color:#7c2d12
-  classDef system  fill:#ccfbf1,stroke:#0f766e,stroke-width:2.5px,color:#134e4a
-  classDef adapter fill:#dcfce7,stroke:#15803d,stroke-width:1.5px,color:#14532d
-  classDef ext     fill:#f1f5f9,stroke:#64748b,stroke-width:1.5px,color:#334155
-  classDef obs     fill:#dbeafe,stroke:#1e40af,stroke-width:1.5px,color:#1e3a8a
+  classDef spec    fill:#FDE68A,stroke:#B45309,stroke-width:2px,color:#000000
+  classDef system  fill:#A7F3D0,stroke:#047857,stroke-width:3px,color:#000000
+  classDef adapter fill:#CCFBF1,stroke:#0F766E,stroke-width:2px,color:#000000
+  classDef ext     fill:#E5E7EB,stroke:#4B5563,stroke-width:2px,color:#000000
+  classDef obs     fill:#FBCFE8,stroke:#BE185D,stroke-width:2px,color:#000000
+  classDef voice   fill:#DDD6FE,stroke:#6D28D9,stroke-width:2px,color:#000000
 
   SPEC["<b>agent.yaml</b><br/><i>[AgentSpec]</i><br/>name · engine · prompt<br/>tools · members"]:::spec
 
@@ -154,7 +189,7 @@ adapter is the single place that does — so replacing LangGraph is one package,
 no key, which is why the conformance matrix can tell a capability an engine *declares* from one
 it actually *has*.
 
-**Not in this picture, because it is not built yet:** voice, long-term memory, guardrails/PII,
+**Not in this picture, because it is not built yet:** long-term memory, guardrails/PII,
 sandboxing, evals, and the ADK / Pydantic AI adapters. See [Status](#status).
 
 ---
@@ -258,7 +293,9 @@ agentship db upgrade                   # apply checkpoint migrations (gated)
 
 | | |
 |---|---|
-| Capability guides | [`docs/capabilities/`](docs/capabilities/) — [multi-agent](docs/capabilities/multi-agent.md) · [tools & MCP](docs/capabilities/tools-and-mcp.md) · [observability](docs/capabilities/observability.md) · [service & security](docs/capabilities/service-and-security.md) · [checkpointing & HITL](docs/capabilities/checkpointing-and-hitl.md) · [durable resume](docs/capabilities/durable-resume.md) |
+| **Documentation site** | **[docs.agent-ship.dev](https://docs.agent-ship.dev)** — the capability guides and decisions, rendered |
+| **Architecture** | **[`ARCHITECTURE.md`](ARCHITECTURE.md)** — the seams, the one rule, and where it falls short today |
+| Capability guides | [`docs/capabilities/`](docs/capabilities/) — [voice](docs/capabilities/voice.md) · [multi-agent](docs/capabilities/multi-agent.md) · [tools & MCP](docs/capabilities/tools-and-mcp.md) · [observability](docs/capabilities/observability.md) · [service & security](docs/capabilities/service-and-security.md) · [checkpointing & HITL](docs/capabilities/checkpointing-and-hitl.md) · [durable resume](docs/capabilities/durable-resume.md) |
 | Architecture decisions | [`docs/decisions/`](docs/decisions/) — why we integrate rather than reimplement |
 | Runnable examples | [`examples/`](examples/) |
 | Releasing and versioning | [`docs/RELEASING.md`](docs/RELEASING.md) |
@@ -274,15 +311,20 @@ agentship db upgrade                   # apply checkpoint migrations (gated)
 **Early — `0.x`, so the API can change between minor versions.** Pin exactly if that matters
 to you (`agentship-sdk==0.0.2`).
 
-> **`0.0.1` is yanked.** It reserved the six names on PyPI but could not run an agent —
-> tracing was on by default and the adapter is not in `[starter]`, so every run failed with
+> **`0.0.1` is yanked.** It reserved the names on PyPI but could not run an agent — tracing was
+> on by default and the adapter is not in `[starter]`, so every run failed with
 > `observability provider 'otel' is not installed`. Fixed in **0.0.2**; every resolver skips
 > `0.0.1`, so a plain `pip install` gets the working one.
 
-**What is built** is the diagram above: the spec, the kernel and its seams, two engines, the
-`/v1` service, the CLI, and OpenTelemetry tracing. **What is not built yet:** voice, long-term
-memory, guardrails/PII, sandboxing, evals, and the ADK / Pydantic AI adapters. The JOSS
-figures in [`figures/`](figures/) show the full intended system, not today's tree.
+| | |
+|---|---|
+| **Built and proven** | the spec and kernel seams · the LangGraph engine · multi-agent supervisors · conversation memory · tools and MCP · OpenTelemetry tracing · the `/v1` service and Studio · **voice** |
+| **Built, not fully proven** | durable resume (the seam is tested; a kill-mid-run resume is not) · the LiveKit voice adapter (unit-tested, never run against a live room) |
+| **Not built** | long-term memory · guardrails/PII · sandboxing · evals · the ADK and Pydantic AI adapters |
+
+Both "not fully proven" items are marked as expected-to-fail tests rather than quietly
+dropped, which is the same discipline `agentship verify` applies to everything else. See
+[ARCHITECTURE.md](ARCHITECTURE.md#where-this-falls-short-today).
 
 Rebuilt foundation-first: one thin working slice per phase, with tests and a runnable demo
 before anything is called done. Test first, one task per commit, CI green — see

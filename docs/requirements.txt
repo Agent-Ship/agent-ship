@@ -1,0 +1,7 @@
+# Documentation build dependencies.
+#
+# Kept as a file rather than inlined in the Makefile because Read the Docs installs from one
+# (see .readthedocs.yaml), and having the hosted build and `make docs-serve` read the same
+# list is the only way the site a contributor previews matches the site that ships.
+mkdocs-material>=9.5
+mkdocs-exclude>=1.0

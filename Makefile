@@ -13,7 +13,7 @@ venv:
 	$(PIP) install --upgrade pip
 	$(MAKE) install
 	$(PIP) install 'pytest>=8' 'pytest-asyncio>=0.23' 'pytest-recording>=0.13' 'ruff>=0.6'
-	$(PIP) install 'mkdocs-material>=9.5' 'mkdocs-exclude>=1.0'
+	$(PIP) install -r docs/requirements.txt
 
 # Install every package editable (core + langgraph engine + service + CLI + observability).
 install:
