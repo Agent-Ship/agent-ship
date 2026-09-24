@@ -48,19 +48,19 @@ def _client() -> TestClient:
 def test_an_agent_without_a_voice_block_cannot_be_talked_to() -> None:
     """A text-only agent closes 4404 — there is nothing to talk to, and that is not an error."""
     client = _client()
-    with pytest.raises(WebSocketDisconnect) as closed:
-        with client.websocket_connect("/v1/agents/support/voice", headers={"x-api-key": "full"}):
-            pass
-    assert closed.value.code == voice_router._CLOSE_NOT_VOICE
+    with client.websocket_connect("/v1/agents/support/voice", headers={"x-api-key": "full"}) as ws:
+        closed = ws.receive()
+    assert closed["type"] == "websocket.close"
+    assert closed["code"] == voice_router._CLOSE_NOT_VOICE
 
 
 def test_a_caller_without_the_scope_is_refused() -> None:
     """Talking to an agent is invoking it, so it takes the same scope — 4403 without it."""
     client = _client()
-    with pytest.raises(WebSocketDisconnect) as closed:
-        with client.websocket_connect("/v1/agents/talker/voice", headers={"x-api-key": "narrow"}):
-            pass
-    assert closed.value.code == voice_router._CLOSE_FORBIDDEN
+    with client.websocket_connect("/v1/agents/talker/voice", headers={"x-api-key": "narrow"}) as ws:
+        closed = ws.receive()
+    assert closed["type"] == "websocket.close"
+    assert closed["code"] == voice_router._CLOSE_FORBIDDEN
 
 
 def test_an_unknown_agent_looks_exactly_like_a_forbidden_one() -> None:
@@ -70,10 +70,10 @@ def test_an_unknown_agent_looks_exactly_like_a_forbidden_one() -> None:
     deployment runs, one socket at a time.
     """
     client = _client()
-    with pytest.raises(WebSocketDisconnect) as closed:
-        with client.websocket_connect("/v1/agents/ghost/voice", headers={"x-api-key": "full"}):
-            pass
-    assert closed.value.code == voice_router._CLOSE_FORBIDDEN
+    with client.websocket_connect("/v1/agents/ghost/voice", headers={"x-api-key": "full"}) as ws:
+        closed = ws.receive()
+    assert closed["type"] == "websocket.close"
+    assert closed["code"] == voice_router._CLOSE_FORBIDDEN
 
 
 def test_a_deployment_without_the_voice_package_says_so(monkeypatch) -> None:
@@ -88,10 +88,10 @@ def test_a_deployment_without_the_voice_package_says_so(monkeypatch) -> None:
 
     monkeypatch.setattr(voice_router, "_load_voice", _absent)
     client = _client()
-    with pytest.raises(WebSocketDisconnect) as closed:
-        with client.websocket_connect("/v1/agents/talker/voice", headers={"x-api-key": "full"}):
-            pass
-    assert closed.value.code == voice_router._CLOSE_UNAVAILABLE
+    with client.websocket_connect("/v1/agents/talker/voice", headers={"x-api-key": "full"}) as ws:
+        closed = ws.receive()
+    assert closed["type"] == "websocket.close"
+    assert closed["code"] == voice_router._CLOSE_UNAVAILABLE
 
 
 def test_no_credential_is_refused_before_the_agent_is_resolved() -> None:
@@ -110,14 +110,23 @@ def test_a_browser_authenticates_with_the_bearer_subprotocol() -> None:
     auth to the route's own 4404 is the proof — the handshake was authenticated.
     """
     client = _client()
-    with pytest.raises(WebSocketDisconnect) as closed:
-        with client.websocket_connect("/v1/agents/support/voice", subprotocols=["bearer", "full"]):
-            pass
-    assert closed.value.code == voice_router._CLOSE_NOT_VOICE, "auth passed; the route answered"
+    with client.websocket_connect(
+        "/v1/agents/support/voice", subprotocols=["bearer", "full"]
+    ) as ws:
+        closed = ws.receive()
+    assert closed["type"] == "websocket.close"
+    assert closed["code"] == voice_router._CLOSE_NOT_VOICE, "auth passed; the route answered"
 
 
 def test_a_bad_token_in_the_subprotocol_is_still_refused() -> None:
-    """The subprotocol is a transport for the credential, not a way around checking it."""
+    """The subprotocol is a transport for the credential, not a way around checking it.
+
+    Unlike the route's own refusals, this one is still a rejected HANDSHAKE rather than an
+    accepted-then-closed socket: an unauthenticated connection is turned away by the auth
+    middleware before any route runs, which is the posture we want for every WebSocket. The
+    cost is that a browser sees no close code here — acceptable, because an unauthenticated
+    Studio has already been asked for a key.
+    """
     client = _client()
     with pytest.raises(WebSocketDisconnect) as closed:
         with client.websocket_connect(
@@ -130,11 +139,37 @@ def test_a_bad_token_in_the_subprotocol_is_still_refused() -> None:
 def test_an_explicit_header_wins_over_the_subprotocol() -> None:
     """A real header is the stronger signal and must not be overridden by a handshake list."""
     client = _client()
-    with pytest.raises(WebSocketDisconnect) as closed:
-        with client.websocket_connect(
-            "/v1/agents/talker/voice",
-            headers={"x-api-key": "narrow"},
-            subprotocols=["bearer", "full"],
-        ):
-            pass
-    assert closed.value.code == voice_router._CLOSE_FORBIDDEN, "the header's caller was used"
+    with client.websocket_connect(
+        "/v1/agents/talker/voice",
+        headers={"x-api-key": "narrow"},
+        subprotocols=["bearer", "full"],
+    ) as ws:
+        closed = ws.receive()
+    assert closed["type"] == "websocket.close"
+    assert closed["code"] == voice_router._CLOSE_FORBIDDEN, "the header's caller was used"
+
+
+def test_a_refusal_is_a_real_websocket_close_not_a_rejected_handshake() -> None:
+    """The socket is accepted first, so a refusal can carry its code and reason.
+
+    Closing before `accept()` is not a WebSocket close at all: Starlette answers the handshake
+    with a bare `HTTP 403` and every code in this router is discarded. A browser is then handed
+    a failed connection with no code and no reason, so a client that waits to be told why waits
+    forever — pressing the microphone on an agent with no `voice:` block reported "timed out
+    opening the voice socket" instead of saying so.
+
+    It looked correct under TestClient, which surfaces a pre-accept close as a disconnect. This
+    asserts the property that actually matters: by the time the server refuses, the connection
+    has been **accepted**, which is the only state from which a close code can be delivered.
+    """
+    client = _client()
+    with client.websocket_connect(
+        "/v1/agents/support/voice", subprotocols=["bearer", "full"]
+    ) as ws:
+        message = ws.receive()
+
+    assert message["type"] == "websocket.close", f"expected a close frame, got {message['type']}"
+    assert message["code"] == 4404, "an agent with no voice block is 4404"
+    assert "voice" in (message.get("reason") or ""), (
+        "the close must say why — the code alone leaves a browser guessing"
+    )

@@ -51,17 +51,32 @@ SAMPLE_RATE = 24000
 @router.websocket("/v1/agents/{name}/voice")
 async def voice(websocket: WebSocket, name: str) -> None:
     """Run one spoken conversation with agent ``name`` over this socket."""
+    # Accept FIRST, then refuse with a code if we must.
+    #
+    # A close before `accept()` is not a WebSocket close at all — Starlette answers the
+    # handshake with a bare ``HTTP 403``, and every code below is discarded. The browser is
+    # handed a failed connection carrying no code and no reason, so a client that waits to be
+    # told why waits forever: pressing the microphone on an agent with no `voice:` block
+    # reported "timed out opening the voice socket" instead of "this agent has no voice block".
+    # The whole close-code contract in this module's docstring was unobservable over a real
+    # connection, and only looked right because TestClient surfaces the pre-accept close.
+    #
+    # A browser that offered a subprotocol also drops the connection unless the server echoes
+    # one back, so the handshake answers with the same "bearer" the credential arrived on.
+    offered = websocket.scope.get("subprotocols", [])
+    await websocket.accept(subprotocol="bearer" if "bearer" in offered else None)
+
     caller = current_caller()
     try:
         authorize(caller, agent=name, verb="invoke")
     except AuthError:
-        await websocket.close(code=_CLOSE_FORBIDDEN)
+        await websocket.close(code=_CLOSE_FORBIDDEN, reason="not scoped to invoke this agent")
         return
     try:
         agent = websocket.app.state.agents.get(name)
     except KeyError:
         # Do not distinguish a missing agent from a forbidden one on the socket.
-        await websocket.close(code=_CLOSE_FORBIDDEN)
+        await websocket.close(code=_CLOSE_FORBIDDEN, reason="not scoped to invoke this agent")
         return
 
     if agent.spec.voice is None:
@@ -75,17 +90,18 @@ async def voice(websocket: WebSocket, name: str) -> None:
         await websocket.close(code=_CLOSE_UNAVAILABLE, reason="voice package not installed")
         return
 
-    # A browser that offered a subprotocol drops the connection unless the server echoes one
-    # back, so the handshake has to answer with the same "bearer" the credential arrived on.
-    offered = websocket.scope.get("subprotocols", [])
-    await websocket.accept(subprotocol="bearer" if "bearer" in offered else None)
     try:
         await run_session(websocket, agent, caller, SAMPLE_RATE)
     except WebSocketDisconnect:
         pass  # the human hung up; not a failure
-    except Exception:
+    except Exception as exc:
         logger.exception("voice session failed for agent=%s", name)
-        await websocket.close(code=1011)
+        # Send the reason, not just the code. The most common failure here is an unset provider
+        # key, and its message already names the variable — telling the human "voice failed"
+        # while the server knows it needs DEEPGRAM_API_KEY wastes the one piece of information
+        # that would have fixed it. A close reason is capped at 123 BYTES by the protocol, and
+        # a longer one makes the close frame itself invalid, so it is truncated here.
+        await websocket.close(code=1011, reason=str(exc).encode()[:120].decode(errors="ignore"))
 
 
 def _load_voice():

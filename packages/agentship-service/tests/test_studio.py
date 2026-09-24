@@ -188,3 +188,25 @@ def test_a_non_streaming_turn_also_says_it_is_working() -> None:
     invoke = page[page.index("async function invokeTurn") :]
     invoke = invoke[: invoke.index("\n}\n")]
     assert "addStep" in invoke, "the non-streaming path shows no status"
+
+
+def test_studio_only_offers_the_microphone_to_an_agent_that_declares_voice() -> None:
+    """The mic is gated on the agent's own spec, not shown for every agent and left to fail.
+
+    It used to be enabled everywhere, so pressing it on a text-only agent opened a socket whose
+    only possible outcome was a refusal — `agent has no voice: block`. Studio already knows
+    which agents declare voice (it is where the `voice` badge comes from), so it had the answer
+    before the click and asked the server anyway. An affordance that can only fail reads as a
+    broken feature rather than an absent one.
+
+    Asserted against the shipped asset because there is no build step: this file *is* Studio.
+    """
+    studio = STUDIO_PAGE.read_text(encoding="utf-8")
+
+    assert "function showVoiceAffordance" in studio, "the gate must exist"
+    assert "mic.disabled = !speakable" in studio, "a non-speakable agent's mic is disabled"
+    assert "Boolean((card.spec || {}).voice)" in studio, (
+        "speakable is read from the agent's own spec, not from engine capabilities — every "
+        "agent on one engine shares those, which is how the badges got this wrong before"
+    )
+    assert "showVoiceAffordance(card)" in studio, "and it has to run on agent selection"
