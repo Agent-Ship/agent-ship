@@ -94,3 +94,46 @@ def test_serve_factory_builds_an_app(tmp_path, monkeypatch):
 
     app = build_from_env()
     assert app.state.agents.__len__() == 1
+
+
+def test_serve_starts_when_one_agent_is_missing_a_key_this_machine_lacks(tmp_path, monkeypatch):
+    """A key this machine lacks stops that agent doing that thing, not the whole service.
+
+    Treating it as fatal meant a single voice agent with no `DEEPGRAM_API_KEY` took down the
+    nine agents beside it that needed no keys at all, and the only way to get the service up
+    was to move the spec out of the directory. Nobody should have to hide a file to run the
+    rest of their agents.
+    """
+    monkeypatch.delenv("DEEPGRAM_API_KEY", raising=False)
+    (tmp_path / "plain.yaml").write_text("name: plain\nengine: echo\n", encoding="utf-8")
+    (tmp_path / "talker.yaml").write_text(
+        "name: talker\nengine: echo\nvoice:\n  stt: deepgram\n  tts: openai\n", encoding="utf-8"
+    )
+
+    from agentship_cli.main import _agent_files, _check_agent
+
+    specs = _agent_files(tmp_path)
+    invalid = [p.name for p in specs if _check_agent(p, check_environment=False) is not None]
+    assert invalid == [], "neither spec is invalid — only the environment is incomplete"
+
+    not_ready = {p.name: _check_agent(p) for p in specs}
+    assert not_ready["plain.yaml"] is None, "an agent needing nothing is ready"
+    assert "DEEPGRAM_API_KEY" in (not_ready["talker.yaml"] or ""), (
+        "and the one that is not ready must name what would fix it"
+    )
+
+
+def test_serve_still_refuses_to_start_on_a_genuinely_invalid_spec(tmp_path):
+    """The line the exemption must not cross: a broken spec is broken on every machine.
+
+    `stt: depgram` names a provider that does not exist anywhere, so serving around it would
+    hide a deployment that was never going to work.
+    """
+    (tmp_path / "broken.yaml").write_text(
+        "name: broken\nengine: echo\nvoice:\n  stt: depgram\n", encoding="utf-8"
+    )
+
+    from agentship_cli.main import _check_agent
+
+    reason = _check_agent(tmp_path / "broken.yaml", check_environment=False)
+    assert reason is not None and "depgram" in reason, f"got {reason!r}"

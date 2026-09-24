@@ -682,15 +682,36 @@ def _serve(
     load_env_for_run(env_file)
 
     # Doctor-gate: validate every spec before binding, with actionable per-agent reasons.
+    #
+    # Two classes of problem, and only one of them is worth refusing to start over:
+    #
+    #   * an INVALID SPEC — a typo, an unknown engine, a capability the engine does not have —
+    #     is broken everywhere and for everyone. Serving around it hides a deployment that was
+    #     never going to work.
+    #   * a MISSING SDK OR KEY is a fact about this machine. It stops that one agent doing that
+    #     one thing, and says nothing about the others.
+    #
+    # Treating the second as fatal meant a single voice agent whose DEEPGRAM_API_KEY was unset
+    # took down the nine agents beside it that needed no keys at all, and the only way to get
+    # the service up was to move the file out of the directory. Nobody should have to hide a
+    # spec to run the rest of their agents.
     specs = _agent_files(agents_dir) if agents_dir.is_dir() else []
-    failures = [(path.name, _check_agent(path)) for path in specs]
-    failures = [(name, reason) for name, reason in failures if reason is not None]
-    if failures:
-        for name, reason in failures:
+    invalid = [(p.name, _check_agent(p, check_environment=False)) for p in specs]
+    invalid = [(name, reason) for name, reason in invalid if reason is not None]
+    if invalid:
+        for name, reason in invalid:
             click.echo(f"✗ {name}: {reason}", err=True)
         raise AgentShipError(
-            f"doctor gate failed: {len(failures)} invalid agent spec(s) — fix before serving"
+            f"doctor gate failed: {len(invalid)} invalid agent spec(s) — fix before serving"
         )
+
+    # Valid specs this machine cannot fully run: served, and said out loud. Loud because the
+    # alternative is a user pressing a microphone and wondering why nothing happens — the
+    # answer belongs at startup, next to the thing that can fix it.
+    not_ready = [(p.name, _check_agent(p)) for p in specs]
+    for name, reason in ((n, r) for n, r in not_ready if r is not None):
+        click.echo(f"!  {name}: {reason}", err=True)
+        click.echo("   serving it anyway — that part will fail until this is fixed", err=True)
 
     # Configure the factory's environment, then build the provider once to fail fast on an
     # uninstalled or misconfigured provider (e.g. forwarded-header without an allow-list).
