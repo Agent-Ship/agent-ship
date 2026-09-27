@@ -48,7 +48,7 @@ jobs:
           python-version: "3.13"
           cache: pip
 
-      # All SIX packages. Installing only three left agentship-service,
+      # Every package. Installing only three left agentship-service,
       # agentship-observability and the `agentship` meta-package untested: their suites
       # were collected but their own dependencies were never resolved.
       - name: Install every package (editable) + dev tooling
@@ -97,17 +97,16 @@ jobs:
       - name: Install build tooling
         run: python -m pip install --upgrade pip build twine
 
-      # Before building anything: the six versions must match and every sibling
+      # Before building anything: the seven versions must match and every sibling
       # dependency must pin exactly that version. A release with one version missed is a
       # broken release that looks fine until somebody installs it.
       - name: Check version lockstep
         run: python scripts/versions.py --check
 
-      # agentship-voice is built and TESTED here but is not in release.yml's publish list: CI
-      # proves what is in the tree, releasing ships what is ready, and those are different
-      # sets while a package is still being built. Leaving it out of this loop meant its tests
-      # were collected against a package that had never been installed, so the job failed on
-      # import with nothing to say about the code.
+      # Every package release.yml publishes, agentship-voice included, is built and tested here
+      # from its wheel. Leaving voice out of this loop once meant its tests were collected
+      # against a package that had never been installed, so the job failed on import with
+      # nothing to say about the code.
       - name: Build every wheel and sdist
         run: |
           for pkg in agentship-core agentship-langgraph agentship-service \
@@ -165,7 +164,7 @@ jobs:
           /tmp/clean/bin/agentship --help > /dev/null
           /tmp/clean/bin/agentship verify --help > /dev/null
 
-      # Everything above installs all six with EVERY extra, so observability is always
+      # Everything above installs all seven with EVERY extra, so observability is always
       # present and the minimal install is never exercised. That is not a gap in coverage,
       # it is the exact shape 0.0.1 shipped broken in: `provider` defaults to "otel", every
       # agent is traced, and a stack without agentship-observability could not run ANY

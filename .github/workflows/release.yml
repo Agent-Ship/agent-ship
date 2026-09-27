@@ -24,7 +24,8 @@ name: Release
 #   3. register pending publishers for service, observability, sdk
 #   4. Run workflow -> packages: agentship-service,agentship-observability,agentship-sdk
 #
-# After that all six projects exist and every later release publishes all of them at once.
+# After that every project exists and every later release publishes all of them at once. A
+# package added later (agentship-voice) is claimed the same way, alone, before its first tag.
 on:
   # The only thing that publishes. Pushing to a branch never reaches an index; a tag does.
   push:
@@ -112,7 +113,7 @@ jobs:
           echo "tag and packages agree on $packaged"
 
       # A release with no notes is one nobody wrote. Cheaper to fail here than to discover
-      # it after six uploads, when the version is burned and the page is already public.
+      # it after seven uploads, when the version is burned and the page is already public.
       - name: Check the changelog has a section for this version
         if: startsWith(github.ref, 'refs/tags/v')
         run: python scripts/changelog.py --check "${GITHUB_REF_NAME#v}"
@@ -138,7 +139,7 @@ jobs:
     #
     # PyPI allows only one PENDING trusted publisher per
     # (owner, repository, workflow, environment) combination. A single publish job means
-    # all six projects would share one identical config, and PyPI rejects the second with
+    # every project would share one identical config, and PyPI rejects the second with
     # "already been registered for a different project name". Distinct environments make
     # each project's publisher unique.
     #
@@ -192,7 +193,7 @@ jobs:
   verify-testpypi:
     name: Install from TestPyPI and smoke-test
     needs: [plan, testpypi]
-    # Installing agentship-sdk resolves every sibling, so this can only pass once all six
+    # Installing agentship-sdk resolves every sibling, so this can only pass once all seven
     # are on the index. A partial claim run skips it rather than failing on a package that
     # has deliberately not been published yet.
     if: >-
@@ -229,7 +230,7 @@ jobs:
       #
       # Two flags contain it. Real PyPI is the PRIMARY index, so third-party dependencies
       # come from where they actually live, and TestPyPI is only consulted for names PyPI
-      # does not have — which is exactly our six at an unreleased version. And
+      # does not have — which is exactly our seven at an unreleased version. And
       # --only-binary :all: refuses sdists outright: the junk on TestPyPI is source-only,
       # every real dependency ships wheels, and our own packages are pure-Python wheels.
       - name: Install the published packages from TestPyPI

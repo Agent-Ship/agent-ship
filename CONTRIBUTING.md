@@ -55,7 +55,7 @@ By participating in this project you agree to abide by the
 
 ## Releasing
 
-Six distributions, one version, released together. See [docs/RELEASING.md](docs/RELEASING.md).
+Seven distributions, one version, released together. See [docs/RELEASING.md](docs/RELEASING.md).
 
 ```bash
 python scripts/versions.py --check   # never hand-edit a version

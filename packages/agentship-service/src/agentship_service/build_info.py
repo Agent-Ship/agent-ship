@@ -1,9 +1,9 @@
 """Report which AgentShip build is running.
 
 A deployment that cannot tell you what code it is running is a deployment you cannot
-trust a bug report against. The package version alone is not enough here — every package
-is pinned at ``0.0.1`` and does not move between builds — so the image also stamps a build
-id at build time (``AGENTSHIP_BUILD``, typically a git sha or a timestamp).
+trust a bug report against. The package version alone is not enough here — all packages
+share one version, which does not move between builds of unreleased code — so the image also
+stamps a build id at build time (``AGENTSHIP_BUILD``, typically a git sha or a timestamp).
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ PACKAGES = (
     "agentship-service",
     "agentship-cli",
     "agentship-observability",
+    "agentship-voice",
 )
 
 

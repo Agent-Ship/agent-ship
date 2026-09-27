@@ -92,7 +92,19 @@ they were written before the project cut tagged releases.
   backend's documented path with its own credential. "Works across all four" had rested on
   read-back tests that are live-only and skip in CI — asserted, never verified.
 
-## [0.0.3] — 2026-09-15
+### Changed
+- **The next release will be `0.1.0`, not `0.0.4`**, ending the pre-release `0.0.x` line: the
+  packages run real agents end to end, with crash recovery proven against a killed process.
+  `0.x` still means the API may change between minor versions. The version is bumped in the
+  release commit, not before. `RELEASING.md`, ADR 0005, the README and the paper now say seven
+  packages.
+- **That release will include everything under `[0.0.3]` below**, which was prepared but never
+  published. Upgrading from `0.0.2` (the latest on PyPI) gets both sections.
+
+## [0.0.3] — 2026-09-15 — NOT PUBLISHED
+
+Prepared but never tagged or uploaded; nothing at `0.0.3` exists on any index. These
+changes first ship in `0.1.0`.
 
 **Voice, and the conversation memory that never worked.** Adds a seventh distribution,
 `agentship-voice`, and fixes two things in the kernel that were wrong long before it.
