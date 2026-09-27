@@ -93,12 +93,13 @@ class TurnOverrides(BaseModel):
 
 
 class ResumeRequest(BaseModel):
-    """Continue a run that paused (HITL) or crashed, using the token a prior turn returned.
+    """Continue a run that paused (HITL) or crashed.
 
     ``resume_token`` is the ``{engine, blob}`` value handed back in an
-    :class:`InvokeResponse` — echo it back unchanged. ``resume_value`` is the human's
-    decision for a run paused on an ``interrupt`` (e.g. ``{"approved": true}``); omit it
-    for a plain crash-resume.
+    :class:`InvokeResponse` — echo it back unchanged, or omit it. A turn that crashed never
+    returned, so it never handed out a token; ``session_id`` alone is enough to continue it.
+    ``resume_value`` is the human's decision for a run paused on an ``interrupt`` (e.g.
+    ``{"approved": true}``); omit it for a plain crash-resume.
 
     ``session_id`` is required, unlike on :class:`InvokeRequest`: a resume replays a
     specific checkpoint thread, so there is no sensible id to mint — a fresh one would
@@ -112,8 +113,10 @@ class ResumeRequest(BaseModel):
     # 422 problem document naming the bad field. As a bare `dict` it reached
     # `ResumeToken.model_validate` inside the handler, where the ValidationError was nobody's
     # registered error — a 500 that told the caller their own bad input was a server fault.
-    resume_token: ResumeToken = Field(
-        ..., description="The {engine, blob} token from a prior turn."
+    resume_token: ResumeToken | None = Field(
+        default=None,
+        description="The {engine, blob} token from a prior turn; optional — the session "
+        "identifies the run.",
     )
     session_id: str = Field(..., description="The paused run's session (its checkpoint thread).")
     resume_value: Any | None = Field(

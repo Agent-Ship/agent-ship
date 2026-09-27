@@ -65,3 +65,26 @@ def vcr_config():
         ],
         "match_on": ["method", "host", "path", "body"],
     }
+
+
+#: A Postgres the durability tests may create tables in and kill processes against. Unset (the
+#: default, and every laptop without one), those tests skip: the offline suite stays offline.
+#: CI sets it from a service container so the crash-recovery proofs run on every push.
+TEST_POSTGRES_ENV = "AGENTSHIP_TEST_POSTGRES_URI"
+
+
+@pytest.fixture(scope="session")
+def postgres_uri():
+    """The test database's URI with every registered migration applied, or skip.
+
+    Applies the real migrations — the same ones ``agentship db upgrade --allow-migrations``
+    runs — so a test that passes here also proves the DDL a deployment would get.
+    """
+    uri = os.environ.get(TEST_POSTGRES_ENV)
+    if not uri:
+        pytest.skip(f"{TEST_POSTGRES_ENV} not set — no Postgres to test durability against")
+    from agentship_cli.migrations import REGISTERED_MIGRATIONS
+
+    for migration in REGISTERED_MIGRATIONS:
+        migration.apply(uri)
+    return uri

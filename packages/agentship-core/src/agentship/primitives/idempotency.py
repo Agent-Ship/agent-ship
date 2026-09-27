@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import inspect
 import json
+from collections.abc import Awaitable
 from typing import Any, Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel
@@ -67,14 +68,21 @@ class IdempotencyLedger(Protocol):
     in a durable Postgres-backed one under the SAME contract, so the byte-identical
     :func:`idem_key` looks up the same entry across a crash. Just two operations: read an entry,
     write an entry.
+
+    Either operation may be sync or async — :func:`call_once` awaits whatever comes back — because
+    the in-memory ledger has nothing to wait for and a database-backed one has nothing else to do.
     """
 
-    def lookup(self, key: str) -> LedgerEntry | None:
+    def lookup(self, key: str) -> LedgerEntry | None | Awaitable[LedgerEntry | None]:
         """Return the recorded entry for ``key``, or ``None`` if this call has not been seen."""
         ...
 
-    def record(self, key: str, entry: LedgerEntry) -> None:
-        """Persist ``entry`` for ``key`` (overwriting any prior status for that key)."""
+    def record(self, key: str, entry: LedgerEntry) -> None | Awaitable[None]:
+        """Persist ``entry`` for ``key`` (overwriting any prior status for that key).
+
+        A durable implementation must not return until the entry is committed: the ``pending``
+        write-ahead is only worth anything if it is on disk before the side effect fires.
+        """
         ...
 
 
@@ -124,17 +132,17 @@ async def call_once(ledger: IdempotencyLedger, key: str, fn: Any, *, idempotent:
     ``fn`` is a callable object; on the pending path its ``verify()`` is used instead. Either may be
     sync or async. ``ledger`` is the :class:`IdempotencyLedger` (``RunContext.idempotency``).
     """
-    existing = ledger.lookup(key)
+    existing = await _maybe_await(ledger.lookup(key))
     if existing is not None:
         if existing.status == "done":
             return existing.result
         verified = await _maybe_await(fn.verify())
-        ledger.record(key, LedgerEntry(status="done", result=verified))
+        await _maybe_await(ledger.record(key, LedgerEntry(status="done", result=verified)))
         return verified
 
     if not idempotent:
         # write-ahead: the intent is durable before the side effect fires
-        ledger.record(key, LedgerEntry(status="pending"))
+        await _maybe_await(ledger.record(key, LedgerEntry(status="pending")))
     result = await _maybe_await(fn())
-    ledger.record(key, LedgerEntry(status="done", result=result))
+    await _maybe_await(ledger.record(key, LedgerEntry(status="done", result=result)))
     return result

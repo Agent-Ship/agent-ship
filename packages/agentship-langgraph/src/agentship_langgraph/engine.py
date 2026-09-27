@@ -43,7 +43,7 @@ from typing_extensions import TypedDict
 
 from . import models
 from .agent import LangGraphAgent
-from .durability import open_checkpointer
+from .durability import open_checkpointer, open_turn_state
 from .templates import resolve_template
 from .templates.graph_supervisor import INTERNAL_NODES as SUPERVISOR_INTERNAL_NODES
 from .tools import ToolCallLogger
@@ -667,7 +667,7 @@ class LangGraphEngine(Engine):
         _engine_logger.info(
             "checkpoint store=%s thread=%s flush=%s", store, thread_id, _CHECKPOINT_FLUSH_MODE
         )
-        async with open_checkpointer(conninfo) as saver:
+        async with open_turn_state(conninfo, ctx) as saver:
             graph = self._with_checkpointer(compiled, saver)
             resuming = await self._has_history(saver, thread_id)
             return await self._invoke_and_finalize(
@@ -703,9 +703,18 @@ class LangGraphEngine(Engine):
                 f"resume token was minted by engine {token.engine!r} but this is "
                 f"engine {self.name!r} — a token can only be resumed on the engine that minted it"
             )
-        thread_id = token.blob.get("thread_id")
-        if not thread_id:
-            raise ResumeError("resume token carries no thread_id — it cannot be resumed")
+        # The thread comes from WHO IS ASKING, never from the token. A token is a client-held
+        # value with no signature, and its thread id is plainly "tenant/agent/session" — so
+        # trusting it let a caller in one tenant write another tenant's id into a token and
+        # continue, or read, that tenant's conversation. The caller's own tenant, this agent and
+        # the session they name decide the thread; a token that points anywhere else is refused.
+        thread_id = ctx.conversation_key
+        claimed = token.blob.get("thread_id")
+        if claimed and claimed != thread_id:
+            raise ResumeError(
+                f"this resume token belongs to a different conversation than session "
+                f"{ctx.session_id!r} — resume with the session_id of the run that minted it"
+            )
         was_interrupted = token.blob.get("interrupt", False)
         _engine_logger.info(
             "resume thread=%s interrupted=%s resume_value=%s",
@@ -717,7 +726,7 @@ class LangGraphEngine(Engine):
         cfg = self._thread_config(thread_id, compiled.mcp_servers)
         invoke_input = Command(resume=resume_value) if resume_value is not None else None
         async with resolve_thread_lock(ctx.caller.tenant_id, thread_id, conninfo=conninfo):
-            async with open_checkpointer(conninfo) as saver:
+            async with open_turn_state(conninfo, ctx) as saver:
                 graph = self._with_checkpointer(compiled, saver)
                 existing = await graph.aget_state(cfg)
                 if existing is None or existing.created_at is None:
@@ -769,7 +778,7 @@ class LangGraphEngine(Engine):
         # having no idea what it had just said. Streaming is a delivery mode, not a different
         # kind of conversation, so it cannot come with a different set of guarantees.
         thread_id = ctx.conversation_key
-        async with open_checkpointer(self._conninfo()) as saver:
+        async with open_turn_state(self._conninfo(), ctx) as saver:
             graph = self._with_checkpointer(compiled, saver)
             resuming = await self._has_history(saver, thread_id)
             async for event in self._stream_graph(graph, compiled, text, thread_id, resuming):

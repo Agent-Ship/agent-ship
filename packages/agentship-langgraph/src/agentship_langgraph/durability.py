@@ -18,9 +18,11 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
+from agentship.primitives.ledger import open_ledger
 from langgraph.checkpoint.memory import InMemorySaver
 
 if TYPE_CHECKING:  # only for typing; the Postgres saver is imported lazily so a bare install works
+    from agentship.context import RunContext
     from langgraph.checkpoint.base import BaseCheckpointSaver
 
 #: One process-wide in-memory saver for the no-database path. It must be **shared** across
@@ -56,3 +58,23 @@ async def open_checkpointer(
         if setup:
             await saver.setup()
         yield saver
+
+
+@asynccontextmanager
+async def open_turn_state(
+    conninfo: str | None, ctx: RunContext
+) -> AsyncIterator[BaseCheckpointSaver]:
+    """Open a turn's checkpointer AND its tool ledger from the same store; yield the checkpointer.
+
+    The two have to live together. Checkpoints in Postgres with the ledger in memory is the worst
+    mix: a resume in a new process faithfully re-runs the tool step it crashed in, and the empty
+    ledger lets the write fire again. So one ``conninfo`` decides both, and the ledger is bound to
+    ``ctx.idempotency`` — where the tool wrapper reads it — for exactly the length of the turn.
+    """
+    async with open_checkpointer(conninfo) as saver, open_ledger(conninfo) as ledger:
+        previous = ctx.idempotency
+        ctx.idempotency = ledger
+        try:
+            yield saver
+        finally:
+            ctx.idempotency = previous

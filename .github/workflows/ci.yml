@@ -23,6 +23,22 @@ jobs:
   test:
     name: Lint and test (offline)
     runs-on: ubuntu-latest
+    # A real Postgres, so the crash-recovery tests run here instead of skipping: they SIGKILL a
+    # process mid-turn and resume it in a new one, which nothing in-memory can stand in for.
+    # Without AGENTSHIP_TEST_POSTGRES_URI those tests skip, and the rest of the suite stays offline.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: agentship
+          POSTGRES_PASSWORD: agentship
+          POSTGRES_DB: agentship
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U agentship"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      AGENTSHIP_TEST_POSTGRES_URI: postgresql://agentship:agentship@localhost:5432/agentship
     steps:
       - uses: actions/checkout@v4
 

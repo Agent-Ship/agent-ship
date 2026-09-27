@@ -44,11 +44,13 @@ ways, which is the point:
 
 | `AGENT_SESSION_STORE_URI` | Backend | Survives |
 |---|---|---|
-| unset | `InMemorySaver` | in-process `run` → `resume` only |
-| a Postgres URI | `AsyncPostgresSaver` | process death, machine death |
+| unset | `InMemorySaver` + in-memory tool ledger | in-process `run` → `resume` only |
+| a Postgres URI | `AsyncPostgresSaver` + `tool_idempotency_keys` table | process death, machine death |
 
-Postgres needs its tables once. That is a migration, so it never runs silently — opt in via
-`agentship doctor` or first boot, per the project's never-migrate-silently rule.
+Postgres needs its tables once. That is a migration, so it never runs silently:
+`agentship db upgrade --allow-migrations`. And because an unset URI quietly means "in memory",
+`agentship doctor` and `agentship serve` refuse a `durability: checkpoint` agent without one unless
+you pass `--allow-in-memory-durability` — see [durable-resume.md](durable-resume.md).
 
 Note what is deliberately *not* a spec field: LangGraph's checkpoint **flush mode**
 (`sync`/`async`/`exit`). Declaring `durability: checkpoint` means "I want crash safety", not
