@@ -3,8 +3,8 @@ name: Release
 # Releases are cut from a TAG, never from a branch, so what is published is a fixed,
 # named commit that can be checked out again years later.
 #
-#   python scripts/versions.py --set 0.1.0
-#   git commit -am "release: 0.1.0" && git tag v0.1.0 && git push origin v0.1.0
+#   python scripts/versions.py --set 0.1.0, commit "release: 0.1.0", merge it by PR (main is
+#   protected), then tag the merged commit on main: git tag v0.1.0 && git push origin v0.1.0
 #
 # TestPyPI runs on every tag. PyPI runs only after TestPyPI has published AND the
 # packages have been installed back out of it and smoke-tested — a real index resolve,

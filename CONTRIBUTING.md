@@ -36,6 +36,9 @@ agentship verify # offline, keyless honesty check
 
 ## Pull request checklist
 
+`main` is protected: every change lands by pull request, needs one approval from another
+maintainer, and needs both CI checks green. Nobody pushes to `main` directly.
+
 - [ ] Tests cover the new behaviour, and `make test` passes locally.
 - [ ] `agentship verify` still exits `0` (or, if you added an engine capability
       declaration, the corresponding `prove` cell is green).

@@ -55,6 +55,13 @@ This is stated because "0.x means unstable" is a convention, not a rule a resolv
 feature branch  ──►  PR  ──►  main  ──►  tag  ──►  published
 ```
 
+**`main` is protected** (repository ruleset "Protect main"). Every change — a release commit
+included — arrives by pull request, with **one approval from someone other than the author** and
+both CI checks (`Lint and test (offline)`, `Build wheels and test what ships`) green. Nobody can
+push to it directly, force-push it or delete it. Admins can bypass only *within* a pull request,
+for emergencies; a bypass is recorded on the PR. Tags are not branches, so pushing a tag is
+unaffected.
+
 `main` stays releasable at all times, so whatever is on it when you tag is what ships. That
 is the real control point: a fix reaches users because it was merged *and* a tag was cut
 after it — there is no per-fix switch. Merge to `main` only what you would be content to
@@ -131,14 +138,22 @@ python scripts/versions.py --check
 make test
 
 # 3. The release commit does nothing else — the changelog heading, the version lines and the
-#    pins between them.
+#    pins between them. It goes through a PR like any other change (main is protected).
+git switch -c release/0.1.0
 git commit -am "release: 0.1.0"
+git push -u origin release/0.1.0
+gh pr create --title "release: 0.1.0" --body "Version bump and changelog heading only."
+
+# 4. Once it is approved and merged, tag the commit that landed on main — not the branch
+#    commit, which a squash or rebase merge replaces.
+git switch main && git pull
+python scripts/versions.py --check     # must say 0.1.0
 git tag v0.1.0
-git push origin main --tags
+git push origin v0.1.0
 ```
 
-The version commit does nothing else — seven `version =` lines and the pins between them — so
-the tag marks an unambiguous point in history.
+The release commit does nothing else — the changelog heading, seven `version =` lines and the
+pins between them — so the tag marks an unambiguous point in history.
 
 Pushing the tag runs `.github/workflows/release.yml`:
 
