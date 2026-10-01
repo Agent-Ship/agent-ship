@@ -16,16 +16,26 @@ pytest.importorskip("pipecat", reason="needs the [pipecat] extra")
 from agentship_voice.session import _greet, serve_until_done  # noqa: E402
 
 
-class _CapturingPipeline:
-    """Stands in for a pipeline, recording the frames queued into it."""
+def _real_worker():
+    """A real ``PipelineWorker`` over an empty pipeline, with its queue captured.
 
-    def __init__(self) -> None:
-        """Start with nothing queued."""
-        self.frames: list = []
+    Deliberately NOT a stand-in with a `queue_frames` method. The first version of this test
+    used one, and it passed while the production call raised
+    "'Pipeline' object has no attribute 'queue_frames'" on every greeting — the double had the
+    method the real object lacked, so the test confirmed the mistake instead of catching it.
+    Wrapping the genuine class means a greeting queued the wrong way cannot pass here.
+    """
+    from pipecat.pipeline.pipeline import Pipeline
+    from pipecat.pipeline.worker import PipelineWorker
 
-    async def queue_frames(self, frames) -> None:
-        """Record the frames a real pipeline would process."""
-        self.frames.extend(frames)
+    worker = PipelineWorker(Pipeline([]))
+    queued: list = []
+
+    async def capture(frames):
+        queued.extend(frames)
+
+    worker.queue_frames = capture
+    return worker, queued
 
 
 @pytest.mark.asyncio
@@ -42,12 +52,12 @@ async def test_a_greeting_is_framed_as_a_complete_response_so_it_is_actually_spo
         TextFrame,
     )
 
-    pipeline = _CapturingPipeline()
-    await _greet(pipeline, "Hello, how can I help?")
+    worker, queued = _real_worker()
+    await _greet(worker, "Hello, how can I help?")
 
-    kinds = [type(frame) for frame in pipeline.frames]
+    kinds = [type(frame) for frame in queued]
     assert kinds == [LLMFullResponseStartFrame, TextFrame, LLMFullResponseEndFrame]
-    assert pipeline.frames[1].text == "Hello, how can I help?"
+    assert queued[1].text == "Hello, how can I help?"
 
 
 @pytest.mark.asyncio
@@ -78,3 +88,21 @@ async def test_a_session_that_outstays_its_limit_is_closed_rather_than_left_open
     started = asyncio.get_running_loop().time()
     await serve_until_done(forever(), 1, "talker")  # returns rather than raising
     assert asyncio.get_running_loop().time() - started < 5, "the limit was actually enforced"
+
+
+def test_the_greeting_is_queued_on_something_that_can_queue_frames() -> None:
+    """Guards the exact mistake: `Pipeline` has `queue_frame`, not `queue_frames`.
+
+    Greeting through the pipeline raised "'Pipeline' object has no attribute 'queue_frames'"
+    and killed every session with a greeting at its first breath. This pins the API difference
+    itself, so a future refactor that passes the pipeline back in fails here rather than in
+    somebody's microphone.
+    """
+    from pipecat.pipeline.pipeline import Pipeline
+    from pipecat.pipeline.worker import PipelineWorker
+
+    assert not hasattr(Pipeline([]), "queue_frames"), (
+        "if Pipeline ever grows queue_frames, this guard can go — until then the greeting "
+        "must be queued on the worker"
+    )
+    assert hasattr(PipelineWorker(Pipeline([])), "queue_frames")
