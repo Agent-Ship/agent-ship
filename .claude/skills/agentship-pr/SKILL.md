@@ -68,6 +68,14 @@ The template asks for three things. The second is the one people skip and the on
   marked `xfail` is a known limitation; the same limitation unstated is a bug waiting to be
   rediscovered.
 
+**Link the issue by name, not just number.** `Closes #52 — *Nothing in the repo says how to
+file a bug, get help, or open a PR*`. A bare `Closes #52` means nothing in a notification, a
+changelog, or a list of merged PRs six months from now — and naming it also catches the case
+where you linked the wrong issue.
+
+Write the body the way you would explain the change to someone, not as a filled-in form. Same
+rule as issues: prose over headings, specifics over hedging.
+
 Add the `## [Unreleased]` changelog entry. That section *is* the next release's scope, so a
 missing entry means the work ships unannounced — and a tag with no matching section fails the
 release workflow outright.

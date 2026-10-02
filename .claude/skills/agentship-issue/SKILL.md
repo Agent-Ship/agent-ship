@@ -40,7 +40,27 @@ is the failure this project hits most often, and demoting it is how it keeps hap
 A question, or something not yet known to be a bug, belongs in **Discussions**, not Issues. It
 can be promoted later if it turns out to be real.
 
-## Write the report
+## Write it like a person, not a template
+
+This is the part that goes wrong most. An issue is one human telling another what is broken —
+so write it as prose, in the voice you would use explaining it out loud.
+
+What that rules out:
+
+- **Headings on a four-line issue.** "## Problem Statement / ## Impact / ## Acceptance
+  Criteria" on something you could say in a paragraph is ceremony, and it buries the point.
+- **Tables where sentences would do.** A table earns its place when there are genuinely
+  parallel items to compare. Three bullets of prose usually beat it.
+- **Corporate hedging.** "It has been observed that the system may exhibit…" — say "pressing
+  the mic times out".
+- **Restating the title in the first line.** Start with what actually happened.
+
+What to keep: specifics. Numbers, exact error text, the command you ran. Plain language is not
+vague language — "the container crash-looped and `make ui` opened a dead tab" is both human
+and precise.
+
+A `## Done when` checklist at the end is worth having, because it is the one part a reader
+scans later to see whether the issue is finished.
 
 **Title: the symptom, not the theory.** "Voice fails with a timeout when the agent has no
 voice block" — not "accept() called in wrong order". The theory is often wrong; the symptom is

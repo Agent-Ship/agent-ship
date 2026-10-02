@@ -91,14 +91,24 @@ places is the failure this project has actually hit, repeatedly.
 
 | | Holds | Who maintains it |
 |---|---|---|
-| **Milestone** (`v1`, `v2`) | The goal — what "done" means for a version of the product | You, rarely |
+| **Milestone** (`0.1.0`, `1.0.0`) | The goal — what "done" means for a version of the product | You, rarely |
 | **Release** (`0.0.4`, `0.1.0`) | A step on the way to a milestone | Cadence — cut when there is something worth shipping |
 | **`## [Unreleased]`** in the changelog | Exactly what the next release will contain | Every PR, as a side effect |
 
-**A milestone is a destination, not a release scope.** Issues are filed against `v1` or `v2`
-when they are part of that goal, and left unmilestoned when they are not scheduled — an honest
-and common state. A milestone emptying means the *goal* is met, which is when the version
-number moves (`0.x` → `1.0`), not when a routine release is cut.
+**Name a milestone after the version that closes it.** There is only one ladder here — the
+semantic version — and a milestone is a rung you are climbing toward, not a second numbering
+scheme. Calling one `v1` invites the question "is that `0.1.0` or `1.0.0`", and you will answer
+it every time; calling it `0.1.0` answers it once, in the name.
+
+So the two that exist are:
+
+- **`0.1.0`** — everything that must be true to claim "usable, still moving".
+- **`1.0.0`** — everything that must be true to promise a stable API.
+
+**A milestone is a destination, not a release scope.** Issues are filed against one when they
+are part of that goal, and left unmilestoned when they are not scheduled — an honest and
+common state. A milestone emptying means the *goal* is met: the next release is then that
+version. Routine releases in between need no milestone at all.
 
 **Releases do not wait for a milestone.** They are cut on the cadence above: batch routine
 work, ship immediately when the published build is unusable. A release carries whatever is
