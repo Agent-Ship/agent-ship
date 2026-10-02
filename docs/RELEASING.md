@@ -83,33 +83,46 @@ does **not** mean a release per fix. Batch them:
 Releasing on every commit burns numbers and produces an event — six uploads, a tag, a GitHub
 Release, a changelog entry — for changes nobody was waiting on.
 
-## Planning a release — milestones
+## Milestones, releases, and what ships next
 
-A **GitHub milestone per version** (`0.0.4`, `0.1.0`) is the whole planning mechanism. It is
-deliberately the only one: a milestone is attached to issues people already file, so it cannot
-drift from reality the way a separate board does.
+Three artifacts, one job each. The point of keeping them separate is that none of them has to
+be kept in sync with the others by hand — the drift that follows from status living in several
+places is the failure this project has actually hit, repeatedly.
 
-- **Every issue that must ship in a version gets that milestone.** Nothing else does — an
-  unmilestoned issue is simply "not scheduled", which is an honest and common state.
-- **The milestone is the release scope.** When it hits zero open issues, the release is ready
-  to cut. That is the signal, rather than a date or a feeling.
-- **Anything that will not make it gets bumped**, explicitly, to the next milestone. Bumping is
-  normal; silently shipping without it is what makes a milestone meaningless.
-- **A release is cut from `main`** once its milestone is empty and CI is green. See below.
+| | Holds | Who maintains it |
+|---|---|---|
+| **Milestone** (`v1`, `v2`) | The goal — what "done" means for a version of the product | You, rarely |
+| **Release** (`0.0.4`, `0.1.0`) | A step on the way to a milestone | Cadence — cut when there is something worth shipping |
+| **`## [Unreleased]`** in the changelog | Exactly what the next release will contain | Every PR, as a side effect |
+
+**A milestone is a destination, not a release scope.** Issues are filed against `v1` or `v2`
+when they are part of that goal, and left unmilestoned when they are not scheduled — an honest
+and common state. A milestone emptying means the *goal* is met, which is when the version
+number moves (`0.x` → `1.0`), not when a routine release is cut.
+
+**Releases do not wait for a milestone.** They are cut on the cadence above: batch routine
+work, ship immediately when the published build is unusable. A release carries whatever is
+finished at the time, which is why nothing has to be re-milestoned when something slips.
+
+**Nothing separate tracks the next release.** `## [Unreleased]` already accumulates an entry
+per merged PR — it is on the pull-request checklist — so the answer to "what is in the next
+release" is written down continuously by work already being done. Cutting a release renames
+that heading to the version and dates it. A fourth artifact for the same question would only
+be a fourth thing to disagree with the others.
 
 Two labels do real work alongside this:
 
-- `unproven` marks a capability that is built but not proven end to end — it is the `xfail`
-  list, written down. **An `unproven` issue does not block a release**, because the code ships
-  either way; it blocks *claiming* the capability in the README, the docs or the paper.
+- `unproven` marks a capability that is built but not proven end to end — the `xfail` list,
+  written down. **It never blocks a release**, because the code ships either way; it blocks
+  *claiming* the capability in the README, the docs, or the paper.
 - `status:blocked` must name what it is waiting on, in a comment. A blocked issue with no
   stated blocker is how work quietly stops.
 
 ### What does not belong in a milestone
 
-Phases. A phase is a chunk of design work that may span several releases, and tying the two
-together means either releasing half a phase or holding a release for one. Phases live in the
-specs; milestones are about what users receive.
+Phases. A phase is a chunk of design work that may span several releases and several
+milestones; tying them together means either shipping half a phase or holding a release for
+one. Phases live in the specs, with their conformance cells as the proof they are done.
 
 ## Release notes
 

@@ -30,7 +30,11 @@
   <!-- A capability is done when its cell passes, not when a box is ticked. -->
 - [ ] Public surface changes are reflected in `docs/capabilities/`.
 - [ ] `docs/CHANGELOG.md` has an entry under `## [Unreleased]`.
-  <!-- The release workflow publishes this verbatim; a missing section fails the tag. -->
+  <!--
+    This is also how the next release gets its scope: the section accumulates an entry per
+    merged PR, so nothing separate has to track what ships next. The release workflow
+    publishes it verbatim, and a tag with no matching section fails the release.
+  -->
 - [ ] A non-obvious design decision has an ADR in `docs/decisions/`.
 - [ ] Version numbers untouched — releases are cut by tag, never by hand-editing a version.
 
