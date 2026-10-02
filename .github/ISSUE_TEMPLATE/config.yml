@@ -1,0 +1,22 @@
+# Blank issues are off so every report arrives with the context the templates ask for —
+# the version, how it was installed, and the doctor/verify output. Those three answer most
+# of what we would otherwise have to ask for, and asking costs a day each time.
+#
+# The links below are also the "how do I get support" and "how do I report a problem" paths
+# that the JOSS review checklist expects a project to make obvious.
+blank_issues_enabled: false
+contact_links:
+  - name: Question or help using AgentShip
+    url: https://github.com/Agent-Ship/agent-ship/discussions
+    about: >-
+      Ask here rather than opening an issue — usage questions, "is this possible", design
+      discussion, and anything you are not yet sure is a bug.
+
+  - name: Documentation
+    url: https://docs.agent-ship.dev
+    about: Capability guides, architecture decisions, and the released changelog.
+
+  - name: Security vulnerability
+    url: https://github.com/Agent-Ship/agent-ship/security/advisories/new
+    about: >-
+      Report privately, never as a public issue. See the security section in CONTRIBUTING.

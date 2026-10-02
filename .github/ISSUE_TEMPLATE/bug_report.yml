@@ -1,0 +1,96 @@
+name: Bug report
+description: Something behaves differently from what it says it does.
+labels: ["type:bug", "status:triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The fastest fix comes from the two commands below — they answer most of what we would
+        otherwise have to ask you for. Paste their output and we can usually skip a round trip.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you got instead.
+      placeholder: |
+        I pressed the microphone on an agent and got "timed out opening the voice socket".
+        I expected it either to connect or to tell me why it could not.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: >-
+        The smallest sequence that shows it. A spec plus a command beats a description — this
+        project's specs are small enough to paste whole.
+      render: shell
+      placeholder: |
+        # agents/talker.yaml
+        name: talker
+        engine: langgraph
+        model: openai/gpt-4o-mini
+        voice:
+          stt: deepgram
+          tts: openai
+
+        agentship serve --agents-dir agents/
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`agentship doctor --agents-dir <dir>` output"
+      description: >-
+        Doctor answers "can this run *here*" — it names a missing SDK or an unset key, which is
+        the cause of a large share of reports.
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: verify
+    attributes:
+      label: "`agentship verify --agents-dir <dir>` output"
+      description: >-
+        Verify answers "is the spec valid and are the engines honest". If this is red, the
+        problem is usually upstream of whatever you were doing.
+      render: shell
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: >-
+        `pip show agentship-core | grep -i version`. The packages ship in lockstep, so one
+        version describes them all — if yours disagree, say so, because that combination is
+        itself a bug.
+      placeholder: "0.0.3"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How it is installed
+      options:
+        - pip (PyPI)
+        - Docker / docker compose
+        - from source (editable)
+        - other
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python version, and anything unusual about the setup.
+      placeholder: "macOS 15.5, Python 3.13.3"
+    validations:
+      required: false

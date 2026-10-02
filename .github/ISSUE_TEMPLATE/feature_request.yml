@@ -1,0 +1,66 @@
+name: Feature request
+description: Something AgentShip should be able to do and cannot.
+labels: ["type:feature", "status:triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Two questions decide most feature requests here, so they are asked first: **what are
+        you trying to do**, and **does somebody already do it well**. This project integrates
+        rather than reimplements, so "wrap the library that already solves this" is a normal
+        and welcome answer — see
+        [ADR 0001](../../blob/main/docs/decisions/0001-integrate-not-invent.md).
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do
+      description: >-
+        The task, not the mechanism. "I want my agent to remember a user's preferences across
+        weeks" tells us more than "add a vector store", and sometimes has a different answer.
+    validations:
+      required: true
+
+  - type: textarea
+    id: today
+    attributes:
+      label: What happens today
+      description: What you tried, and where it stopped.
+    validations:
+      required: true
+
+  - type: textarea
+    id: prior-art
+    attributes:
+      label: Does something already do this
+      description: >-
+        A library, a provider, a protocol. If yes, the likely shape of the work is an adapter
+        behind an existing seam rather than new machinery — which usually means it lands sooner.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part
+      options:
+        - core (spec, kernel, seams)
+        - langgraph engine
+        - voice
+        - service / Studio
+        - observability
+        - CLI
+        - docs
+        - not sure
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Before submitting
+      options:
+        - label: >-
+            I have checked this is not already tracked in
+            [open issues](../../issues) or listed as not-built in the README's status table.
+          required: true

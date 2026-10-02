@@ -1,0 +1,75 @@
+# The label set, kept in the repo so it is reviewable and reproducible rather than living
+# only in GitHub's settings UI where nobody can see it change.
+#
+# Apply or re-sync with:
+#   gh label create <name> --color <hex> --description <desc> --force
+# or in bulk:
+#   python scripts/labels.py            # reads this file
+#
+# Three axes, deliberately few. A label set large enough to describe everything is one nobody
+# applies consistently, and an inconsistent label is worse than none because it makes a filter
+# silently incomplete.
+
+# --- type: what kind of work is this ---------------------------------------------------------
+- name: "type:bug"
+  color: "d73a4a"
+  description: Behaves differently from what it says it does
+- name: "type:feature"
+  color: "0e8a16"
+  description: Something it should be able to do and cannot
+- name: "type:docs"
+  color: "0075ca"
+  description: Wrong, missing, or describing code that has changed
+- name: "type:chore"
+  color: "cfd3d7"
+  description: Build, CI, dependencies, release plumbing
+
+# --- area: which part. Mirrors the package layout, so a label points at a directory ----------
+- name: "area:core"
+  color: "1d76db"
+  description: Kernel — spec, seams, conformance grid
+- name: "area:langgraph"
+  color: "1d76db"
+  description: Reference engine
+- name: "area:voice"
+  color: "1d76db"
+  description: Speech cascade and its adapters
+- name: "area:service"
+  color: "1d76db"
+  description: REST, SSE, WebSocket, auth, Studio
+- name: "area:observability"
+  color: "1d76db"
+  description: Tracing pipeline and exporters
+- name: "area:cli"
+  color: "1d76db"
+  description: run, serve, doctor, verify, voice
+- name: "area:demo"
+  color: "1d76db"
+  description: The demo repository
+
+# --- status: where it is. Only states that change what happens next --------------------------
+- name: "status:triage"
+  color: "fbca04"
+  description: Not yet assessed — applied automatically by the issue templates
+- name: "status:accepted"
+  color: "0e8a16"
+  description: Agreed and ready to be picked up
+- name: "status:blocked"
+  color: "b60205"
+  description: Waiting on something outside this issue — say what, in a comment
+- name: "status:needs-info"
+  color: "fbca04"
+  description: Cannot proceed until the reporter answers
+
+# --- the few that carry real meaning here -----------------------------------------------------
+- name: "unproven"
+  color: "e99695"
+  # Kept to one line: GitHub rejects a label description over 100 characters with a bare
+  # "HTTP 422 Validation Failed", which says nothing about which field was wrong.
+  description: "Built but not proven end to end — the xfail list"
+- name: "good first issue"
+  color: "7057ff"
+  description: Small, well-bounded, no deep context needed
+- name: "joss"
+  color: "5319e7"
+  description: Required for or raised during JOSS review

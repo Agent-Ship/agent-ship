@@ -83,6 +83,34 @@ does **not** mean a release per fix. Batch them:
 Releasing on every commit burns numbers and produces an event — six uploads, a tag, a GitHub
 Release, a changelog entry — for changes nobody was waiting on.
 
+## Planning a release — milestones
+
+A **GitHub milestone per version** (`0.0.4`, `0.1.0`) is the whole planning mechanism. It is
+deliberately the only one: a milestone is attached to issues people already file, so it cannot
+drift from reality the way a separate board does.
+
+- **Every issue that must ship in a version gets that milestone.** Nothing else does — an
+  unmilestoned issue is simply "not scheduled", which is an honest and common state.
+- **The milestone is the release scope.** When it hits zero open issues, the release is ready
+  to cut. That is the signal, rather than a date or a feeling.
+- **Anything that will not make it gets bumped**, explicitly, to the next milestone. Bumping is
+  normal; silently shipping without it is what makes a milestone meaningless.
+- **A release is cut from `main`** once its milestone is empty and CI is green. See below.
+
+Two labels do real work alongside this:
+
+- `unproven` marks a capability that is built but not proven end to end — it is the `xfail`
+  list, written down. **An `unproven` issue does not block a release**, because the code ships
+  either way; it blocks *claiming* the capability in the README, the docs or the paper.
+- `status:blocked` must name what it is waiting on, in a comment. A blocked issue with no
+  stated blocker is how work quietly stops.
+
+### What does not belong in a milestone
+
+Phases. A phase is a chunk of design work that may span several releases, and tying the two
+together means either releasing half a phase or holding a release for one. Phases live in the
+specs; milestones are about what users receive.
+
 ## Release notes
 
 **`docs/CHANGELOG.md` is the source; the GitHub release page is a copy of it.** Writing notes

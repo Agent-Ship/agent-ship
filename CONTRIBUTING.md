@@ -6,6 +6,20 @@ them*, and its correctness rule is *declare, don't fake*: every capability an
 engine advertises must be provable by the shipped conformance grid. Contributions
 that respect both rules are the easiest to merge.
 
+## Reporting a problem, or asking for help
+
+Three doors, and picking the right one is most of what makes a report useful:
+
+| | |
+|---|---|
+| **Something is broken** | [Open a bug report](https://github.com/Agent-Ship/agent-ship/issues/new?template=bug_report.yml). The form asks for the output of `agentship doctor` and `agentship verify` — those two answer most of what we would otherwise have to come back and ask. |
+| **A question, or not sure it is a bug** | [Discussions](https://github.com/Agent-Ship/agent-ship/discussions). Usage, "is this possible", design arguments. No question is too small, and a question that turns out to be a bug gets promoted to one. |
+| **A security vulnerability** | [Report it privately](https://github.com/Agent-Ship/agent-ship/security/advisories/new) — never as a public issue. See [Reporting security issues](#reporting-security-issues). |
+
+Documentation that is wrong or describes code that has since changed is a **bug**, not a
+chore, and has [its own form](https://github.com/Agent-Ship/agent-ship/issues/new?template=documentation.yml).
+Drift between the docs and the code is the failure this project hits most often.
+
 ## Ways to contribute
 
 - Report a bug or a spec violation the drift guards missed.
