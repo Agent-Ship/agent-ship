@@ -73,6 +73,18 @@ file a bug, get help, or open a PR*`. A bare `Closes #52` means nothing in a not
 changelog, or a list of merged PRs six months from now — and naming it also catches the case
 where you linked the wrong issue.
 
+**The link only works if the PR targets the default branch.** `Closes #53` on a PR based on
+another branch — a stacked PR — is treated as plain text and silently ignored. No error, no
+warning, and the issue shows no link. If you stack a PR, either base it on `main` anyway and
+let the diff narrow when the parent merges, or retarget it before asking anyone to look.
+
+Confirm rather than assume the keyword took:
+
+```bash
+gh api graphql -f query='{repository(owner:"Agent-Ship",name:"agent-ship"){
+  pullRequest(number:NN){closingIssuesReferences(first:5){nodes{number title}}}}}'
+```
+
 Write the body the way you would explain the change to someone, not as a filled-in form. Same
 rule as issues: prose over headings, specifics over hedging.
 
