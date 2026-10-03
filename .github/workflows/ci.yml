@@ -97,7 +97,7 @@ jobs:
       - name: Install build tooling
         run: python -m pip install --upgrade pip build twine
 
-      # Before building anything: the seven versions must match and every sibling
+      # Before building anything: every package's version must match and every sibling
       # dependency must pin exactly that version. A release with one version missed is a
       # broken release that looks fine until somebody installs it.
       - name: Check version lockstep
@@ -164,7 +164,7 @@ jobs:
           /tmp/clean/bin/agentship --help > /dev/null
           /tmp/clean/bin/agentship verify --help > /dev/null
 
-      # Everything above installs all seven with EVERY extra, so observability is always
+      # Everything above installs every package with EVERY extra, so observability is always
       # present and the minimal install is never exercised. That is not a gap in coverage,
       # it is the exact shape 0.0.1 shipped broken in: `provider` defaults to "otel", every
       # agent is traced, and a stack without agentship-observability could not run ANY

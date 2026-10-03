@@ -213,7 +213,7 @@ it works, rather than a spinner:
 
 ## Packages
 
-Seven distributions, released together, one version. Install only what you need.
+Several distributions, released together, one version. Install only what you need.
 
 | Package | What it is |
 |---|---|
@@ -223,7 +223,7 @@ Seven distributions, released together, one version. Install only what you need.
 | [`agentship-service`](https://pypi.org/project/agentship-service/) | The FastAPI app behind `/v1`, plus Studio |
 | [`agentship-observability`](https://pypi.org/project/agentship-observability/) | The OpenTelemetry pipeline and its exporters |
 | [`agentship-cli`](https://pypi.org/project/agentship-cli/) | `agentship run`, `serve`, `verify`, `doctor`, `init` |
-| `agentship-voice` | The same agent over a live audio stream (Pipecat or LiveKit); first published with `0.1.0` |
+| `agentship-voice` | The same agent over a live audio stream (Pipecat or LiveKit); first published with `0.0.3` |
 
 `agentship-core` imports no vendor library. That is what keeps the seams honest: the engine
 can be replaced without touching the kernel, and a conformance matrix fails the build if an
@@ -273,7 +273,7 @@ agentship db upgrade                   # apply checkpoint migrations (gated)
 ## Status
 
 **Early — `0.x`, so the API can change between minor versions.** Pin exactly if that matters
-to you (`agentship-sdk==0.0.2`, the latest on PyPI). The next release will be `0.1.0`; see
+to you (`agentship-sdk==0.0.2`, the latest on PyPI). The next release will be `0.0.3`; see
 [RELEASING](docs/RELEASING.md#versioning).
 
 > **`0.0.1` is yanked.** It reserved the six names on PyPI but could not run an agent —

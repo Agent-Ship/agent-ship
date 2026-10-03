@@ -2,10 +2,9 @@
 
 **Status:** accepted · **Scope:** release engineering (all packages); no phase owns this
 
-> **Updated 2026-09-27.** Two facts below have moved on; the decision has not. The set is now
-> **seven** packages — `agentship-voice` joined the lockstep in `0.0.3` — and the next release
-> will be **`0.1.0`**, ending the pre-release `0.0.x` line. Where the text says "six" or
-> "`0.0.x`", read it as the state when this was decided. Current state:
+> **Updated 2026-10-03.** One fact below has moved on; the decision has not. `agentship-voice`
+> joined the lockstep in `0.0.3`, so where the text says "six" packages, read it as the set when
+> this was decided. The version stays on `0.0.x`; the next release is `0.0.3`. Current state:
 > [RELEASING.md](../RELEASING.md).
 
 ## Context

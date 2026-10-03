@@ -1,6 +1,6 @@
 # Releasing
 
-AgentShip ships as **seven distributions released together**: `agentship-sdk` (the
+AgentShip ships as **a set of distributions released together**: `agentship-sdk` (the
 meta-package) plus `agentship-core`, `-langgraph`, `-service`, `-observability`, `-cli` and
 `-voice`. The authoritative list is `SIBLINGS` in `scripts/versions.py`.
 
@@ -9,7 +9,7 @@ test gate and reaches no index, so `main` is never one accidental push away from
 
 ## Versioning
 
-**One version across all seven**, and every sibling dependency pinned to exactly it.
+**One version across all of them**, and every sibling dependency pinned to exactly it.
 
 They are only ever tested together, so a mixed set is a combination nobody has run. Before
 this was enforced, the meta-package depended on its siblings with no constraint at all —
@@ -17,33 +17,33 @@ this was enforced, the meta-package depended on its siblings with no constraint 
 
 ```bash
 python scripts/versions.py --check       # CI gate; non-zero on any drift
-python scripts/versions.py --set 0.1.0   # bump all seven and every pin at once
+python scripts/versions.py --set 0.0.3   # bump every package and every pin at once
 ```
 
-Never hand-edit a version. Seven hand-edited strings is how a release ships with one missed.
+Never hand-edit a version. A handful of hand-edited strings is how a release ships with one missed.
 
-`--check` verifies the seven agree **with each other**, not that you bumped anything. Ordinary
+`--check` verifies the packages agree **with each other**, not that you bumped anything. Ordinary
 commits never touch a version, so it passes indefinitely while work continues.
 
 ### Where we are
 
-**The latest published release is `0.0.2`. The next release will be `0.1.0`.**
+**The latest published release is `0.0.2`. The next release will be `0.0.3`.**
 
-- The `pyproject.toml` files say `0.0.3`. That release was prepared (its changelog section
-  exists) but never tagged or uploaded; everything in it first ships in `0.1.0`.
+- The `pyproject.toml` files already say `0.0.3`. That release was prepared (its changelog
+  section exists) but never tagged or uploaded, so the number is still free. When it is cut,
+  `## [Unreleased]` is folded into the `[0.0.3]` section so the release notes cover both.
 - The version is changed **only in the release commit**, right before tagging — never in a
   feature PR. Fixes collect under `## [Unreleased]` until then.
 
-`0.1.0` means "usable, still moving": the packages run real agents end to end and are tested
-together, and the API may still change between minor versions (below). Routine releases after
-it are patch releases (`0.1.1`, `0.1.2`, …) until something breaks the API, which takes the
-next minor (`0.2.0`).
+We stay on `0.0.x` while pre-release ([ADR 0005](decisions/0005-lockstep-versioning-and-tag-triggered-releases.md)):
+the packages exist and are tested in the open, and no stability is promised. Releases continue
+as `0.0.4`, `0.0.5`, … Moving to `0.1.0` — "usable, still moving" — is a separate decision.
 
 ### What 0.x will mean
 
-While the version starts with `0.`, **the API can break between minor versions**. `0.2.0`
-may break code written against `0.1.0`. Pin exactly (`agentship-sdk==0.1.0`) if that matters
-to you. From `1.0.0` we follow semantic versioning and breaking changes wait for a major.
+While the version starts with `0.`, **the API can break between releases** — on `0.0.x`, any
+release; from `0.1.0`, between minor versions. Pin exactly (`agentship-sdk==0.0.3`) if that
+matters to you. From `1.0.0` we follow semantic versioning and breaking changes wait for a major.
 
 This is stated because "0.x means unstable" is a convention, not a rule a resolver knows.
 
@@ -70,7 +70,7 @@ publish in the next release.
 A tag points at a commit permanently, so a released tree can always be reconstructed:
 
 ```bash
-git checkout v0.1.0   # exactly what produced those wheels
+git checkout v0.0.3   # exactly what produced those wheels
 ```
 
 **When we would add a release branch — and why we have not.** LangGraph keeps long-lived `0.4`
@@ -78,10 +78,10 @@ and `0.6` branches to patch older lines while `main` moves on. That only matters
 support more than one line at a time. With a single supported line, a hotfix is:
 
 ```bash
-git checkout -b hotfix/0.1.1 v0.1.0   # branch from the released TAG, not main
+git checkout -b hotfix/0.0.4 v0.0.3   # branch from the released TAG, not main
 git cherry-pick <the fix>             # take only that commit
-python scripts/versions.py --set 0.1.1
-git tag v0.1.1 && git push origin v0.1.1
+python scripts/versions.py --set 0.0.4
+git tag v0.0.4 && git push origin v0.0.4
 ```
 
 Reach for that only when `main` has moved somewhere you cannot ship yet. Normally, tag `main`.
@@ -95,7 +95,7 @@ does **not** mean a release per fix. Batch them:
 - **The published build is unusable** — release immediately, even for one commit.
 
 `0.0.1` was the second kind: it could not run an agent at all. Most fixes are the first kind.
-Releasing on every commit burns numbers and produces an event — seven uploads, a tag, a GitHub
+Releasing on every commit burns numbers and produces an event — an upload per package, a tag, a GitHub
 Release, a changelog entry — for changes nobody was waiting on.
 
 ## Release notes
@@ -105,8 +105,8 @@ twice means they disagree, and the copy people actually read — the release pag
 nobody remembers to update.
 
 ```bash
-python scripts/changelog.py --check 0.1.0      # is there a section? (the release gate)
-python scripts/changelog.py --section 0.1.0    # print exactly what the page will show
+python scripts/changelog.py --check 0.0.3      # is there a section? (the release gate)
+python scripts/changelog.py --section 0.0.3    # print exactly what the page will show
 ```
 
 A section is a `## [<version>]` heading and everything up to the next `##`:
@@ -129,37 +129,37 @@ renaming that heading to the version and dating it.
 
 ```bash
 # 1. Notes first — the release gate checks for them, so write them before tagging.
-#    Rename `## [Unreleased]` in docs/CHANGELOG.md to `## [0.1.0] — <date>`.
-python scripts/changelog.py --check 0.1.0
+#    Rename `## [Unreleased]` in docs/CHANGELOG.md to `## [0.0.3] — <date>`.
+python scripts/changelog.py --check 0.0.3
 
-# 2. Version across all seven, plus every sibling pin.
-python scripts/versions.py --set 0.1.0
+# 2. Version across every package, plus every sibling pin.
+python scripts/versions.py --set 0.0.3
 python scripts/versions.py --check
 make test
 
 # 3. The release commit does nothing else — the changelog heading, the version lines and the
 #    pins between them. It goes through a PR like any other change (main is protected).
-git switch -c release/0.1.0
-git commit -am "release: 0.1.0"
-git push -u origin release/0.1.0
-gh pr create --title "release: 0.1.0" --body "Version bump and changelog heading only."
+git switch -c release/0.0.3
+git commit -am "release: 0.0.3"
+git push -u origin release/0.0.3
+gh pr create --title "release: 0.0.3" --body "Version bump and changelog heading only."
 
 # 4. Once it is approved and merged, tag the commit that landed on main — not the branch
 #    commit, which a squash or rebase merge replaces.
 git switch main && git pull
-python scripts/versions.py --check     # must say 0.1.0
-git tag v0.1.0
-git push origin v0.1.0
+python scripts/versions.py --check     # must say 0.0.3
+git tag v0.0.3
+git push origin v0.0.3
 ```
 
-The release commit does nothing else — the changelog heading, seven `version =` lines and the
+The release commit does nothing else — the changelog heading, the `version =` lines and the
 pins between them — so the tag marks an unambiguous point in history.
 
 Pushing the tag runs `.github/workflows/release.yml`:
 
 | Job | What it does | Gate |
 |---|---|---|
-| `build` | lockstep + tag/version check, build all seven, `twine check` | a tag disagreeing with the packages stops here |
+| `build` | lockstep + tag/version check, build every package, `twine check` | a tag disagreeing with the packages stops here |
 | `testpypi` | publish to TestPyPI | every tag |
 | `verify-testpypi` | **install back out of the index** and smoke-test | a pin no resolver can satisfy stops here |
 | `pypi` | publish to PyPI | only after the above passes |
@@ -192,7 +192,7 @@ The `auth` input exists to *test* the two paths, not to choose a strategy:
 Both end at OIDC while no secret exists. Setting `PYPI_API_TOKEN` is what would switch the
 default to token auth; nothing does that today, and nothing should need to.
 
-Configure once per project at <https://pypi.org/manage/account/publishing/>. All seven use
+Configure once per project at <https://pypi.org/manage/account/publishing/>. All of them use
 the same owner/repo/workflow and differ only by **environment**:
 
 | PyPI project | Environment (PyPI) | Environment (TestPyPI) |
@@ -256,7 +256,7 @@ Checked 2026-09-27 against both indexes.
 been uploaded anywhere. `release.yml` publishes it on every tag, and a tag cannot publish a
 project whose trusted publisher does not exist.
 
-### Remaining before `v0.1.0` can succeed
+### Remaining before `v0.0.3` can succeed
 
 - [ ] **Register a pending publisher for `agentship-voice` on TestPyPI**
       (<https://test.pypi.org/manage/account/publishing/>), environment
@@ -264,7 +264,7 @@ project whose trusted publisher does not exist.
       `packages: agentship-voice`, `target: testpypi`.
 - [ ] **The same on PyPI** (<https://pypi.org/manage/account/publishing/>), environment
       `pypi-agentship-voice`, `target: pypi`. PyPI versions are immutable, so claim the name with
-      the version you are about to release, or with a `0.1.0rc1`, never with a throwaway.
+      the version you are about to release, or with a `0.0.3rc1`, never with a throwaway.
 - [ ] **Rehearse** — Actions → Release → Run workflow, `target: testpypi`, `packages: all`.
 
 TestPyPI versions are immutable too, so a rehearsal burns the number it publishes. Rehearse

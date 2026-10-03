@@ -93,18 +93,16 @@ they were written before the project cut tagged releases.
   read-back tests that are live-only and skip in CI — asserted, never verified.
 
 ### Changed
-- **The next release will be `0.1.0`, not `0.0.4`**, ending the pre-release `0.0.x` line: the
-  packages run real agents end to end, with crash recovery proven against a killed process.
-  `0.x` still means the API may change between minor versions. The version is bumped in the
-  release commit, not before. `RELEASING.md`, ADR 0005, the README and the paper now say seven
-  packages.
-- **That release will include everything under `[0.0.3]` below**, which was prepared but never
-  published. Upgrading from `0.0.2` (the latest on PyPI) gets both sections.
+- **The next release is `0.0.3`, still on the pre-release `0.0.x` line.** `0.0.3` was prepared
+  but never published, so the number is free and the packages already carry it. When it is cut,
+  this section is folded into `[0.0.3]` below, so upgrading from `0.0.2` (the latest on PyPI)
+  gets both. `RELEASING.md`, CI and the README no longer state a package count, which went stale
+  each time a package was added.
 
 ## [0.0.3] — 2026-09-15 — NOT PUBLISHED
 
-Prepared but never tagged or uploaded; nothing at `0.0.3` exists on any index. These
-changes first ship in `0.1.0`.
+Prepared but never tagged or uploaded; nothing at `0.0.3` exists on any index yet. These
+changes ship when `0.0.3` is cut, together with `[Unreleased]` above.
 
 **Voice, and the conversation memory that never worked.** Adds a seventh distribution,
 `agentship-voice`, and fixes two things in the kernel that were wrong long before it.
