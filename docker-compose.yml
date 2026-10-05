@@ -44,6 +44,23 @@ services:
       # knowledge — which reads to a user as "I can't browse the web", not as a missing key.
       - FIRECRAWL_API_KEY=${FIRECRAWL_API_KEY:-}
       - BRAVE_API_KEY=${BRAVE_API_KEY:-}
+      # Speech keys for agents with a `voice:` block. These were missing, so a key sitting in
+      # .env never reached the container and the microphone reported
+      # "needs DEEPGRAM_API_KEY to be set" while the variable was right there on the host —
+      # the one failure mode where the message is accurate and still sends you looking in the
+      # wrong place. Every provider the voice package can resolve is listed, so adding a
+      # provider to a spec does not mean editing this file as well.
+      - DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY:-}
+      - CARTESIA_API_KEY=${CARTESIA_API_KEY:-}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
+      - ASSEMBLYAI_API_KEY=${ASSEMBLYAI_API_KEY:-}
+      - GLADIA_API_KEY=${GLADIA_API_KEY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - SPEECHMATICS_API_KEY=${SPEECHMATICS_API_KEY:-}
+      - RIME_API_KEY=${RIME_API_KEY:-}
+      - LMNT_API_KEY=${LMNT_API_KEY:-}
+      - INWORLD_API_KEY=${INWORLD_API_KEY:-}
+      - NEUPHONIC_API_KEY=${NEUPHONIC_API_KEY:-}
       # Where traces go. Every agent is traced; with no exporter named the tree is built and
       # shipped nowhere — which is why Studio turns produced nothing in Opik until this block
       # existed. Set AGENTSHIP_OTEL_EXPORTERS=opik in .env to send them.
@@ -63,10 +80,12 @@ services:
     # Create the checkpoint tables before serving. Without this the first turn against any
     # durable agent fails with `relation "checkpoints" does not exist`. Every migration is
     # idempotent, so running it on each start is a no-op once applied.
-    command: >-
-      sh -c "agentship db upgrade --allow-migrations &&
-             agentship serve --host 0.0.0.0 --port $${PORT}
-               --agents-dir $${AGENTSHIP_AGENTS_DIR} --auth $${AGENTSHIP_AUTH_PROVIDER}"
+    # One line on purpose. As a folded block (`>-`) the continuation was indented further
+    # than the line above it, and YAML keeps the newline on a more-indented line rather than
+    # folding it — so `--agents-dir …` arrived as line 3 of the script and the shell tried to
+    # run it as a command: `sh: 3: --agents-dir: not found`. The container then crash-looped
+    # with the real error scrolled past.
+    command: ["sh", "-c", "agentship db upgrade --allow-migrations && agentship serve --host 0.0.0.0 --port $${PORT} --agents-dir $${AGENTSHIP_AGENTS_DIR} --auth $${AGENTSHIP_AUTH_PROVIDER}"]
     depends_on:
       postgres:
         condition: service_healthy
