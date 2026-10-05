@@ -1,0 +1,29 @@
+name: Documentation problem
+description: Docs that are wrong, missing, or describe something that no longer exists.
+labels: ["type:docs", "status:triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Worth its own template because documentation drift is the failure mode this project
+        hits most: a capability page or README that describes code which has since changed.
+        Those are treated as bugs, not chores.
+
+  - type: input
+    id: where
+    attributes:
+      label: Where
+      description: The page, file or URL.
+      placeholder: "docs/capabilities/voice.md, or https://docs.agent-ship.dev/..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What it says, and what is actually true
+      description: >-
+        If the docs describe behaviour the code no longer has, say which you observed — that
+        tells us whether to fix the page or the code, and occasionally it is the code.
+    validations:
+      required: true
