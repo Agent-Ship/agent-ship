@@ -71,6 +71,21 @@ def _create_checkpoint_tables(database_url: str) -> None:
     asyncio.run(create())
 
 
+def _create_tool_ledger_table(database_url: str) -> None:
+    """Create the tool-idempotency ledger table, idempotently.
+
+    Side-effecting tools write a ``pending`` row before they fire and a ``done`` row after, so a
+    run resumed in a new process replays the recorded result instead of firing again. Until this
+    table exists every side-effecting tool call against a Postgres-backed deployment fails closed
+    (the effect is not run) with a message naming this command.
+    """
+    import asyncio
+
+    from agentship.primitives.ledger import create_ledger_table
+
+    asyncio.run(create_ledger_table(database_url))
+
+
 #: Applied in ``version`` order by ``agentship db upgrade --allow-migrations``. Each entry is
 #: idempotent, so re-running the command is always safe.
 REGISTERED_MIGRATIONS: list[Migration] = [
@@ -78,5 +93,10 @@ REGISTERED_MIGRATIONS: list[Migration] = [
         version="0001_langgraph_checkpoints",
         description="LangGraph checkpointer tables (needed by durability: checkpoint)",
         apply=_create_checkpoint_tables,
+    ),
+    Migration(
+        version="0002_tool_idempotency_keys",
+        description="Tool idempotency ledger (exactly-once side effects across a crash)",
+        apply=_create_tool_ledger_table,
     ),
 ]

@@ -24,6 +24,31 @@ they were written before the project cut tagged releases.
 ## [Unreleased]
 
 ### Fixed
+- **A crash could fire a side-effecting tool twice.** The tool-idempotency ledger lived in a
+  process-wide dict even when checkpoints were in Postgres. A run resumed in a new process
+  faithfully re-ran the tool step it died in, found an empty ledger, and fired the write again —
+  the double refund the ledger exists to prevent. With `AGENT_SESSION_STORE_URI` set the ledger is
+  now the `tool_idempotency_keys` table beside the checkpoints (migration
+  `0002_tool_idempotency_keys`; run `agentship db upgrade --allow-migrations`), its `pending`
+  write-ahead is committed before the effect fires, and a missing table fails the call closed.
+- **One tenant could be served another tenant's tool result.** The ledger key used the
+  client-chosen `session_id`, so two tenants both on `"chat-1"` shared entries and the second
+  tenant's write was answered from the first one's receipt without running. It now uses the
+  `tenant/agent/session` conversation key.
+- **Asking for the same write in a later turn was silently skipped.** The key had no notion of
+  *which* call it was, so a second "refund order 42" looked like a replay. It now includes the
+  graph step, node path and tool-call id: the same on a resume, different on a new turn.
+- **A resume token could be pointed at someone else's conversation.** `:resume` took the
+  checkpoint thread from the client-held token, whose thread id is plain
+  `tenant/agent/session`. The thread now comes from the caller's own tenant and session; a token
+  naming any other thread is refused with 409.
+- **A crashed run could not be resumed at all.** A token is minted when a turn returns, so a
+  process that died mid-turn never handed one out. `resume_token` is now optional on `:resume`
+  and `RunnableAgent.resume`: the session identifies the run.
+- **`durability: checkpoint` fell back to memory without a word.** With no
+  `AGENT_SESSION_STORE_URI`, a durable agent ran on in-memory state and lost everything on
+  restart. `doctor` and `serve` now refuse it before the port binds;
+  `--allow-in-memory-durability` accepts it for local development.
 - **Streaming an agent with a human approval gate crashed.** LangGraph reports a pending
   interrupt on its update stream under `__interrupt__`, whose value is a *tuple* where every
   other update is a node's dict — so the loop reading node updates died on `'tuple' object has
@@ -48,6 +73,10 @@ they were written before the project cut tagged releases.
   thing the attribute exists to tell apart.
 
 ### Added
+- **Crash-recovery tests that actually crash.** A child process running a durable turn against
+  Postgres is `SIGKILL`ed inside a side-effecting tool and resumed by session in a new process;
+  the refund must fire once. A control test removes the ledger rows and shows the same crash then
+  fires twice. CI runs them against a Postgres service container.
 - **A landing page that leads with proof.** The docs front door was a file index; it now opens
   with the `agentship verify` report, one architecture diagram, and an honest per-capability
   status table that says `seam only` and `unproven live` where those are the truth.
@@ -63,7 +92,17 @@ they were written before the project cut tagged releases.
   backend's documented path with its own credential. "Works across all four" had rested on
   read-back tests that are live-only and skip in CI — asserted, never verified.
 
-## [0.0.3] — 2026-09-15
+### Changed
+- **The next release is `0.0.3`, still on the pre-release `0.0.x` line.** `0.0.3` was prepared
+  but never published, so the number is free and the packages already carry it. When it is cut,
+  this section is folded into `[0.0.3]` below, so upgrading from `0.0.2` (the latest on PyPI)
+  gets both. `RELEASING.md`, CI and the README no longer state a package count, which went stale
+  each time a package was added.
+
+## [0.0.3] — 2026-09-15 — NOT PUBLISHED
+
+Prepared but never tagged or uploaded; nothing at `0.0.3` exists on any index yet. These
+changes ship when `0.0.3` is cut, together with `[Unreleased]` above.
 
 **Voice, and the conversation memory that never worked.** Adds a seventh distribution,
 `agentship-voice`, and fixes two things in the kernel that were wrong long before it.

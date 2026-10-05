@@ -18,6 +18,7 @@ from __future__ import annotations
 from contextvars import ContextVar
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -97,6 +98,11 @@ class RunContext:
     #: then falls back to ``spec.model``. Kept a plain string (KISS): routing is a
     #: choice among model ids, so the chosen id is all the adapter needs.
     routed_model: str | None = None
+    #: The tool-idempotency ledger this turn's side-effecting tools write through (DESIGN §13.6):
+    #: an :class:`~agentship.primitives.idempotency.IdempotencyLedger`, bound by the engine for the
+    #: turn from the same store as its checkpoints. ``None`` outside an engine turn, where a tool
+    #: falls back to the in-memory ledger. Typed ``Any`` so this module imports nothing above it.
+    idempotency: Any = None
 
     @property
     def user_id(self) -> str:

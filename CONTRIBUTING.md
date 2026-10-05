@@ -50,6 +50,9 @@ agentship verify # offline, keyless honesty check
 
 ## Pull request checklist
 
+`main` is protected: every change lands by pull request, needs one approval from another
+maintainer, and needs both CI checks green. Nobody pushes to `main` directly.
+
 - [ ] Tests cover the new behaviour, and `make test` passes locally.
 - [ ] `agentship verify` still exits `0` (or, if you added an engine capability
       declaration, the corresponding `prove` cell is green).
@@ -69,7 +72,7 @@ By participating in this project you agree to abide by the
 
 ## Releasing
 
-Six distributions, one version, released together. See [docs/RELEASING.md](docs/RELEASING.md).
+Several distributions, one version, released together. See [docs/RELEASING.md](docs/RELEASING.md).
 
 ```bash
 python scripts/versions.py --check   # never hand-edit a version

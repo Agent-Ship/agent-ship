@@ -144,11 +144,14 @@ async def resume(
     agents: AgentRegistry = Depends(get_agents),
     _limit: None = Depends(enforce_body_limit),
 ) -> InvokeResponse:
-    """Continue a paused or crashed run of agent ``name`` from the token a prior turn returned.
+    """Continue a paused or crashed run of agent ``name`` in the caller's session.
 
     This is what makes the ``resume_token`` in an :class:`InvokeResponse` usable. Without
     it the service handed out a token no endpoint accepted, so a human-in-the-loop agent
-    could pause over HTTP and never be resumed over HTTP.
+    could pause over HTTP and never be resumed over HTTP. The token is optional: a request
+    that died with the process got no response and so no token, and the session is enough
+    to find its checkpoints. The conversation resumed is always the caller's own — a token
+    naming another tenant's or session's thread is refused (409).
 
     Gated by the same ``agent:{name}:invoke`` scope as ``:invoke`` — a resume *is* running
     the agent, so it must not be cheaper to authorize. A token minted by a different engine,

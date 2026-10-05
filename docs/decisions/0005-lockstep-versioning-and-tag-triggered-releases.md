@@ -1,6 +1,11 @@
-# 0005 — One version for all six packages, released from a tag on `main`
+# 0005 — One version for all packages, released from a tag on `main`
 
 **Status:** accepted · **Scope:** release engineering (all packages); no phase owns this
+
+> **Updated 2026-10-03.** One fact below has moved on; the decision has not. `agentship-voice`
+> joined the lockstep in `0.0.3`, so where the text says "six" packages, read it as the set when
+> this was decided. The version stays on `0.0.x`; the next release is `0.0.3`. Current state:
+> [RELEASING.md](../RELEASING.md).
 
 ## Context
 
@@ -58,8 +63,9 @@ stability of any kind is promised.
 A user who has `agentship-core==0.0.4` knows every other AgentShip package they have is `0.0.4`,
 and that the set was tested together. Nobody has to reason about a matrix.
 
-The version on `main` means "the last thing published", not "what this tree is" — those diverge
-the moment work continues after a release, and that is expected rather than drift. `--check` only
+The version on `main` changes only in a release commit, so it names a release, not "what this
+tree is" — the two diverge the moment work continues after a release, and that is expected rather
+than drift. `--check` only
 enforces the six agreeing *with each other*, so ordinary commits never touch a version.
 
 Because a published version can never change, any fix that reaches users needs a new number — but

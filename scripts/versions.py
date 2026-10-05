@@ -1,4 +1,4 @@
-"""Keep the six package versions, and the pins between them, in lockstep.
+"""Keep the package versions, and the pins between them, in lockstep.
 
 These packages are released together and only ever tested together. Nothing stops them
 drifting apart, and two things go wrong when they do:
@@ -6,10 +6,10 @@ drifting apart, and two things go wrong when they do:
 * a user installs ``agentship==0.2.0`` and resolves ``agentship-core==0.9.0``, because
   the meta-package depended on its siblings with no version constraint at all — a
   combination nobody has ever run;
-* six hand-edited version strings mean a release where one was missed, which is a broken
+* hand-edited version strings mean a release where one was missed, which is a broken
   release that looks fine until someone installs it.
 
-So: one version across all six, every sibling dependency pinned to exactly it.
+So: one version across every package in SIBLINGS, each sibling dependency pinned to exactly it.
 
     python scripts/versions.py --check        # CI gate; non-zero on any drift
     python scripts/versions.py --set 0.1.0    # bump everything at once
@@ -87,7 +87,7 @@ def check() -> int:
     versions = {path.parent.name: declared_version(path) for path in pyprojects()}
 
     if len(set(versions.values())) != 1:
-        problems.append("the six versions are not identical:")
+        problems.append(f"the {len(versions)} versions are not identical:")
         problems += [f"    {name:24} {version}" for name, version in sorted(versions.items())]
 
     expected = next(iter(versions.values()))

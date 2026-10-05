@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 from .context import Caller, RunContext, RunMode, current_run
 from .engines.base import ENGINES, Event, Result, ResumeToken, assert_spec_supported
-from .errors import EngineNotFoundError, SpecError
+from .errors import CapabilityError, EngineNotFoundError, ResumeError, SpecError
 from .observability import (
     NoOpObserver,
     Observer,
@@ -259,7 +259,7 @@ class RunnableAgent:
 
     async def resume(
         self,
-        token: ResumeToken,
+        token: ResumeToken | None = None,
         *,
         resume_value: Any = None,
         caller: Caller | None = None,
@@ -281,7 +281,24 @@ class RunnableAgent:
         ``agent.engine.resume(agent.compiled, …)`` and hand-build a ``RunContext``. That
         is also why the HTTP service could not offer a resume endpoint before: there was
         no public operation to expose.
+
+        ``token`` may be omitted: the session alone identifies the run. That is the only way
+        back from a crash — a token is minted when a turn *returns*, so a process that dies
+        mid-turn never hands one out, while its checkpoints are already in the store. Either
+        way the conversation resumed is the caller's own; a token cannot point elsewhere.
         """
+        if session_id is None:
+            raise ResumeError(
+                "resume needs the session_id of the run to continue — a fresh session has "
+                "nothing to resume"
+            )
+        if self.spec.durability == "none":
+            raise CapabilityError(
+                f"agent {self.spec.name!r} does not declare `durability: checkpoint`, so its "
+                f"runs are not resumable — add it to the spec to make them so"
+            )
+        if token is None:
+            token = ResumeToken(engine=self.engine.name, blob={})
         ctx = self._make_context(
             "", caller=_caller_for(caller, user_id), session_id=session_id, mode=RunMode.INVOKE
         )

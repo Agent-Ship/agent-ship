@@ -228,13 +228,46 @@ def test_resume_on_a_non_durable_engine_is_a_clean_error() -> None:
     assert response.json()["code"] == "unsupported"
 
 
-def test_resume_rejects_a_body_without_a_token() -> None:
-    """A resume with no token is a malformed request, not an empty resume."""
+def test_resume_without_a_token_continues_the_session() -> None:
+    """The token is optional: the session identifies the run.
+
+    A request that died with the server got no response, so the client never received a token —
+    and used to have no way back, although the run's checkpoints were already stored.
+    """
+    client = _pausing_client()
+    paused = client.post(
+        "/v1/agents/drafter:invoke", json={"input": "email bob"}, headers={"x-api-key": "full"}
+    ).json()
+
+    resumed = client.post(
+        "/v1/agents/drafter:resume",
+        json={"session_id": paused["session_id"], "resume_value": {"approved": True}},
+        headers={"x-api-key": "full"},
+    )
+
+    assert resumed.status_code == 200, resumed.text
+    assert resumed.json()["output"] == "sent, approved=True"
+
+
+def test_resume_without_a_session_is_malformed() -> None:
+    """The session is what names the run, so a body without one is a 422 — never a guess."""
+    client = _pausing_client()
+    response = client.post(
+        "/v1/agents/drafter:resume",
+        json={"resume_value": {"approved": True}},
+        headers={"x-api-key": "full"},
+    )
+    assert response.status_code == 422
+
+
+def test_resume_of_a_non_durable_agent_is_refused() -> None:
+    """An agent that never declared durability has nothing resumable — 400, not a fake resume."""
     client = _client()
     response = client.post(
         "/v1/agents/support:resume", json={"session_id": "s1"}, headers={"X-API-Key": "full"}
     )
-    assert response.status_code == 422
+    assert response.status_code == 400
+    assert "durability" in response.json()["detail"]
 
 
 def test_a_finished_durable_run_is_not_reported_as_paused() -> None:
@@ -311,7 +344,11 @@ def _pausing_client() -> TestClient:
     from agentship.engines.base import ENGINES
 
     ENGINES.register("pausing", _PausingEngine)
-    agents = AgentRegistry([build_agent(AgentSpec(name="drafter", engine="pausing"))])
+    # durability: checkpoint, because only a durable agent is handed a resume token — the real
+    # engine mints none otherwise, and resume refuses an agent that never declared it.
+    agents = AgentRegistry(
+        [build_agent(AgentSpec(name="drafter", engine="pausing", durability="checkpoint"))]
+    )
     auth = ApiKeyAuthProvider(EnvApiKeyStore(raw=_KEYS))
     return TestClient(create_app(auth=auth, agents=agents))
 

@@ -17,7 +17,7 @@ import pytest
 from agentship import ResumeToken as ExportedResumeToken
 from agentship.context import Caller, RunContext, RunMode
 from agentship.engines.base import Engine, EngineCapabilities, Result, ResumeToken
-from agentship.errors import CapabilityError
+from agentship.errors import CapabilityError, ResumeError
 
 
 def _ctx() -> RunContext:
@@ -146,3 +146,68 @@ async def test_runnable_agent_exposes_resume_as_a_public_operation():
         assert done.output == "decided={'approved': True} on=s-42"
     finally:
         ENGINES._providers.pop("pausing", None)
+
+
+# ---- resume by session — the way back from a crash ---------------------------------------------
+
+
+class _SessionEngine(_PausingEngine):
+    """Records the token each resume was handed, so a test can see what the runtime built."""
+
+    name = "session_resume"
+    tokens: list = []
+
+    async def resume(self, compiled, token, ctx, *, resume_value=None):
+        type(self).tokens.append(token)
+        return Result(output=f"resumed {ctx.session_id}")
+
+
+def _build(engine_name: str, cls, **spec_fields):
+    from agentship.engines.base import ENGINES
+    from agentship.runtime import build_agent
+    from agentship.spec import AgentSpec
+
+    ENGINES.register(engine_name, cls)
+    return build_agent(AgentSpec(name="p", engine=engine_name, **spec_fields))
+
+
+async def test_resume_without_a_token_resumes_the_named_session():
+    """A crashed turn never returned a token; the session alone must be enough to resume it."""
+    from agentship.engines.base import ENGINES
+
+    _SessionEngine.tokens = []
+    try:
+        agent = _build("session_resume", _SessionEngine, durability="checkpoint")
+        done = await agent.resume(session_id="s-crashed")
+    finally:
+        ENGINES._providers.pop("session_resume", None)
+
+    assert done.output == "resumed s-crashed"
+    assert [(t.engine, t.blob) for t in _SessionEngine.tokens] == [("session_resume", {})]
+
+
+async def test_resume_without_a_session_is_refused():
+    """Without a session there is no run to name — a fresh one would silently resume nothing."""
+    from agentship.engines.base import ENGINES
+
+    try:
+        agent = _build("session_resume", _SessionEngine, durability="checkpoint")
+        with pytest.raises(ResumeError, match="session_id"):
+            await agent.resume(ResumeToken(engine="session_resume", blob={}))
+    finally:
+        ENGINES._providers.pop("session_resume", None)
+
+
+async def test_resume_of_an_agent_that_never_declared_durability_is_refused():
+    """The engine can checkpoint, but THIS agent never asked to be resumable — refuse, don't fake.
+
+    Negative control: the identical agent with ``durability: checkpoint`` resumes (test above).
+    """
+    from agentship.engines.base import ENGINES
+
+    try:
+        agent = _build("session_resume", _SessionEngine)
+        with pytest.raises(CapabilityError, match="durability"):
+            await agent.resume(session_id="s-1")
+    finally:
+        ENGINES._providers.pop("session_resume", None)

@@ -226,10 +226,44 @@ def _check_agent(path: Path, *, check_environment: bool = True) -> str | None:
     # nothing to validate a spec against.
     if not check_environment:
         return None
+    durability_reason = _check_durability_store(spec)
+    if durability_reason is not None:
+        return durability_reason
     autonomous_reason = _check_autonomous_version(spec)
     if autonomous_reason is not None:
         return autonomous_reason
     return _check_mcp_version(spec)
+
+
+#: Set to ``1`` (or pass ``--allow-in-memory-durability``) to let a durable agent pass the doctor
+#: gate with no store configured — for a laptop, where losing a run on restart is fine.
+ENV_ALLOW_IN_MEMORY_DURABILITY = "AGENTSHIP_ALLOW_IN_MEMORY_DURABILITY"
+
+
+def _check_durability_store(spec) -> str | None:
+    """Refuse a durable agent that has nowhere durable to keep its runs.
+
+    ``durability: checkpoint`` is a promise that a run survives the process dying. With no
+    ``AGENT_SESSION_STORE_URI`` the engine quietly falls back to an in-memory checkpointer and
+    ledger, which die with the process — the promise is broken silently, and the first anyone
+    hears of it is a crashed run that cannot be resumed. So it is refused here, before the port
+    binds, unless the operator explicitly accepts in-memory state for development.
+
+    Environment-only, like the SDK and key checks: ``verify`` skips it, because the spec is
+    right and it is this machine that is missing a store.
+    """
+    if getattr(spec, "durability", "none") == "none":
+        return None
+    if os.environ.get("AGENT_SESSION_STORE_URI"):
+        return None
+    if os.environ.get(ENV_ALLOW_IN_MEMORY_DURABILITY) == "1":
+        return None
+    return (
+        f"declares `durability: {spec.durability}` but AGENT_SESSION_STORE_URI is not set, so "
+        "its runs would live in memory and be lost on a crash or restart — set it to a Postgres "
+        "URL (then run `agentship db upgrade --allow-migrations`), or pass "
+        "--allow-in-memory-durability for local development"
+    )
 
 
 def _check_voice(spec, *, check_environment: bool = True) -> str | None:
@@ -352,7 +386,15 @@ def _agent_files(agents_dir: Path) -> list[Path]:
 @click.option(
     "--debug", is_flag=True, help="Re-raise on an unexpected failure for the full traceback."
 )
-def doctor(target: str | None, agents_dir: str | None, debug: bool) -> None:
+@click.option(
+    "--allow-in-memory-durability",
+    "allow_in_memory_durability",
+    is_flag=True,
+    help="Accept durable agents with no AGENT_SESSION_STORE_URI (dev: runs are lost on restart).",
+)
+def doctor(
+    target: str | None, agents_dir: str | None, debug: bool, allow_in_memory_durability: bool
+) -> None:
     """Validate agent specs against their engines' declared capabilities.
 
     Give either a single spec FILE or ``--agents-dir DIR`` (default ``./agents``).
@@ -365,7 +407,12 @@ def doctor(target: str | None, agents_dir: str | None, debug: bool) -> None:
     a bad YAML, an unknown field, an engine whose package is not installed (the
     reason names the exact ``pip install`` fix), or a capability mismatch. Pass
     ``--debug`` to re-raise an *unexpected* error with its full traceback.
+
+    A durable agent with no ``AGENT_SESSION_STORE_URI`` fails unless
+    ``--allow-in-memory-durability`` is passed; see :func:`_check_durability_store`.
     """
+    if allow_in_memory_durability:
+        os.environ[ENV_ALLOW_IN_MEMORY_DURABILITY] = "1"
     try:
         files = _resolve_doctor_targets(target, agents_dir)
     except AgentShipError as exc:
@@ -621,6 +668,12 @@ def _scaffold_agent(name: str, template: str, agents_dir: Path, *, force: bool) 
     show_default="info (or $AGENTSHIP_LOG_LEVEL)",
     help="Log level for the agentship.* loggers: debug | info | warning | error.",
 )
+@click.option(
+    "--allow-in-memory-durability",
+    "allow_in_memory_durability",
+    is_flag=True,
+    help="Accept durable agents with no AGENT_SESSION_STORE_URI (dev: runs are lost on restart).",
+)
 def serve(
     host: str,
     port: int,
@@ -630,6 +683,7 @@ def serve(
     auth_provider: str,
     env_file: str | None,
     log_level: str,
+    allow_in_memory_durability: bool,
 ) -> None:
     """Serve the agents in AGENTS-DIR over the secure ``/v1`` REST/SSE/WS surface.
 
@@ -642,7 +696,13 @@ def serve(
     ``--host`` defaults to loopback (``127.0.0.1``) so a bare ``agentship serve`` is not
     network-exposed. ``--reload`` (dev) and ``--workers>1`` (prod) are mutually exclusive —
     a uvicorn constraint — and passing both is a usage error (exit ``2``).
+
+    A ``durability: checkpoint`` agent with no ``AGENT_SESSION_STORE_URI`` fails the gate: its
+    runs would silently live in memory. ``--allow-in-memory-durability`` accepts that for dev.
     """
+    if allow_in_memory_durability:
+        # Through the environment, so --reload and --workers children inherit the decision.
+        os.environ[ENV_ALLOW_IN_MEMORY_DURABILITY] = "1"
     if reload and workers and workers > 1:
         raise click.UsageError(
             "--reload and --workers>1 are mutually exclusive (uvicorn constraint)"

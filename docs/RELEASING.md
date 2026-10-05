@@ -1,14 +1,15 @@
 # Releasing
 
-AgentShip ships as **six distributions released together**: `agentship-sdk` (the meta-package)
-plus `agentship-core`, `-langgraph`, `-service`, `-observability` and `-cli`.
+AgentShip ships as **a set of distributions released together**: `agentship-sdk` (the
+meta-package) plus `agentship-core`, `-langgraph`, `-service`, `-observability`, `-cli` and
+`-voice`. The authoritative list is `SIBLINGS` in `scripts/versions.py`.
 
 Pushing a tag matching `v*` is the only thing that publishes. Pushing to a branch runs the
 test gate and reaches no index, so `main` is never one accidental push away from a release.
 
 ## Versioning
 
-**One version across all six**, and every sibling dependency pinned to exactly it.
+**One version across all of them**, and every sibling dependency pinned to exactly it.
 
 They are only ever tested together, so a mixed set is a combination nobody has run. Before
 this was enforced, the meta-package depended on its siblings with no constraint at all —
@@ -16,26 +17,33 @@ this was enforced, the meta-package depended on its siblings with no constraint 
 
 ```bash
 python scripts/versions.py --check       # CI gate; non-zero on any drift
-python scripts/versions.py --set 0.0.2   # bump all six and every pin at once
+python scripts/versions.py --set 0.0.3   # bump every package and every pin at once
 ```
 
-Never hand-edit a version. Six hand-edited strings is how a release ships with one missed.
+Never hand-edit a version. A handful of hand-edited strings is how a release ships with one missed.
 
-`--check` verifies the six agree **with each other**, not that you bumped anything. Ordinary
+`--check` verifies the packages agree **with each other**, not that you bumped anything. Ordinary
 commits never touch a version, so it passes indefinitely while work continues.
 
-### Where we are: `0.0.x`
+### Where we are
 
-**We are on `0.0.x` and staying there for now.** The phases that define v0.1 are still in
-flight, and `0.1.0` is a claim — "usable, still moving" — the tree cannot make yet. `0.0.x`
-says what is true: the packages exist, they are being tested in the open, and nothing is
-promised. The next release is `0.0.2`.
+**The latest published release is `0.0.2`. The next release will be `0.0.3`.**
+
+- The `pyproject.toml` files already say `0.0.3`. That release was prepared (its changelog
+  section exists) but never tagged or uploaded, so the number is still free. When it is cut,
+  `## [Unreleased]` is folded into the `[0.0.3]` section so the release notes cover both.
+- The version is changed **only in the release commit**, right before tagging — never in a
+  feature PR. Fixes collect under `## [Unreleased]` until then.
+
+We stay on `0.0.x` while pre-release ([ADR 0005](decisions/0005-lockstep-versioning-and-tag-triggered-releases.md)):
+the packages exist and are tested in the open, and no stability is promised. Releases continue
+as `0.0.4`, `0.0.5`, … Moving to `0.1.0` — "usable, still moving" — is a separate decision.
 
 ### What 0.x will mean
 
-While the version starts with `0.`, **the API can break between minor versions**. `0.2.0`
-may break code written against `0.1.0`. Pin exactly (`agentship-sdk==0.1.0`) if that matters
-to you. From `1.0.0` we follow semantic versioning and breaking changes wait for a major.
+While the version starts with `0.`, **the API can break between releases** — on `0.0.x`, any
+release; from `0.1.0`, between minor versions. Pin exactly (`agentship-sdk==0.0.3`) if that
+matters to you. From `1.0.0` we follow semantic versioning and breaking changes wait for a major.
 
 This is stated because "0.x means unstable" is a convention, not a rule a resolver knows.
 
@@ -47,6 +55,13 @@ This is stated because "0.x means unstable" is a convention, not a rule a resolv
 feature branch  ──►  PR  ──►  main  ──►  tag  ──►  published
 ```
 
+**`main` is protected** (repository ruleset "Protect main"). Every change — a release commit
+included — arrives by pull request, with **one approval from someone other than the author** and
+both CI checks (`Lint and test (offline)`, `Build wheels and test what ships`) green. Nobody can
+push to it directly, force-push it or delete it. Admins can bypass only *within* a pull request,
+for emergencies; a bypass is recorded on the PR. Tags are not branches, so pushing a tag is
+unaffected.
+
 `main` stays releasable at all times, so whatever is on it when you tag is what ships. That
 is the real control point: a fix reaches users because it was merged *and* a tag was cut
 after it — there is no per-fix switch. Merge to `main` only what you would be content to
@@ -55,7 +70,7 @@ publish in the next release.
 A tag points at a commit permanently, so a released tree can always be reconstructed:
 
 ```bash
-git checkout v0.0.2   # exactly what produced those wheels
+git checkout v0.0.3   # exactly what produced those wheels
 ```
 
 **When we would add a release branch — and why we have not.** LangGraph keeps long-lived `0.4`
@@ -63,10 +78,10 @@ and `0.6` branches to patch older lines while `main` moves on. That only matters
 support more than one line at a time. With a single supported line, a hotfix is:
 
 ```bash
-git checkout -b hotfix/0.0.3 v0.0.2   # branch from the released TAG, not main
+git checkout -b hotfix/0.0.4 v0.0.3   # branch from the released TAG, not main
 git cherry-pick <the fix>             # take only that commit
-python scripts/versions.py --set 0.0.3
-git tag v0.0.3 && git push origin v0.0.3
+python scripts/versions.py --set 0.0.4
+git tag v0.0.4 && git push origin v0.0.4
 ```
 
 Reach for that only when `main` has moved somewhere you cannot ship yet. Normally, tag `main`.
@@ -80,7 +95,7 @@ does **not** mean a release per fix. Batch them:
 - **The published build is unusable** — release immediately, even for one commit.
 
 `0.0.1` was the second kind: it could not run an agent at all. Most fixes are the first kind.
-Releasing on every commit burns numbers and produces an event — six uploads, a tag, a GitHub
+Releasing on every commit burns numbers and produces an event — an upload per package, a tag, a GitHub
 Release, a changelog entry — for changes nobody was waiting on.
 
 ## Milestones, releases, and what ships next
@@ -141,8 +156,8 @@ twice means they disagree, and the copy people actually read — the release pag
 nobody remembers to update.
 
 ```bash
-python scripts/changelog.py --check 0.0.2      # is there a section? (the release gate)
-python scripts/changelog.py --section 0.0.2    # print exactly what the page will show
+python scripts/changelog.py --check 0.0.3      # is there a section? (the release gate)
+python scripts/changelog.py --section 0.0.3    # print exactly what the page will show
 ```
 
 A section is a `## [<version>]` heading and everything up to the next `##`:
@@ -165,28 +180,37 @@ renaming that heading to the version and dating it.
 
 ```bash
 # 1. Notes first — the release gate checks for them, so write them before tagging.
-#    Rename `## [Unreleased]` in docs/CHANGELOG.md to `## [0.0.2] — <date>`.
-python scripts/changelog.py --check 0.0.2
+#    Rename `## [Unreleased]` in docs/CHANGELOG.md to `## [0.0.3] — <date>`.
+python scripts/changelog.py --check 0.0.3
 
-# 2. Version across all six, plus every sibling pin.
-python scripts/versions.py --set 0.0.2
+# 2. Version across every package, plus every sibling pin.
+python scripts/versions.py --set 0.0.3
 python scripts/versions.py --check
 make test
 
-# 3. The release commit does nothing else — six version lines and the pins between them.
-git commit -am "release: 0.0.2"
-git tag v0.0.2
-git push origin main --tags
+# 3. The release commit does nothing else — the changelog heading, the version lines and the
+#    pins between them. It goes through a PR like any other change (main is protected).
+git switch -c release/0.0.3
+git commit -am "release: 0.0.3"
+git push -u origin release/0.0.3
+gh pr create --title "release: 0.0.3" --body "Version bump and changelog heading only."
+
+# 4. Once it is approved and merged, tag the commit that landed on main — not the branch
+#    commit, which a squash or rebase merge replaces.
+git switch main && git pull
+python scripts/versions.py --check     # must say 0.0.3
+git tag v0.0.3
+git push origin v0.0.3
 ```
 
-The version commit does nothing else — six `version =` lines and the pins between them — so
-the tag marks an unambiguous point in history.
+The release commit does nothing else — the changelog heading, the `version =` lines and the
+pins between them — so the tag marks an unambiguous point in history.
 
 Pushing the tag runs `.github/workflows/release.yml`:
 
 | Job | What it does | Gate |
 |---|---|---|
-| `build` | lockstep + tag/version check, build all six, `twine check` | a tag disagreeing with the packages stops here |
+| `build` | lockstep + tag/version check, build every package, `twine check` | a tag disagreeing with the packages stops here |
 | `testpypi` | publish to TestPyPI | every tag |
 | `verify-testpypi` | **install back out of the index** and smoke-test | a pin no resolver can satisfy stops here |
 | `pypi` | publish to PyPI | only after the above passes |
@@ -219,7 +243,7 @@ The `auth` input exists to *test* the two paths, not to choose a strategy:
 Both end at OIDC while no secret exists. Setting `PYPI_API_TOKEN` is what would switch the
 default to token auth; nothing does that today, and nothing should need to.
 
-Configure once per project at <https://pypi.org/manage/account/publishing/>. All six use
+Configure once per project at <https://pypi.org/manage/account/publishing/>. All of them use
 the same owner/repo/workflow and differ only by **environment**:
 
 | PyPI project | Environment (PyPI) | Environment (TestPyPI) |
@@ -229,6 +253,7 @@ the same owner/repo/workflow and differ only by **environment**:
 | `agentship-service` | `pypi-agentship-service` | `testpypi-agentship-service` |
 | `agentship-observability` | `pypi-agentship-observability` | `testpypi-agentship-observability` |
 | `agentship-cli` | `pypi-agentship-cli` | `testpypi-agentship-cli` |
+| `agentship-voice` | `pypi-agentship-voice` | `testpypi-agentship-voice` |
 | `agentship-sdk` | `pypi-agentship-sdk` | `testpypi-agentship-sdk` |
 
 Owner `Agent-Ship`, repository `agent-ship`, workflow `release.yml` for every row.
@@ -243,7 +268,7 @@ may only publish the project its OIDC token is scoped to.
 Until that exists the publish steps fail — deliberately, rather than falling back to a
 stored secret.
 
-## Claiming the six names the first time
+## Claiming names the first time
 
 PyPI allows at most **three pending trusted publishers at once**, and a pending publisher
 stops counting once it is used — publishing converts it into a normal publisher on the
@@ -256,42 +281,42 @@ project it just created. So the first claim goes in two waves:
 4. Actions -> Release -> Run workflow    packages: <those three>
 ```
 
+That is how the original six were claimed. A package added later (`agentship-voice`) is a
+single pending publisher per index, so it fits in one step: register it, then run the workflow
+with `packages: agentship-voice` against that index.
+
 **The only ordering rule: `agentship-sdk` goes in the second wave.** It pins every sibling,
 so publishing it first would put a distribution on the index whose dependencies cannot be
 resolved. Which of the other five go in which wave does not matter — publishing only
 uploads a file; nothing is resolved until something installs it.
 
-A partial run skips the install-back-out check, since resolving `agentship-sdk` needs all
-six present. Once every project exists, leave `packages` on `all` and it never comes up
+A partial run skips the install-back-out check, since resolving `agentship-sdk` needs every
+sibling present. Once every project exists, leave `packages` on `all` and it never comes up
 again.
 
-## State of the six names
+## State of the names
 
-Checked 2026-09-07 against both indexes and the repo's GitHub settings.
+Checked 2026-09-27 against both indexes.
 
 | | PyPI | TestPyPI |
 |---|---|---|
-| Projects exist | ✅ all six at `0.0.1` | ❌ all six 404 — names free, nothing published |
-| GitHub environments | ✅ `pypi-agentship-*` (six) | ❌ none |
-| Trusted publishers | ✅ working (`0.0.1` published with no secret) | ❌ not registered |
+| The original six | ✅ `0.0.2` live; `0.0.1` yanked | ✅ `0.0.1`, `0.0.2` |
+| `agentship-voice` | ❌ never published — name unclaimed | ❌ never published — name unclaimed |
 
-**A tag today would fail at the `testpypi` job**, before PyPI is touched. That is the
-pipeline behaving correctly — `pypi` requires `testpypi` not to have failed — but it means
-TestPyPI has to be set up before the first tag, not during it.
+`agentship-voice` joined the lockstep set in `0.0.3`, which was never released, so it has never
+been uploaded anywhere. `release.yml` publishes it on every tag, and a tag cannot publish a
+project whose trusted publisher does not exist.
 
-### Remaining before a tag can succeed
+### Remaining before `v0.0.3` can succeed
 
-- [ ] **Register pending publishers on TestPyPI** for all six, at
-      <https://test.pypi.org/manage/account/publishing/>. Same owner/repo/workflow as PyPI,
-      environment `testpypi-<package>`. TestPyPI enforces the same **three pending publishers
-      at a time** limit, so this goes in two waves exactly like the PyPI claim below.
-      GitHub creates the `testpypi-*` environments itself on first run; the publishers are
-      the part that must exist up front.
-- [ ] **Rehearse** — Actions → Release → Run workflow, `target: testpypi`. This publishes to
-      TestPyPI only and runs the install-back-out check. Do this before any tag.
-- [ ] **Yank `0.0.1` on PyPI** — it is live and cannot run an agent. Yanking hides it from
-      every resolver (`pip install agentship-sdk` skips it) without freeing the number, which
-      is burned regardless. Per-project: pypi.org → Manage → Releases → Yank.
+- [ ] **Register a pending publisher for `agentship-voice` on TestPyPI**
+      (<https://test.pypi.org/manage/account/publishing/>), environment
+      `testpypi-agentship-voice`, then Actions → Release → Run workflow with
+      `packages: agentship-voice`, `target: testpypi`.
+- [ ] **The same on PyPI** (<https://pypi.org/manage/account/publishing/>), environment
+      `pypi-agentship-voice`, `target: pypi`. PyPI versions are immutable, so claim the name with
+      the version you are about to release, or with a `0.0.3rc1`, never with a throwaway.
+- [ ] **Rehearse** — Actions → Release → Run workflow, `target: testpypi`, `packages: all`.
 
 TestPyPI versions are immutable too, so a rehearsal burns the number it publishes. Rehearse
 with the version you intend to release and the tag will find it already there — harmless,
@@ -300,10 +325,4 @@ rehearsal's upload rather than the tag's.
 
 **`0.0.1` is permanent and broken.** It shipped before the observability default was fixed,
 so `agentship run` failed on the README's own quickstart. It cannot be replaced — PyPI
-versions are immutable — only superseded by `0.0.2` and yanked.
-
-## When 0.1.0 happens
-
-Not yet, and not by accident. `0.1.0` is the first version that claims to be *usable*, so it
-waits until the v0.1 phase tail is closed — see `.spec-dev/STATUS.md` for what remains. Until
-then every release is `0.0.x`, whatever it contains.
+versions are immutable — so it was superseded by `0.0.2` and yanked.

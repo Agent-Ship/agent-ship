@@ -8,10 +8,12 @@ so vendor imports stay confined to ``agentship-langgraph`` and the core never se
 from __future__ import annotations
 
 import logging
+from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any
 
 from agentship.context import get_run_context
-from agentship.primitives.idempotency import DictLedger, call_once, idem_key
+from agentship.primitives.idempotency import call_once, idem_key
+from agentship.primitives.ledger import MEMORY_LEDGER
 from langchain_core.callbacks import AsyncCallbackHandler
 from langchain_core.tools import StructuredTool
 
@@ -48,11 +50,56 @@ class ToolCallLogger(AsyncCallbackHandler):
         _tool_logger.info("  = %s", _short(getattr(output, "content", output)))
 
 
-#: The write-ahead intent ledger for side-effecting tool calls (Phase 03 · C4). A process-shared
-#: in-memory ledger — like the InMemorySaver singleton, it lets an in-process run→resume see the
-#: recorded "done" entry so a resumed run never re-fires a tool's side effect. A durable
-#: Postgres-backed ledger under the same `IdempotencyLedger` protocol lands in P11 (durable tasks).
-_TOOL_LEDGER = DictLedger()
+#: The model's id for the tool call now executing, set by :class:`_CallAwareTool` for the length
+#: of one invocation. LangChain hands it to ``arun`` and nowhere the tool body can see, so it is
+#: carried here to reach :func:`_call_site`.
+_TOOL_CALL_ID: ContextVar[str | None] = ContextVar("agentship_tool_call_id", default=None)
+
+
+class _CallAwareTool(StructuredTool):
+    """A ``StructuredTool`` that exposes the current tool-call id to its own body.
+
+    The alternative, an ``InjectedToolCallId`` argument, makes LangChain refuse any invocation that
+    is not a full model ``ToolCall`` — which would break every direct ``ainvoke`` of a wrapped tool.
+    """
+
+    async def arun(self, *args: Any, tool_call_id: str | None = None, **kwargs: Any) -> Any:
+        """Run the tool with ``tool_call_id`` visible to :func:`_call_site`."""
+        token = _TOOL_CALL_ID.set(tool_call_id)
+        try:
+            return await super().arun(*args, tool_call_id=tool_call_id, **kwargs)
+        finally:
+            _TOOL_CALL_ID.reset(token)
+
+
+def _call_site() -> str:
+    """Where in the conversation this tool call sits — the ``node_id`` part of its idempotency key.
+
+    The key has to be the SAME when a crashed turn is resumed and DIFFERENT when the user asks for
+    the same write again next turn. Thread, tool and arguments alone cannot tell those apart: a
+    second "refund order 42" in a later turn looked like a replay and got the first refund's
+    receipt back, without a refund. Three things together can:
+
+    - the graph step, which LangGraph numbers across the whole thread — a resume re-runs the step
+      it crashed in, a new turn runs a later one;
+    - the node path (``checkpoint_ns`` with its per-task ids stripped, keeping only node names), so
+      the same step number in a nested graph is a different place;
+    - the model's tool-call id, which separates two identical calls the model makes in one step.
+
+    Outside a graph — a direct ``ainvoke`` — none of these exist and the key falls back to thread,
+    tool and arguments, which is what it was before.
+    """
+    try:
+        from langgraph.config import get_config
+
+        metadata = get_config().get("metadata") or {}
+    except RuntimeError:  # not inside a runnable at all
+        metadata = {}
+    namespace = metadata.get("langgraph_checkpoint_ns") or ""
+    path = "|".join(segment.split(":", 1)[0] for segment in namespace.split("|") if segment)
+    step = metadata.get("langgraph_step")
+    call_id = _TOOL_CALL_ID.get()
+    return f"tool|{path}|{'' if step is None else step}|{call_id or ''}"
 
 
 class _ToolInvocation:
@@ -135,8 +182,10 @@ def to_langchain_tool(tool: Tool, *, confirm_writes: bool = False) -> Structured
       ``interrupt()``\\s with the pending write so a human approves it; a non-``approved`` decision
       returns a "rejected" message and the effect never fires.
     - **Exactly-once** (Phase 03 · C4): execution goes through
-      :func:`~agentship.primitives.idempotency.call_once` keyed by ``idem_key(thread_id, "tool",
-      name, args)`` so a resumed run replays the recorded result instead of re-firing.
+      :func:`~agentship.primitives.idempotency.call_once` keyed by ``idem_key(conversation_key,
+      call_site, name, args)`` (see :func:`_call_site`) and written to the turn's ledger — Postgres
+      when the checkpoints are — so a resumed run replays the recorded result instead of
+      re-firing, even in a process that did not make the original call.
 
     A tool that raises returns :func:`tool_error_message` instead of propagating, so one broken
     tool degrades to something the model can read and recover from rather than crashing the turn.
@@ -164,11 +213,15 @@ def to_langchain_tool(tool: Tool, *, confirm_writes: bool = False) -> Structured
                     return (
                         f"the write to {tool.name!r} was rejected by the human and was not executed"
                     )
-            thread_id = get_run_context().session_id
-            key = idem_key(thread_id, "tool", tool.name, kwargs)
+            ctx = get_run_context()
+            # conversation_key, not session_id: a session id is chosen by the client, so two
+            # tenants that both say "chat-1" would share entries and one would be handed the
+            # other's recorded result instead of running its own write.
+            key = idem_key(ctx.conversation_key, _call_site(), tool.name, kwargs)
+            ledger = ctx.idempotency if ctx.idempotency is not None else MEMORY_LEDGER
             _tool_logger.debug("running %r with idempotency guard (key=%s)", tool.name, key)
             return await call_once(
-                _TOOL_LEDGER, key, _ToolInvocation(tool, dict(kwargs)), idempotent=False
+                ledger, key, _ToolInvocation(tool, dict(kwargs)), idempotent=False
             )
         except GraphBubbleUp:
             raise
@@ -177,7 +230,7 @@ def to_langchain_tool(tool: Tool, *, confirm_writes: bool = False) -> Structured
             _tool_logger.warning("tool %r failed: %s: %s", tool.name, type(exc).__name__, exc)
             return tool_error_message(tool.name, exc)
 
-    return StructuredTool.from_function(
+    return _CallAwareTool.from_function(
         coroutine=_run,
         name=tool.name,
         description=tool.description,
