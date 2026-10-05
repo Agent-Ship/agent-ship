@@ -23,7 +23,97 @@ they were written before the project cut tagged releases.
 
 ## [Unreleased]
 
+Nothing yet — `0.0.4` starts here.
+
+## [0.0.3] — 2026-10-05
+
+**Voice, speech you can interrupt, and a long tail of things that were built but never
+wired.** Adds a seventh distribution, `agentship-voice`, closes the observability and
+service phases, and fixes several defects that held passing tests while being broken in
+use. Upgrading from `0.0.2` — the latest on PyPI — gets all of it.
+
+### Added
+
+- **`agentship-voice`** — talk to an agent. A vendor-free seam (`VoiceTurn`: text in, spoken
+  text out) with adapters for **Pipecat** and **LiveKit**, and 16 speech providers behind a
+  registry (Deepgram, ElevenLabs, Cartesia, AssemblyAI, Gladia, Groq, Speechmatics, OpenAI and
+  more). `pip install "agentship-sdk[voice]"`, then a framework extra.
+- **`WS /v1/agents/{name}/voice`** — voice as a capability of the service you already run: same
+  auth, same registry, same tenant scoping. A browser authenticates over the `bearer`
+  subprotocol, because it cannot set headers on a WebSocket handshake.
+- **`voice:` block on an agent spec** — framework, providers, models, language, endpointing and
+  speech rate, beside `observability:` where the kernel owns the authoring surface.
+- **Studio is a playground** — a microphone above the conversation, per-turn latency with a
+  per-stage breakdown, the agent's declared spec, tool steps that expand to their arguments and
+  results, and a per-turn model override that never touches the spec.
+- **`agentship voice serve` and `agentship voice providers`** — the second answers a question a
+  spec cannot: whether this machine can actually reach the provider you named.
+- **Per-turn timings on every response**, `ttft_ms` kept apart from `total_ms`.
+- **A spoken turn is traced like any other turn.** A `voice.turn` span wraps the ordinary
+  `agent <name>` tree — same inner tree a REST call produces, one honest layer on top — carrying
+  the providers in play, the per-stage timings, and the stage that took the largest share. A
+  barge-in is marked `agentship.voice.cancelled` rather than errored, because being interrupted
+  is the feature working. SEMCONV `0.2.0`, additive: every `0.1.0` name and key is unchanged.
+- **Six voice conformance cells** (`CONF-VOICE-1..6`) — the 850 ms first-audio budget, the
+  latency trace, the span tree, REST/voice parity, framework parity, and barge-in honesty. All
+  keyless, driving a real pipeline with stand-ins that subclass Pipecat's own service classes.
+- **`agent.amend_history()`** — rewrite what an agent is recorded as having said. On LangGraph
+  this replaces the last reply by message id, so `add_messages` updates rather than appends.
+- **`greeting`, `max_session_seconds`, `speak_field` and `fallback_text`** on `voice:`. A voice
+  agent that waits in silence reads as broken; an abandoned browser tab otherwise holds its
+  socket and provider connections forever; a schema'd agent would read its own JSON aloud.
+- **Voice adapters register through `agentship.voice_frameworks` entry points**, the mechanism
+  engines already use, so a third framework is a package rather than a patch here.
+- **A local dev key.** `agentship serve` with no keys configured used to 401 everything,
+  including Studio's own calls. On loopback it now mints one and prints it.
+
+- **Crash-recovery tests that actually crash.** A child process running a durable turn against
+  Postgres is `SIGKILL`ed inside a side-effecting tool and resumed by session in a new process;
+  the refund must fire once. A control test removes the ledger rows and shows the same crash then
+  fires twice. CI runs them against a Postgres service container.
+- **A landing page that leads with proof.** The docs front door was a file index; it now opens
+  with the `agentship verify` report, one architecture diagram, and an honest per-capability
+  status table that says `seam only` and `unproven live` where those are the truth.
+- **Studio badges describe the agent, not the engine.** They were drawn from engine
+  capabilities, so all nine demo agents showed the identical six chips and `assistant`
+  advertised `tools` and `team` while declaring neither. They now show the model, the tools by
+  name, voice, durability and team size — what this agent actually asks for.
+- **Studio suggests what to say.** An agent with no messages showed a blank rectangle; it now
+  shows what the agent is for and three starters derived from the tools it declares, so the
+  suggestions cannot drift into offering a search to an agent that cannot search.
+- **Every tracing backend proves delivery in CI.** Each of Phoenix, Opik, LangSmith and Langfuse
+  now exports a real span to a throwaway in-process collector, asserting it POSTs to that
+  backend's documented path with its own credential. "Works across all four" had rested on
+  read-back tests that are live-only and skip in CI — asserted, never verified.
+
 ### Fixed
+
+- **An agent had no conversation memory — on any path.** The graph's message channel was a
+  plain list with no reducer, so every turn replaced the conversation and the agent began from
+  nothing. P03 had been marked done.
+- **Two tenants could read each other's conversations.** The checkpoint thread was the
+  client-supplied `session_id` alone; it is now keyed by tenant and agent as well. Reachable
+  only once memory worked, and found by adversarially reviewing the fix above.
+- **`[cancelled by user]` never reached the conversation.** The marker was built, tested, and
+  read by nothing, so history kept the full intended reply — the model then believed it had
+  said a sentence the human heard three words of, and opened the next turn with "as I
+  mentioned…". An interrupted turn now rewrites history to what was actually spoken.
+- **Only the first utterance of a session was timed.** A session holds one `VoiceTurn`, and the
+  per-utterance state was never cleared: `llm_ttft_ms` is stamped only while unset, so the
+  latency panel showed one real measurement and then froze, while the transcript accumulated
+  the whole conversation and the barge-in clip point drifted with every exchange.
+- **Recognition and synthesis went unmeasured.** The trace carried the model's two numbers and
+  nothing else, so a turn that felt slow because the recogniser was slow appeared as a fast
+  model and an unexplained wait. Both stages are now attributed, and `total_ms` measures the
+  only thing a human feels: silence to first audio.
+- **Streamed turns were never checkpointed** — `astream` ran with no thread config, so a voice
+  caller had no memory while a text caller did.
+- **The system prompt was stored once per turn**, twelve copies after twelve turns.
+- **A Python MCP server now runs under the interpreter that spawned it**, instead of whatever
+  `python3` PATH resolves to — which outside a virtualenv is a system Python with no `mcp`.
+- **A malformed `resume_token` is a 422, not a 500**, and an unexpected 500 keeps its security
+  headers and trace id.
+
 - **A crash could fire a side-effecting tool twice.** The tool-idempotency ledger lived in a
   process-wide dict even when checkpoints were in Postgres. A run resumed in a new process
   faithfully re-ran the tool step it died in, found an empty ledger, and fired the write again —
@@ -72,105 +162,16 @@ they were written before the project cut tagged releases.
   or failing remote server was indistinguishable from slow code of our own, which is the one
   thing the attribute exists to tell apart.
 
-### Added
-- **Crash-recovery tests that actually crash.** A child process running a durable turn against
-  Postgres is `SIGKILL`ed inside a side-effecting tool and resumed by session in a new process;
-  the refund must fire once. A control test removes the ledger rows and shows the same crash then
-  fires twice. CI runs them against a Postgres service container.
-- **A landing page that leads with proof.** The docs front door was a file index; it now opens
-  with the `agentship verify` report, one architecture diagram, and an honest per-capability
-  status table that says `seam only` and `unproven live` where those are the truth.
-- **Studio badges describe the agent, not the engine.** They were drawn from engine
-  capabilities, so all nine demo agents showed the identical six chips and `assistant`
-  advertised `tools` and `team` while declaring neither. They now show the model, the tools by
-  name, voice, durability and team size — what this agent actually asks for.
-- **Studio suggests what to say.** An agent with no messages showed a blank rectangle; it now
-  shows what the agent is for and three starters derived from the tools it declares, so the
-  suggestions cannot drift into offering a search to an agent that cannot search.
-- **Every tracing backend proves delivery in CI.** Each of Phoenix, Opik, LangSmith and Langfuse
-  now exports a real span to a throwaway in-process collector, asserting it POSTs to that
-  backend's documented path with its own credential. "Works across all four" had rested on
-  read-back tests that are live-only and skip in CI — asserted, never verified.
-
 ### Changed
+
+- **Seven distributions in lockstep**, not six. `agentship-voice` was held back while the phase
+  moved; holding it back also meant nobody could install a working voice agent from an index.
+
 - **The next release is `0.0.3`, still on the pre-release `0.0.x` line.** `0.0.3` was prepared
   but never published, so the number is free and the packages already carry it. When it is cut,
   this section is folded into `[0.0.3]` below, so upgrading from `0.0.2` (the latest on PyPI)
   gets both. `RELEASING.md`, CI and the README no longer state a package count, which went stale
   each time a package was added.
-
-## [0.0.3] — 2026-09-15 — NOT PUBLISHED
-
-Prepared but never tagged or uploaded; nothing at `0.0.3` exists on any index yet. These
-changes ship when `0.0.3` is cut, together with `[Unreleased]` above.
-
-**Voice, and the conversation memory that never worked.** Adds a seventh distribution,
-`agentship-voice`, and fixes two things in the kernel that were wrong long before it.
-
-### Added
-- **`agentship-voice`** — talk to an agent. A vendor-free seam (`VoiceTurn`: text in, spoken
-  text out) with adapters for **Pipecat** and **LiveKit**, and 16 speech providers behind a
-  registry (Deepgram, ElevenLabs, Cartesia, AssemblyAI, Gladia, Groq, Speechmatics, OpenAI and
-  more). `pip install "agentship-sdk[voice]"`, then a framework extra.
-- **`WS /v1/agents/{name}/voice`** — voice as a capability of the service you already run: same
-  auth, same registry, same tenant scoping. A browser authenticates over the `bearer`
-  subprotocol, because it cannot set headers on a WebSocket handshake.
-- **`voice:` block on an agent spec** — framework, providers, models, language, endpointing and
-  speech rate, beside `observability:` where the kernel owns the authoring surface.
-- **Studio is a playground** — a microphone above the conversation, per-turn latency with a
-  per-stage breakdown, the agent's declared spec, tool steps that expand to their arguments and
-  results, and a per-turn model override that never touches the spec.
-- **`agentship voice serve` and `agentship voice providers`** — the second answers a question a
-  spec cannot: whether this machine can actually reach the provider you named.
-- **Per-turn timings on every response**, `ttft_ms` kept apart from `total_ms`.
-- **A spoken turn is traced like any other turn.** A `voice.turn` span wraps the ordinary
-  `agent <name>` tree — same inner tree a REST call produces, one honest layer on top — carrying
-  the providers in play, the per-stage timings, and the stage that took the largest share. A
-  barge-in is marked `agentship.voice.cancelled` rather than errored, because being interrupted
-  is the feature working. SEMCONV `0.2.0`, additive: every `0.1.0` name and key is unchanged.
-- **Six voice conformance cells** (`CONF-VOICE-1..6`) — the 850 ms first-audio budget, the
-  latency trace, the span tree, REST/voice parity, framework parity, and barge-in honesty. All
-  keyless, driving a real pipeline with stand-ins that subclass Pipecat's own service classes.
-- **`agent.amend_history()`** — rewrite what an agent is recorded as having said. On LangGraph
-  this replaces the last reply by message id, so `add_messages` updates rather than appends.
-- **`greeting`, `max_session_seconds`, `speak_field` and `fallback_text`** on `voice:`. A voice
-  agent that waits in silence reads as broken; an abandoned browser tab otherwise holds its
-  socket and provider connections forever; a schema'd agent would read its own JSON aloud.
-- **Voice adapters register through `agentship.voice_frameworks` entry points**, the mechanism
-  engines already use, so a third framework is a package rather than a patch here.
-- **A local dev key.** `agentship serve` with no keys configured used to 401 everything,
-  including Studio's own calls. On loopback it now mints one and prints it.
-
-### Fixed
-- **An agent had no conversation memory — on any path.** The graph's message channel was a
-  plain list with no reducer, so every turn replaced the conversation and the agent began from
-  nothing. P03 had been marked done.
-- **Two tenants could read each other's conversations.** The checkpoint thread was the
-  client-supplied `session_id` alone; it is now keyed by tenant and agent as well. Reachable
-  only once memory worked, and found by adversarially reviewing the fix above.
-- **`[cancelled by user]` never reached the conversation.** The marker was built, tested, and
-  read by nothing, so history kept the full intended reply — the model then believed it had
-  said a sentence the human heard three words of, and opened the next turn with "as I
-  mentioned…". An interrupted turn now rewrites history to what was actually spoken.
-- **Only the first utterance of a session was timed.** A session holds one `VoiceTurn`, and the
-  per-utterance state was never cleared: `llm_ttft_ms` is stamped only while unset, so the
-  latency panel showed one real measurement and then froze, while the transcript accumulated
-  the whole conversation and the barge-in clip point drifted with every exchange.
-- **Recognition and synthesis went unmeasured.** The trace carried the model's two numbers and
-  nothing else, so a turn that felt slow because the recogniser was slow appeared as a fast
-  model and an unexplained wait. Both stages are now attributed, and `total_ms` measures the
-  only thing a human feels: silence to first audio.
-- **Streamed turns were never checkpointed** — `astream` ran with no thread config, so a voice
-  caller had no memory while a text caller did.
-- **The system prompt was stored once per turn**, twelve copies after twelve turns.
-- **A Python MCP server now runs under the interpreter that spawned it**, instead of whatever
-  `python3` PATH resolves to — which outside a virtualenv is a system Python with no `mcp`.
-- **A malformed `resume_token` is a 422, not a 500**, and an unexpected 500 keeps its security
-  headers and trace id.
-
-### Changed
-- **Seven distributions in lockstep**, not six. `agentship-voice` was held back while the phase
-  moved; holding it back also meant nobody could install a working voice agent from an index.
 
 ## [0.0.2] — 2026-09-07
 
