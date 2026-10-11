@@ -179,3 +179,106 @@ def test_the_word_floor_is_reachable_from_a_spec() -> None:
     assert quick.start[0]._min_words == 1
     assert careful.start[0]._min_words == 4
     assert turn_taking(VoiceSpec())[0].start[0]._min_words == 2, "and 2 stays the default"
+
+
+def _guard_and_turn(spoken: list[str]):
+    """An EchoGuard over a turn that has already spoken ``spoken``."""
+    pytest.importorskip("pipecat", reason="needs the [pipecat] extra")
+    from agentship_voice.adapters.pipecat_adapter import _build_echo_guard
+
+    ENGINES.register("longwinded", _LongReply)
+    turn = VoiceTurn(build_agent(AgentSpec(name="t", engine="longwinded", streaming=True)))
+    for text in spoken:
+        turn.confirm_spoken(text)
+    return _build_echo_guard(turn), turn
+
+
+@pytest.mark.asyncio
+async def test_the_agents_own_voice_is_not_treated_as_an_interruption() -> None:
+    """A transcript of what the agent is saying must not reach the turn aggregator.
+
+    These are the real numbers from a session: a SIXTEEN word final transcript arrived while
+    the agent was mid-sentence, which passes any minimum-word floor, and the aggregator
+    broadcast an interruption for it. The agent interrupted itself with its own sentence and
+    the conversation filled with its own words attributed to the human. A word floor cannot
+    help, because the echo is not short — what gives it away is that the words are the agent's.
+    """
+    from pipecat.frames.frames import BotStartedSpeakingFrame, TranscriptionFrame
+    from pipecat.processors.frame_processor import FrameDirection
+
+    guard, _ = _guard_and_turn(["vLLM is an open-source library designed to optimize the "])
+    passed: list[str] = []
+
+    async def _record(frame, direction=None):
+        passed.append(getattr(frame, "text", ""))
+
+    guard.push_frame = _record
+
+    await guard.process_frame(BotStartedSpeakingFrame(), FrameDirection.DOWNSTREAM)
+    echo = TranscriptionFrame(
+        text="vLLM is an open source library designed to optimize the efficient deployment",
+        user_id="u1",
+        timestamp="now",
+    )
+    await guard.process_frame(echo, FrameDirection.DOWNSTREAM)
+
+    assert echo.text not in passed, "the agent's own sentence must not be heard as speech"
+
+
+@pytest.mark.asyncio
+async def test_a_real_interruption_still_gets_through_while_the_agent_speaks() -> None:
+    """Rejecting echo must not reject speech, or barge-in is gone.
+
+    This is the half that makes the guard worth having rather than just muting the microphone
+    while the agent talks, which would stop the echo and stop interruption with it.
+    """
+    from pipecat.frames.frames import BotStartedSpeakingFrame, TranscriptionFrame
+    from pipecat.processors.frame_processor import FrameDirection
+
+    guard, _ = _guard_and_turn(["vLLM is an open-source library designed to optimize the "])
+    passed: list[str] = []
+
+    async def _record(frame, direction=None):
+        passed.append(getattr(frame, "text", ""))
+
+    guard.push_frame = _record
+
+    await guard.process_frame(BotStartedSpeakingFrame(), FrameDirection.DOWNSTREAM)
+    said = "no wait that is not what I asked about"
+    await guard.process_frame(
+        TranscriptionFrame(text=said, user_id="u1", timestamp="now"), FrameDirection.DOWNSTREAM
+    )
+
+    assert said in passed, "a human talking over the agent must still be heard"
+
+
+@pytest.mark.asyncio
+async def test_nothing_is_filtered_once_the_agent_has_stopped_talking() -> None:
+    """Silence cannot echo, so the guard must get out of the way.
+
+    Otherwise a human who answers the agent in its own words — "yes, twelve pounds" — is
+    discarded, and the obvious reply to a question becomes the one thing you cannot say.
+    """
+    from pipecat.frames.frames import (
+        BotStartedSpeakingFrame,
+        BotStoppedSpeakingFrame,
+        TranscriptionFrame,
+    )
+    from pipecat.processors.frame_processor import FrameDirection
+
+    guard, _ = _guard_and_turn(["Twelve pounds."])
+    passed: list[str] = []
+
+    async def _record(frame, direction=None):
+        passed.append(getattr(frame, "text", ""))
+
+    guard.push_frame = _record
+
+    await guard.process_frame(BotStartedSpeakingFrame(), FrameDirection.DOWNSTREAM)
+    await guard.process_frame(BotStoppedSpeakingFrame(), FrameDirection.DOWNSTREAM)
+    await guard.process_frame(
+        TranscriptionFrame(text="twelve pounds", user_id="u1", timestamp="now"),
+        FrameDirection.DOWNSTREAM,
+    )
+
+    assert "twelve pounds" in passed, "agreeing with the agent must not be filtered as echo"

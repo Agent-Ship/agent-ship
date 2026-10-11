@@ -24,6 +24,19 @@ they were written before the project cut tagged releases.
 ## [Unreleased]
 
 ### Fixed
+- **The agent heard itself, and interruption stopped working.** Its own voice came back through
+  the speakers, the recogniser transcribed it faithfully, and the turn aggregator had no way to
+  tell it from speech — a session's logs show a *sixteen word* transcript arriving mid-sentence,
+  which passes any minimum-word floor, so the agent cut itself off with its own words. Browser
+  echo cancellation was already requested and is not sufficient on speakers. A word floor cannot
+  help either, because the echo is not short; what gives it away is that the words are the
+  agent's, which we know exactly, because the witness records every word TTS speaks. An
+  `EchoGuard` between the recogniser and the aggregator now drops a transcript made of the words
+  the agent is currently saying, while letting a human talking over it through. Separately, the
+  demo's `interrupt_min_words: 1` is back to 2: with a streaming recogniser emitting a partial
+  every few hundred milliseconds, a one-word floor made nearly every partial start a fresh turn,
+  each cancelling the last — interruption had not stopped being detected, it never stopped
+  happening.
 - **Voice replies worked but your own questions never appeared on screen.** A regression from
   the turn-taking rework: the agent node announced what it heard from the branch handling
   transcript frames, and the turn aggregator sits upstream of the node and *consumes* those

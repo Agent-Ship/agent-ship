@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 
 from agentship.errors import CapabilityError
@@ -464,3 +465,94 @@ def _build_transport(config: VoiceSpec, vad):
     raise CapabilityError(
         f"unsupported voice transport {config.transport!r} — available: websocket"
     )
+
+
+def _words(text: str) -> list[str]:
+    """Split text into comparable lowercase words, punctuation discarded.
+
+    Compared on words rather than characters because a recogniser and a synthesiser never agree
+    on punctuation or casing: the agent writes "Twelve pounds." and the recogniser hears
+    "twelve pounds". Matching the raw strings would find nothing.
+    """
+    return [word for word in re.split(r"[^\w']+", text.lower()) if word]
+
+
+def _build_echo_guard(turn: VoiceTurn):
+    """Return the ``EchoGuard`` class, bound to Pipecat's base class.
+
+    Defined inside a function for the same reason as the processors above: the base class comes
+    from Pipecat, which may not be installed at module import time.
+    """
+    from pipecat.frames.frames import (
+        BotStartedSpeakingFrame,
+        BotStoppedSpeakingFrame,
+        Frame,
+        InterimTranscriptionFrame,
+        TranscriptionFrame,
+    )
+    from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
+
+    class EchoGuard(FrameProcessor):
+        """Drop transcripts that are the agent's own voice coming back through the microphone.
+
+        This exists because browser echo cancellation is not sufficient on its own. With speakers
+        rather than headphones, the agent's output reaches the microphone, the recogniser
+        transcribes it faithfully, and the turn aggregator upstream has no way to tell it from
+        speech: a log from a real session shows a *sixteen word* final transcript arriving while the
+        agent was mid-sentence, which comfortably passes any minimum-word floor and broadcast an
+        interruption. The agent interrupted itself with its own sentence, and the conversation
+        filled with its own words attributed to the human.
+
+        A word floor cannot fix that, because the echo is not short. What distinguishes echo from
+        speech is not its length but its CONTENT: we know exactly what the agent is saying, because
+        the witness downstream records every word TTS reports speaking. A transcript made of those
+        words, arriving while those words are being spoken, is the speaker feeding back.
+
+        Placed between the recogniser and the turn aggregator deliberately. Rejecting it later is
+        too late — the aggregator broadcasts the interruption the moment it believes a turn has
+        started, so by the time the agent node is handed a turn, its reply has already been
+        cancelled and there is nothing left to save.
+        """
+
+        #: How much of a transcript must be words the agent is currently speaking before it is
+        #: treated as echo. Not 1.0, because a recogniser mishears and drops words, so an exact
+        #: match is rare; not much lower, because a human agreeing with the agent ("yes, twelve
+        #: pounds") genuinely does repeat its words and must still be able to interrupt.
+        OVERLAP = 0.6
+
+        def __init__(self, turn: VoiceTurn) -> None:
+            """Hold the turn whose spoken words are the reference signal."""
+            super().__init__()
+            self._turn = turn
+            self._bot_speaking = False
+
+        async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
+            """Pass everything through, except a transcript that is the agent's own voice."""
+            await super().process_frame(frame, direction)
+
+            if isinstance(frame, BotStartedSpeakingFrame):
+                self._bot_speaking = True
+            elif isinstance(frame, BotStoppedSpeakingFrame):
+                self._bot_speaking = False
+
+            if self._bot_speaking and isinstance(
+                frame, TranscriptionFrame | InterimTranscriptionFrame
+            ):
+                heard = _words(frame.text)
+                # Only the tail of what has been spoken: a long reply would otherwise accumulate
+                # enough vocabulary to match almost anything the human says.
+                spoken = set(_words(" ".join(self._turn.spoken[-3:])))
+                if heard and spoken:
+                    overlap = sum(1 for word in heard if word in spoken) / len(heard)
+                    if overlap >= self.OVERLAP:
+                        logger.debug(
+                            "echo rejected (%.0f%% of %d words are the agent's own): %r",
+                            overlap * 100,
+                            len(heard),
+                            frame.text[:80],
+                        )
+                        return
+
+            await self.push_frame(frame, direction)
+
+    return EchoGuard(turn)
