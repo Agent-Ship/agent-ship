@@ -765,6 +765,22 @@ def _serve(
             f"doctor gate failed: {len(invalid)} invalid agent spec(s) — fix before serving"
         )
 
+    # A broken PROMISE is still fatal, even though it is an environment fact. `durability:
+    # checkpoint` with no store does not fail when you use it — the engine quietly falls back
+    # to memory and the agent runs, looking fine, until a crash eats the run it swore it would
+    # survive. That is the difference from a missing provider key, which fails loudly the first
+    # time you press the microphone: one degrades a feature visibly, the other removes a
+    # guarantee invisibly, and only the second is worth refusing to start over.
+    unkeepable = [(p.name, _check_durability_store(load_spec(p))) for p in specs]
+    unkeepable = [(name, reason) for name, reason in unkeepable if reason is not None]
+    if unkeepable:
+        for name, reason in unkeepable:
+            click.echo(f"✗ {name}: {reason}", err=True)
+        raise AgentShipError(
+            f"doctor gate failed: {len(unkeepable)} agent(s) promise durability this "
+            f"deployment cannot keep — fix before serving"
+        )
+
     # Valid specs this machine cannot fully run: served, and said out loud. Loud because the
     # alternative is a user pressing a microphone and wondering why nothing happens — the
     # answer belongs at startup, next to the thing that can fix it.
