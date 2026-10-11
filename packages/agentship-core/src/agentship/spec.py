@@ -334,6 +334,18 @@ class VoiceSpec(BaseModel):
     #: thought — so an agent would talk over anyone who hesitated mid-sentence. 700ms lets a
     #: person gather their thoughts; lower it for terse exchanges, raise it for slower speakers.
     endpoint_silence_ms: int = Field(default=700, ge=100, le=5000)
+    #: How many words the human must get out before the agent believes it is being interrupted.
+    #: A floor exists because a single syllable is not an interruption: a cough, a doorbell, or
+    #: the agent's own voice returning through the speakers all produce one, and acting on them
+    #: is what made the agent appear to interrupt itself.
+    #:
+    #: The cost is that barge-in cannot be faster than the recogniser's first words, so this
+    #: trades responsiveness against false triggers. **It also depends on the STT**: a streaming
+    #: recogniser reports partial words in a few hundred milliseconds, while a segmented one
+    #: (``openai``, which is REST Whisper) says nothing until it has transcribed a whole chunk,
+    #: and no word floor can be quick on top of that. Pair a low floor with a streaming STT --
+    #: ``deepgram``, or ``openai-realtime``.
+    interrupt_min_words: int = Field(default=2, ge=1, le=10)
     #: Target time-to-first-audio, in milliseconds (DESIGN §8). Recorded so a run can be measured
     #: against the number the design committed to, not against whatever it happens to achieve.
     latency_budget_ms: int = Field(default=850, ge=0)

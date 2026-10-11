@@ -51,8 +51,17 @@ STT_PROVIDERS = {
     "deepgram": _Provider(
         "pipecat.services.deepgram.stt", "DeepgramSTTService", "DEEPGRAM_API_KEY", "deepgram"
     ),
+    # REST Whisper, and segmented: it says nothing until it has transcribed a whole chunk of
+    # audio. Accurate and cheap, but it cannot report partial words, so barge-in on this
+    # provider waits out a full round trip before it knows the human has started talking. Use
+    # `openai-realtime` below for a conversation someone will interrupt.
     "openai": _Provider(
         "pipecat.services.openai.stt", "OpenAISTTService", "OPENAI_API_KEY", "openai"
+    ),
+    # Same vendor and key, streaming over a WebSocket: it reports partial words as they are
+    # spoken, which is what makes an interruption feel immediate rather than considered.
+    "openai-realtime": _Provider(
+        "pipecat.services.openai.stt", "OpenAIRealtimeSTTService", "OPENAI_API_KEY", "openai"
     ),
     "assemblyai": _Provider(
         "pipecat.services.assemblyai.stt",

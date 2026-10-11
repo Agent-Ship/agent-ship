@@ -160,3 +160,22 @@ def test_a_greeting_is_protected_from_its_own_echo_and_silence_is_not() -> None:
     _, silent = turn_taking(VoiceSpec())
     assert greeted, "a greeting must be protected from its own echo"
     assert not silent, "with no greeting there is nothing to protect, and muting loses words"
+
+
+def test_the_word_floor_is_reachable_from_a_spec() -> None:
+    """``interrupt_min_words:`` must change how soon a barge-in is believed.
+
+    The floor was read with ``getattr(config, "interrupt_min_words", None) or 2`` against a
+    field that did not exist on ``VoiceSpec``. It therefore sat at 2 for every agent, and the
+    one lever on how quickly an interruption is noticed could not be moved -- which matters
+    most to anyone who finds barge-in sluggish, because this is the knob they need.
+    """
+    pytest.importorskip("pipecat", reason="needs the [pipecat] extra")
+    from agentship.spec import VoiceSpec
+    from agentship_voice.pipeline import turn_taking
+
+    quick, _ = turn_taking(VoiceSpec(interrupt_min_words=1))
+    careful, _ = turn_taking(VoiceSpec(interrupt_min_words=4))
+    assert quick.start[0]._min_words == 1
+    assert careful.start[0]._min_words == 4
+    assert turn_taking(VoiceSpec())[0].start[0]._min_words == 2, "and 2 stays the default"
