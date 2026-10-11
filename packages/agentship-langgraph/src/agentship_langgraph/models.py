@@ -33,6 +33,7 @@ _PARAM_TO_FIELD = {
     "max_tokens": "max_tokens",
     "api_base": "api_base",
     "timeout": "request_timeout",
+    "streaming": "streaming",
 }
 
 
@@ -56,7 +57,8 @@ def resolve_model(model: str, **params: Any) -> BaseChatModel:
     so a misconfigured spec fails with an actionable message before any provider
     call is attempted.
 
-    The model is built with ``streaming=True``. The engine streams a turn with
+    The model is built with ``streaming=True`` unless the spec says otherwise. The engine
+    streams a turn with
     LangGraph's ``stream_mode="messages"``, which surfaces incremental
     ``AIMessageChunk`` tokens **only when the underlying chat model actually
     streams**. Without ``streaming=True`` ``ChatLiteLLM`` returns one whole
@@ -94,7 +96,12 @@ def resolve_model(model: str, **params: Any) -> BaseChatModel:
     # Ask the provider to report usage in the final stream chunk unless the caller overrode it,
     # so a streamed model span carries the same tokens/cost a non-streamed one does (P07).
     kwargs.setdefault("stream_options", {"include_usage": True})
-    return ChatLiteLLM(model=model, streaming=True, **kwargs)
+    # Streaming defaults ON because that is what makes `--stream` deliver token-by-token
+    # output, and every hosted provider supports it. A spec can turn it OFF, and must when the
+    # endpoint does not really stream — see the `streaming` field on ModelParams for why that
+    # is not merely a cosmetic choice.
+    kwargs.setdefault("streaming", True)
+    return ChatLiteLLM(model=model, **kwargs)
 
 
 #: Provider prefix (the part before the first ``/`` in a LiteLLM model id) → the
