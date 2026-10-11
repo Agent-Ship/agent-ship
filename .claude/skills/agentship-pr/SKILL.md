@@ -13,7 +13,18 @@ description: >-
 `main` is protected and pushing to it directly is blocked. **Branch before committing** —
 `feat/`, `fix/`, `chore/`, `docs/`, `refactor/`.
 
-Two traps that have cost real time here:
+**One commit per PR, and branch from `origin/main`.** PRs are squash-merged, so `main` gets one
+commit either way — a multi-commit branch buys nothing and costs review clarity, because the
+commits a reviewer sees no longer match the diff they read.
+
+- Fixing CI or review feedback → `git commit --amend` and `git push --force-with-lease`. Not a
+  second commit. (Plain `--force` is forbidden.)
+- Base branch moved → `git rebase origin/main`. Not `git merge origin/main`.
+- Never branch off another feature branch. PR #69 was based on `fix/recover-voice-fixes` and
+  arrived carrying eleven commits: seven inherited, a stacked CI fix, and a merge commit from
+  resolving a CHANGELOG conflict the wrong way.
+
+Two further traps that have cost real time here:
 
 - **`git branch X` creates without switching.** Commits then land on the branch you were
   already on, and the push is a silent no-op. Use `git switch -c`.
