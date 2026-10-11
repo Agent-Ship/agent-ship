@@ -32,6 +32,37 @@ from .base import VoiceAdapter
 logger = logging.getLogger("agentship.voice")
 
 
+def _latest_user_text(context) -> str:
+    """Return what the human just said, from the aggregated conversation.
+
+    The aggregator hands over the whole context, not a transcript, so the newest user message is
+    read off the end. Searching backwards rather than taking the last message outright because a
+    context can end with a system or tool message, and answering one of those would mean replying
+    to our own bookkeeping.
+    """
+    try:
+        messages = context.get_messages()
+    except Exception:  # noqa: BLE001 — a context shape we do not know must not kill the turn
+        return ""
+    for message in reversed(messages or []):
+        role = message.get("role") if isinstance(message, dict) else getattr(message, "role", None)
+        if role != "user":
+            continue
+        content = (
+            message.get("content") if isinstance(message, dict) else getattr(message, "content", "")
+        )
+        if isinstance(content, str):
+            return content
+        # Multimodal content arrives as a list of parts; only the text parts are speakable.
+        if isinstance(content, list):
+            return " ".join(
+                part.get("text", "")
+                for part in content
+                if isinstance(part, dict) and part.get("type") == "text"
+            )
+    return ""
+
+
 def _fallback_text(turn: VoiceTurn) -> str:
     """What to say when a turn fails, from the agent's ``voice:`` block.
 
@@ -79,6 +110,7 @@ def _build_processors(turn: VoiceTurn, clock: _TurnClock):
         Frame,
         InterimTranscriptionFrame,
         InterruptionFrame,
+        LLMContextFrame,
         LLMFullResponseEndFrame,
         LLMFullResponseStartFrame,
         OutputTransportMessageFrame,
@@ -98,6 +130,9 @@ def _build_processors(turn: VoiceTurn, clock: _TurnClock):
             super().__init__()
             self._turn = turn
             self._reply: asyncio.Task | None = None
+            #: Whether a reply is still owed. Not the same as the task being alive -- see
+            #: _interrupt for why the task's state cannot be used for this.
+            self._answering = False
 
         async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
             """Answer a finalised transcript; abandon the reply when the human cuts in."""
@@ -118,6 +153,31 @@ def _build_processors(turn: VoiceTurn, clock: _TurnClock):
                 await self.push_frame(frame, direction)
                 return
 
+            if isinstance(frame, LLMContextFrame):
+                # The aggregator upstream has decided the human's turn is OVER and handed us the
+                # conversation — which is precisely the job an LLM service does in a Pipecat
+                # pipeline, and the role this processor plays.
+                #
+                # We react to THIS rather than to a raw transcript because the decision of when a
+                # turn has ended belongs to the aggregator's turn strategies. Acting on
+                # transcripts directly, as this did, meant bypassing them: any sound that
+                # produced words started a reply, including the agent's own voice returning
+                # through the speakers.
+                said = _latest_user_text(frame.context)
+                if not said.strip():
+                    logger.debug("empty turn — no agent call")
+                    return
+                # No "heard" event here: the transcript branch below already sent it, the
+                # moment the words were recognised rather than once the turn was judged over.
+                asr_ms = (
+                    (time.monotonic() - clock.silence_at) * 1000
+                    if clock.silence_at is not None
+                    else None
+                )
+                await self._interrupt()
+                self._reply = self.create_task(self._answer(said, asr_ms))
+                return
+
             if isinstance(frame, TranscriptionFrame):
                 # Only FINAL transcripts run the agent. Partials exist so a UI can show words
                 # appearing; acting on them would run the agent several times per sentence and
@@ -136,17 +196,11 @@ def _build_processors(turn: VoiceTurn, clock: _TurnClock):
                 # What the agent HEARD, sent on to the client: a wrong answer to a MISHEARD
                 # question is a different problem from a wrong answer, and they are
                 # indistinguishable without showing the transcript.
-                await self._tell("heard", text=frame.text)
                 # Recognition is a network call to another vendor, and on a slow turn it is
-                # often the reason. Attributed rather than spanned: the wait is ours to measure,
-                # the work is not (see SEMCONV §1).
-                asr_ms = (
-                    (time.monotonic() - clock.silence_at) * 1000
-                    if clock.silence_at is not None
-                    else None
-                )
-                await self._interrupt()  # a new utterance supersedes any reply still running
-                self._reply = self.create_task(self._answer(frame.text, asr_ms))
+                # often the reason. Shown to the client here; the agent itself is started by the
+                # LLMContextFrame above, once the aggregator agrees the turn is finished.
+                await self._tell("heard", text=frame.text)
+                await self.push_frame(frame, direction)
                 return
 
             await self.push_frame(frame, direction)
@@ -162,6 +216,9 @@ def _build_processors(turn: VoiceTurn, clock: _TurnClock):
             # without these markers it buffers the whole answer waiting for more and speaks
             # nothing at all. The agent's chunks are an LLM response, so they are framed as one.
             await self.push_frame(LLMFullResponseStartFrame())
+            # Tracks whether a reply is still owed, which is NOT the same as whether the reply
+            # task is still running -- see _interrupt.
+            self._answering = True
             try:
                 async for chunk in self._turn.say(text, asr_ms=asr_ms):
                     if clock.first_text_at is None:
@@ -176,6 +233,14 @@ def _build_processors(turn: VoiceTurn, clock: _TurnClock):
                 # and a dead pipeline is worse than an apology.
                 logger.exception("agent turn failed")
                 await self.push_frame(TextFrame(_fallback_text(self._turn)))
+                # The apology was spoken, so the turn is finished and there is nothing to walk
+                # back -- a failed reply is not an interrupted one.
+                self._answering = False
+            else:
+                # Cleared here and in the failure branch, never in `finally`: `finally` also
+                # runs when the task is CANCELLED, which is the one case where a reply is still
+                # owed and the flag must survive for _interrupt to see.
+                self._answering = False
             finally:
                 # Closes the response even when the turn failed or was cut off, so a barge-in
                 # never leaves TTS waiting for the end of a reply that is not coming.
@@ -207,10 +272,21 @@ def _build_processors(turn: VoiceTurn, clock: _TurnClock):
             and rewriting history there would replace a complete reply with the same text plus
             a marker saying it was interrupted, which is simply false.
             """
-            if self._reply is None or self._reply.done():
+            # Deliberately NOT `self._reply.done()`. Pipecat's own FrameProcessor cancels the
+            # tasks a processor created as soon as an interruption is broadcast, and
+            # `super().process_frame` runs before this does -- so by the time we look, the reply
+            # task is already finished. Reading it meant every real barge-in took the
+            # "nothing to walk back" path: the speaker went quiet, and history kept the
+            # sentences the human had talked over as though the agent had delivered them.
+            #
+            # `_answering` records what we actually need to know -- whether a reply was still
+            # owed -- independently of who cancelled the task or when.
+            if not self._answering:
                 self._reply = None
                 return
-            await self.cancel_task(self._reply)
+            self._answering = False
+            if self._reply is not None and not self._reply.done():
+                await self.cancel_task(self._reply)
             self._reply = None
             # After the cancel, so `spoken` holds everything the witness confirmed before the
             # audio stopped — that is the clip point, and it is only final once TTS has stopped.
@@ -338,6 +414,12 @@ class PipecatAdapter(VoiceAdapter):
             tts=make_tts(config),
             transport_in=transport.input(),
             transport_out=transport.output(),
+            # The `voice:` block, which is what configures turn-taking. Omitted here at first,
+            # and the omission was invisible: the pipeline fell back to Pipecat's defaults, so
+            # every turn-taking setting an agent declared -- barge-in on or off, how many words
+            # count as an interruption, whether a greeting is protected -- was silently ignored
+            # in every real session while the unit tests, which pass a config, all passed.
+            config=config,
         )
         logger.info(
             "voice session: %s → agent → %s (interruptions=%s, budget=%dms)",
@@ -356,8 +438,11 @@ def _build_transport(config: VoiceSpec, vad):
 
     The VAD belongs to the transport's input parameters rather than to a pipeline stage: it has
     to see raw audio to decide when the human stopped talking, which is upstream of everything
-    else. ``allow_interruptions`` is handed over here too, because barge-in is a property of the
-    transport's turn-taking, not something a downstream processor can retrofit.
+    else.
+
+    Barge-in is NOT configured here, despite what this docstring claimed for a long while.
+    Pipecat 1.8 has no transport switch for it; it is a property of the turn strategies -- see
+    :func:`~agentship_voice.pipeline.turn_taking`.
     """
     if config.transport == "websocket":
         from pipecat.transports.websocket.server import (

@@ -129,7 +129,7 @@ model calls and say nothing about recognition, synthesis or turn-taking.
 | `agentship.voice.llm.ttft.ms` | `AS_VOICE_LLM_TTFT_MS` | to first token |
 | `agentship.voice.llm.total.ms` | `AS_VOICE_LLM_TOTAL_MS` | |
 | `agentship.voice.tts.ms` | `AS_VOICE_TTS_MS` | first text → first audio |
-| `agentship.voice.ttfa.ms` | `AS_VOICE_TTFA_MS` | **the budget** — silence → first audio, < 850ms |
+| `agentship.voice.ttfa.ms` | `AS_VOICE_TTFA_MS` | **the budget** — silence → first audio, < 850ms + `endpoint_silence_ms` |
 | `agentship.voice.slowest_stage` | `AS_VOICE_SLOWEST_STAGE` | what to optimise next |
 
 The spoken text is content, so it rides the existing `input.value` / `output.value` keys under the

@@ -35,6 +35,8 @@ from pipecat.frames.frames import (  # noqa: E402
     InputAudioRawFrame,
     TranscriptionFrame,
     TTSTextFrame,
+    UserStartedSpeakingFrame,
+    UserStoppedSpeakingFrame,
 )
 from pipecat.pipeline.runner import PipelineRunner  # noqa: E402
 from pipecat.pipeline.task import PipelineTask  # noqa: E402
@@ -56,9 +58,17 @@ class _SlowEars(STTService):
         """Remember what this 'microphone' will claim it heard."""
         super().__init__()
         self._heard = heard
+        #: One transcript per utterance. A real recogniser transcribes speech, not silence;
+        #: this returned the same sentence for EVERY audio frame, so once the cell started
+        #: streaming audio continuously the way a mic does, it produced fifty transcripts a
+        #: second -- each one a fresh turn interrupting the last, and no turn ever completed.
+        self._said_it = False
 
     async def run_stt(self, audio: bytes):
-        """Emit one finalised transcript, after a provider-shaped delay."""
+        """Emit one finalised transcript per utterance, after a provider-shaped delay."""
+        if self._said_it:
+            return
+        self._said_it = True
         await asyncio.sleep(_ASR_TTFB)
         frame = TranscriptionFrame(text=self._heard, user_id="u1", timestamp="now")
         frame.finalized = True
@@ -133,11 +143,34 @@ async def _run_one_turn(turn: VoiceTurn, spoken: list[str]) -> float:
     pipeline = build_pipecat_pipeline(turn, stt=_SlowEars("my balance"), tts=_SlowMouth(spoken))
     task = PipelineTask(pipeline)
     runner = asyncio.create_task(PipelineRunner(handle_sigint=False).run(task))
-    started = asyncio.get_running_loop().time()
     try:
-        await task.queue_frames(
-            [InputAudioRawFrame(audio=b"\x00" * 640, sample_rate=16000, num_channels=1)]
-        )
+        # The speaking frames a VAD emits around an utterance. They are required now that the
+        # turn aggregator decides when a turn is over, and they also fix what this measured:
+        # the clock starts when the human STOPS talking, which is what "mouth to ear" means and
+        # what the turn's own trace times from. Started at the first audio frame instead, the
+        # measurement included the human still speaking, so it would charge the pipeline for
+        # the length of the question.
+        async def _microphone() -> None:
+            """Keep sending audio, the way a real one does.
+
+            A mic does not stop between utterances, and the turn aggregator relies on that: the
+            smart-turn model needs to hear the silence AFTER the words to judge whether the
+            thought was finished. Handed a single frame and then nothing, the aggregator instead
+            waits out its one-second ``audio_idle_timeout`` before conceding the turn is over --
+            a flat second added to every measurement here, and an artefact of the test feeding
+            less audio than a microphone would.
+            """
+            while True:
+                await task.queue_frames(
+                    [InputAudioRawFrame(audio=b"\x00" * 640, sample_rate=16000, num_channels=1)]
+                )
+                await asyncio.sleep(0.02)
+
+        mic = asyncio.create_task(_microphone())
+        await task.queue_frames([UserStartedSpeakingFrame()])
+        await asyncio.sleep(0.05)
+        await task.queue_frames([UserStoppedSpeakingFrame()])
+        started = asyncio.get_running_loop().time()
         deadline = started + 15
         while not spoken and asyncio.get_running_loop().time() < deadline:
             await asyncio.sleep(0.005)
@@ -146,6 +179,7 @@ async def _run_one_turn(turn: VoiceTurn, spoken: list[str]) -> float:
         await asyncio.sleep(0.2)
         return first_audio_ms
     finally:
+        mic.cancel()
         await task.queue_frames([EndFrame()])
         await asyncio.wait_for(runner, timeout=15)
 
@@ -170,11 +204,21 @@ async def test_conf_voice_1_first_audio_lands_inside_the_budget() -> None:
     ttfa_ms = await _run_one_turn(turn, spoken)
 
     budget = agent.spec.voice.latency_budget_ms
+    # Endpointing is added to the budget, not hidden inside it. Deciding that the human has
+    # actually FINISHED -- rather than paused mid-thought -- is a wait the operator buys
+    # deliberately with `endpoint_silence_ms`, and it is the thing that stops the agent cutting
+    # in. The budget is what the PIPELINE adds on top.
+    #
+    # This cell used to measure without any endpointing at all, and passed comfortably, because
+    # the agent answered the instant any transcript arrived. That was not speed; it was the
+    # defect -- a cough or the agent's own voice was enough to trigger a reply. A budget that
+    # only holds while endpointing is absent is measuring the wrong pipeline.
+    endpointing = agent.spec.voice.endpoint_silence_ms
     assert spoken, "the turn produced no audio at all"
-    assert ttfa_ms < budget, (
-        f"first audio took {ttfa_ms:.0f}ms against a {budget}ms budget with providers costing "
-        f"{(_ASR_TTFB + _TTS_TTFB) * 1000:.0f}ms — the pipeline is adding more than it should, "
-        f"or a stage stopped overlapping"
+    assert ttfa_ms < budget + endpointing, (
+        f"first audio took {ttfa_ms:.0f}ms against a {budget}ms budget plus {endpointing}ms of "
+        f"endpointing, with providers costing {(_ASR_TTFB + _TTS_TTFB) * 1000:.0f}ms — the "
+        f"pipeline is adding more than it should, or a stage stopped overlapping"
     )
 
 

@@ -125,3 +125,38 @@ async def test_the_trace_names_where_the_time_went() -> None:
     worst = turn.trace.biggest_contributor()
     assert worst is not None
     assert worst[0] == "tts_ms", "the slowest stage is the one to optimise next"
+
+
+def test_turning_barge_in_off_reaches_the_strategy() -> None:
+    """``allow_interruptions: false`` must actually stop interruptions being raised.
+
+    This asserts on the strategy object because the setting used to reach nothing at all: it
+    was read once, written into a log line, and dropped. Both states of the switch behaved
+    identically, which is worse than either -- an agent that asked not to be interrupted was,
+    and an agent that asked to be had no interruption raised for it.
+    """
+    pytest.importorskip("pipecat", reason="needs the [pipecat] extra")
+    from agentship.spec import VoiceSpec
+    from agentship_voice.pipeline import turn_taking
+
+    on, _ = turn_taking(VoiceSpec(allow_interruptions=True))
+    off, _ = turn_taking(VoiceSpec(allow_interruptions=False))
+    assert on.start[0]._enable_interruptions is True
+    assert off.start[0]._enable_interruptions is False
+
+
+def test_a_greeting_is_protected_from_its_own_echo_and_silence_is_not() -> None:
+    """The microphone is muted through an opening greeting, and only then.
+
+    Muting exists so a greeting cannot be cut off by its own sound returning through the
+    speakers. Applied to an agent that opens in silence it would swallow the first thing the
+    human says, so the two cases must differ.
+    """
+    pytest.importorskip("pipecat", reason="needs the [pipecat] extra")
+    from agentship.spec import VoiceSpec
+    from agentship_voice.pipeline import turn_taking
+
+    _, greeted = turn_taking(VoiceSpec(greeting="Hello there."))
+    _, silent = turn_taking(VoiceSpec())
+    assert greeted, "a greeting must be protected from its own echo"
+    assert not silent, "with no greeting there is nothing to protect, and muting loses words"

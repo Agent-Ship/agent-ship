@@ -129,7 +129,10 @@ around them would measure our wait rather than their work. See
 ## Status & limits
 
 **Proven.** The full loop runs end to end on Pipecat with a verified round trip
-inside the 850 ms first-audio budget. Six conformance cells (`CONF-VOICE-1..6`)
+inside the 850 ms first-audio budget, measured from the point the human's turn is
+judged complete. Deciding that they have finished rather than paused costs the
+endpointing wait `endpoint_silence_ms` sets — 700 ms by default — and that is on
+top of the budget, not inside it. Six conformance cells (`CONF-VOICE-1..6`)
 pin the budget, the trace, the span tree, REST/voice parity, framework parity and
 barge-in honesty — all keyless, driving a real pipeline with stand-in providers
 that subclass Pipecat's own service classes.

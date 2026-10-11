@@ -90,13 +90,19 @@ async def run_browser_session(websocket, agent, caller: Caller, sample_rate: int
         getattr(tts._settings, "voice", spec.voice.voice_id or "default"),
     )
     runner = WorkerRunner(handle_sigint=False)
-    await runner.add_workers(PipelineWorker(pipeline))
+    # Held, because frames are queued on the WORKER — a Pipeline has `queue_frame` but no
+    # `queue_frames`, so greeting through the pipeline raised
+    # "'Pipeline' object has no attribute 'queue_frames'" and killed the session at its first
+    # breath. It survived review because the test queued into a stand-in that had the method:
+    # the double agreed with the assumption instead of checking it.
+    worker = PipelineWorker(pipeline)
+    await runner.add_workers(worker)
 
     if spec.voice.greeting:
         # Queued before the runner starts so it is the first thing synthesised. A voice agent
         # that waits in silence gives the human no way to tell "connected and listening" from
         # "broken", and the usual response to that ambiguity is to hang up.
-        await _greet(pipeline, spec.voice.greeting)
+        await _greet(worker, spec.voice.greeting)
 
     await serve_until_done(runner.run(), spec.voice.max_session_seconds, spec.name)
 
@@ -121,7 +127,7 @@ async def serve_until_done(session, limit: int | None, agent_name: str) -> None:
         logger.info("voice session for agent=%s hit max_session_seconds=%s", agent_name, limit)
 
 
-async def _greet(pipeline, greeting: str) -> None:
+async def _greet(worker, greeting: str) -> None:
     """Speak ``greeting`` before the human has said anything.
 
     Framed as a complete LLM response because that is what a TTS service is waiting for: it
@@ -134,6 +140,6 @@ async def _greet(pipeline, greeting: str) -> None:
         TextFrame,
     )
 
-    await pipeline.queue_frames(
+    await worker.queue_frames(
         [LLMFullResponseStartFrame(), TextFrame(greeting), LLMFullResponseEndFrame()]
     )

@@ -73,9 +73,10 @@ agentship voice serve agents/assistant.yaml   # ...or just talk to it
 
     ---
 
-    Speak and be answered in **389 ms** to first audio, measured against an 850 ms budget
-    by a test that fails if the pipeline stops streaming. Interrupt it mid-sentence and the
-    conversation history records what you *heard*, not what it planned to say.
+    Speak and be answered in **~300 ms** of pipeline time to first audio, on top of the
+    endpointing wait you configure — measured against an 850 ms budget by a test that fails
+    if the pipeline stops streaming. Interrupt it mid-sentence and the conversation history
+    records what you *heard*, not what it planned to say.
 
     [Voice →](capabilities/voice.md)
 

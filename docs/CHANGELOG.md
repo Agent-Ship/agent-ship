@@ -24,6 +24,21 @@ they were written before the project cut tagged releases.
 ## [Unreleased]
 
 ### Fixed
+- **The agent talked over itself, and could not be interrupted.** Turn-taking was ours: the
+  agent answered the moment a final transcript arrived, so anything that produced words started
+  a reply — including its own voice coming back through the speakers. Nothing decided whether
+  the human had actually finished, and nothing raised an interruption, so talking over the agent
+  silenced the speaker but left the agent generating and left history claiming it had delivered
+  sentences the human never heard. Pipecat's own turn machinery now does this job: a
+  `MinWordsUserTurnStartStrategy` needs real words before it believes you interrupted, the local
+  smart-turn model decides whether a thought is finished rather than timing silence, and a
+  greeting is muted against its own echo. The agent node now answers the aggregated turn instead
+  of the raw transcript. Two settings that were read, logged and then dropped — `voice:` config
+  never reached the pipeline at all, and `allow_interruptions` reached nothing — now take effect.
+  The published first-audio figure changes with it: endpointing is a real wait, and the old
+  measurement passed its budget comfortably only because the agent answered any transcript
+  instantly — which was the defect, not speed. First audio is now ~300ms of pipeline time on
+  top of the `endpoint_silence_ms` window, and the conformance cell counts the two separately.
 - **Agents silently stopped using their tools against an endpoint that does not stream.**
   `streaming=True` was hardcoded when building the model. A streamed tool call arrives in
   fragments the client reassembles; an endpoint that buffers its whole reply into one piece

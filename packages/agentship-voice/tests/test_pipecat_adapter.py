@@ -96,6 +96,22 @@ def _hosted() -> tuple[VoiceTurn, object, object, list]:
     return turn, node, witness, pushed
 
 
+def _turn_ready(text: str):
+    """The frame that now STARTS a turn: the aggregator's completed conversation.
+
+    The agent used to run on a raw transcript. It no longer does, and that is the fix: deciding
+    when a human's turn is over belongs to Pipecat's turn strategies, in the aggregator upstream.
+    Acting on transcripts directly bypassed them, which is how the agent's own voice coming back
+    through the speakers could start a reply.
+    """
+    from pipecat.frames.frames import LLMContextFrame
+    from pipecat.processors.aggregators.llm_context import LLMContext
+
+    context = LLMContext()
+    context.add_message({"role": "user", "content": text})
+    return LLMContextFrame(context=context)
+
+
 def _transcript(text: str) -> TranscriptionFrame:
     """Build the frame an STT service emits when an utterance is complete."""
     return TranscriptionFrame(text=text, user_id="u1", timestamp="now")
@@ -118,7 +134,7 @@ async def test_a_final_transcript_is_spoken_back_chunk_by_chunk() -> None:
     turn, node, _witness, pushed = _hosted()
     await _ready(node)
 
-    await node.process_frame(_transcript("hello"), FrameDirection.DOWNSTREAM)
+    await node.process_frame(_turn_ready("hello"), FrameDirection.DOWNSTREAM)
     await node._reply
 
     spoken = [f.text for f in pushed if type(f) is TextFrame]
@@ -166,7 +182,7 @@ async def test_an_interruption_stops_the_reply_and_clips_at_what_was_spoken() ->
     turn, node, witness, _pushed = _hosted()
     await _ready(node)
 
-    await node.process_frame(_transcript("hello"), FrameDirection.DOWNSTREAM)
+    await node.process_frame(_turn_ready("hello"), FrameDirection.DOWNSTREAM)
     await asyncio.sleep(0.05)  # let a couple of clauses get out
 
     # TTS reports what it is actually speaking — only the first two clauses made it.
@@ -186,11 +202,11 @@ async def test_a_new_utterance_supersedes_the_reply_still_running() -> None:
     _turn, node, _witness, pushed = _hosted()
     await _ready(node)
 
-    await node.process_frame(_transcript("first"), FrameDirection.DOWNSTREAM)
+    await node.process_frame(_turn_ready("first"), FrameDirection.DOWNSTREAM)
     await asyncio.sleep(0.03)
     first_count = len([f for f in pushed if type(f) is TextFrame])
 
-    await node.process_frame(_transcript("second"), FrameDirection.DOWNSTREAM)
+    await node.process_frame(_turn_ready("second"), FrameDirection.DOWNSTREAM)
     await node._reply
 
     assert first_count < 4, "the first reply should not have finished"
@@ -271,7 +287,7 @@ async def test_the_turn_records_every_stage_it_can_observe() -> None:
 
     await node.process_frame(VADUserStoppedSpeakingFrame(), FrameDirection.DOWNSTREAM)
     await asyncio.sleep(0.02)  # the recogniser taking its time
-    await node.process_frame(_transcript("hello"), FrameDirection.DOWNSTREAM)
+    await node.process_frame(_turn_ready("hello"), FrameDirection.DOWNSTREAM)
     await asyncio.sleep(0.05)  # the model producing its opening clause
     await witness.process_frame(BotStartedSpeakingFrame(), FrameDirection.DOWNSTREAM)
 
@@ -294,12 +310,12 @@ async def test_each_utterance_is_timed_afresh() -> None:
     turn, node, _witness, _pushed = _hosted()
     await _ready(node)
 
-    await node.process_frame(_transcript("first"), FrameDirection.DOWNSTREAM)
+    await node.process_frame(_turn_ready("first"), FrameDirection.DOWNSTREAM)
     await asyncio.sleep(0.15)
     first = turn.trace.llm_ttft_ms
     first_generated = list(turn.generated)
 
-    await node.process_frame(_transcript("second"), FrameDirection.DOWNSTREAM)
+    await node.process_frame(_turn_ready("second"), FrameDirection.DOWNSTREAM)
     await asyncio.sleep(0.15)
 
     assert first is not None and turn.trace.llm_ttft_ms is not None
