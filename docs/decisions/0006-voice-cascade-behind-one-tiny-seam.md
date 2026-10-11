@@ -29,7 +29,9 @@ is simply the wrong shape for LiveKit.
 loop.** The agent that answers the phone is the agent that answers the API, byte for byte. A
 latency cost is accepted in exchange, and then managed: the reply is streamed into synthesis
 clause by clause so audio starts while the model is still generating, and the whole turn is
-measured against an 850 ms first-audio budget that a conformance cell enforces.
+measured against an 850 ms first-audio budget that a conformance cell enforces. The budget
+covers what the pipeline adds once the human's turn is judged over; the endpointing wait that
+makes that judgement is configured separately and counted separately.
 
 **Both frameworks, behind a seam small enough to be honest.** `VoiceAdapter` is three methods,
 and the shared contract is one sentence: *given what the human said, stream back what the agent

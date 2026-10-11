@@ -118,8 +118,14 @@ def test_serve_starts_when_one_agent_is_missing_a_key_this_machine_lacks(tmp_pat
 
     not_ready = {p.name: _check_agent(p) for p in specs}
     assert not_ready["plain.yaml"] is None, "an agent needing nothing is ready"
-    assert "DEEPGRAM_API_KEY" in (not_ready["talker.yaml"] or ""), (
-        "and the one that is not ready must name what would fix it"
+    # Which gap it reports depends on the machine, and both answers are honest: a full install
+    # missing the key names the key, a minimal install names the SDK to install. This asserted
+    # the key alone and so passed only where the `[deepgram]` extra happened to be present --
+    # green on a developer's laptop, red on a bare CI runner, for no change in behaviour.
+    gap = not_ready["talker.yaml"] or ""
+    assert "deepgram" in gap.lower(), "the gap must name the provider that is not ready"
+    assert "DEEPGRAM_API_KEY" in gap or "pip install" in gap, (
+        "and it must name what would fix it — the key to set, or the SDK to install"
     )
 
 
