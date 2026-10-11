@@ -32,6 +32,7 @@ def processor_order(
     transport_in=None,
     vad=None,
     stt=None,
+    echo_guard=None,
     user_turn=None,
     agent=None,
     tts=None,
@@ -77,7 +78,18 @@ def processor_order(
     Stages are optional so the same order can be driven in a test with no transport and no VAD,
     and it stays the one place the sequence is stated.
     """
-    stages = [transport_in, vad, stt, user_turn, agent, tts, witness, transport_out, assistant_turn]
+    stages = [
+        transport_in,
+        vad,
+        stt,
+        echo_guard,
+        user_turn,
+        agent,
+        tts,
+        witness,
+        transport_out,
+        assistant_turn,
+    ]
     return [stage for stage in stages if stage is not None]
 
 
@@ -163,7 +175,7 @@ def build_pipecat_pipeline(
         LLMUserAggregatorParams,
     )
 
-    from .adapters.pipecat_adapter import PipecatAdapter
+    from .adapters.pipecat_adapter import PipecatAdapter, _build_echo_guard
 
     agent, witness = PipecatAdapter().host(turn)
 
@@ -182,6 +194,10 @@ def build_pipecat_pipeline(
             transport_in=transport_in,
             vad=vad,
             stt=stt,
+            # Between the recogniser and the turn aggregator, which is the only place it can
+            # work: the aggregator broadcasts an interruption the moment it believes a turn has
+            # started, so a check downstream of it arrives after the reply has been cancelled.
+            echo_guard=_build_echo_guard(turn),
             user_turn=pair.user(),
             agent=agent,
             tts=tts,
