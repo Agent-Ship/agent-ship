@@ -1,29 +1,33 @@
 # The AgentShip framework, from PyPI.
 #
 # This used to install the framework editable from a sibling checkout, because it was not
-# published. It is now — 0.0.2 — and the sibling paths only ever resolved on a machine with
+# published. It is now — 0.0.4 — and the sibling paths only ever resolved on a machine with
 # both repositories side by side, so CI could not install this repo at all: pip reported
 # "../agentship/packages/agentship-core is not a valid editable requirement" and stopped.
 #
 #     python -m venv .venv && source .venv/bin/activate
 #     pip install -r requirements-dev.txt        # or `make install`
 #
-# Pinned exactly. The six ship in lockstep and are only ever tested together, so a mixed set
+# Pinned exactly. The seven ship in lockstep and are only ever tested together, so a mixed set
 # is a combination nobody has run.
 
-agentship-core==0.0.2
-agentship-langgraph[mcp]==0.0.2
-agentship-cli==0.0.2
+agentship-core==0.0.4
+agentship-langgraph[mcp]==0.0.4
+agentship-cli==0.0.4
 # The OTel span-tree + exporters (console/Opik/LangFuse/LangSmith).
-agentship-observability==0.0.2
+agentship-observability==0.0.4
 # `[serve]` adds uvicorn: the service demo boots a real server on a loopback port rather than
 # relying on TestClient, because "the ASGI app starts" is part of what it claims to show.
-agentship-service[serve]==0.0.2
+agentship-service[serve]==0.0.4
 
-# NOT here: agentship-voice. It is unpublished while the voice phase lands, so the voice demo
-# and its tests skip on a clean install rather than failing — `pytest.importorskip` in
-# tests/test_voice.py. Install it from a sibling checkout to run them:
-#     pip install -e ../agentship/packages/agentship-voice[pipecat]
+# Voice, with Pipecat. This said agentship-voice was unpublished and had to come from a sibling
+# checkout; it has been on PyPI since 0.0.3, and leaving the note meant the voice demo and its
+# tests silently skipped on a clean install — `pytest.importorskip` in tests/test_voice.py found
+# nothing to import and said so quietly.
+#
+# The extra is what pulls Pipecat itself, and with it the local smart-turn model that decides
+# whether you have finished a sentence or only paused.
+agentship-voice[pipecat]==0.0.4
 
 pytest>=8
 pytest-asyncio>=0.24
