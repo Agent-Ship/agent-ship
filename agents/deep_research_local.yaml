@@ -1,0 +1,121 @@
+# deep-research, with the thinking done on YOUR cluster instead of a hosted API.
+#
+# Identical to deep_research.yaml except for the model: same prompt, same tools, same
+# durability. That is the point — the agent does not know or care where its model runs.
+#
+#   make docker-up && make gateway-research
+#
+# The "deep agent": a REAL model-driven research agent — converses, and researches when asked.
+#
+# This is a plain ReAct single-agent (the `single` template = create_react_agent) with two built-in
+# tools: `web_search` (find sources) and `scrape_url` (read a page's full content as markdown).
+# There is NO hardcoded pipeline: the MODEL decides what to do. Say "hi" and it just says hi back;
+# ask a real question and it searches from several angles, OPENS the most promising results to read
+# their full text, cross-checks, and synthesizes a cited answer. It decides how deep to go — which
+# is what makes this a genuine long-running task (many search + scrape steps), not a scripted loop.
+#
+# `durability: checkpoint` makes every step durable and keyed off the session id, so (a) a long run
+# survives a crash or a wait and resumes, and (b) reusing the same session across chat turns gives
+# it conversation memory — it remembers what you researched earlier in the thread.
+#
+#   agentship run agents/deep_research.yaml --input "Compare small modular reactor vendors in 2026"
+#     -> searches, opens the best sources, then writes a synthesized, cited answer
+#   agentship run agents/deep_research.yaml --input "hi"
+#     -> just greets you back; no searching
+#
+# Real web results + scraping need FIRECRAWL_API_KEY (free tier at https://firecrawl.dev); a
+# BRAVE_API_KEY also works for web_search. Without a key the tools return an actionable setup
+# message and the model answers from its own knowledge.
+name: deep-research-local
+engine: langgraph
+template: single
+# The REASONING model runs on your own hardware. The tools still reach the internet —
+# web_search and scrape_url are HTTP calls to Firecrawl, nothing to do with where the model
+# lives. So this is the interesting split: private reasoning, public sources.
+model: openai/Qwen/Qwen2.5-7B-Instruct-AWQ
+params:
+  api_base: http://host.docker.internal:8080/v1
+  # A 7B model driving a multi-step research loop needs room for tool calls AND a final
+  # answer. Too low and it gets cut off mid-plan, which reads as the agent giving up.
+  # This gateway buffers its whole reply into one piece, so it cannot stream — and a streamed
+  # tool call arrives in fragments the client reassembles. With streaming on, the call is
+  # dropped with no error and the agent answers as though it had no tools: it said "let's check
+  # the project page" and never checked. Off, the tools work.
+  streaming: false
+  max_tokens: 1024
+  temperature: 0.2
+durability: checkpoint
+tools:
+  - web_search
+  - scrape_url
+prompt: >-
+  You are a thorough research assistant. Hold a normal conversation: for greetings, small talk, or
+  simple chit-chat, just reply naturally in a sentence or two and do NOT use any tools.
+
+  When the user asks a substantive question — anything that benefits from current facts, comparison,
+  or evidence — research it properly before answering:
+
+  1. Break the question into sub-questions and call web_search for each, from different angles;
+  follow up on what you learn with further searches.
+
+  2. You MUST then open sources before answering: call scrape_url on at least the top 2-3 most
+  relevant or authoritative result links to read the full page, not just the snippet. Search
+  snippets are NOT enough on their own — the real evidence is in the page content. Do not write a
+  substantive answer until you have scraped and read several sources.
+
+  3. Cross-check claims across the scraped sources rather than trusting a single hit, then write a
+  clear, well-structured answer that cites the sources (title and link) you actually read.
+
+  If a search or scrape returns a setup/configuration error, tell the user briefly that web access
+  isn't configured and answer from your own knowledge instead. If the question is genuinely
+  ambiguous, ask one short clarifying question first. Prefer depth and accuracy over speed — this
+  is the deep path.
+
+
+# Tracing needs no block at all — every agent is traced by default, and
+# AGENTSHIP_OTEL_EXPORTERS decides where the spans go (unset = built but shipped nowhere,
+# so an offline run never dials out):
+#
+#   AGENTSHIP_OTEL_EXPORTERS=opik            # or langsmith, langfuse, phoenix, console
+#   AGENTSHIP_OTEL_EXPORTERS=opik,langsmith  # fan out to both
+#
+# The only reason this block exists is capture_content: this agent's spans are worth reading
+# in full — the search queries it ran and the pages it scraped — and content is off by default
+# because it is the PHI gate.
+observability:
+  capture_content: true
+  # Opik Cloud is off-box, so egress must be opted into. Harmless when shipping nowhere.
+  allow_saas_exporter: true
+
+
+# Ears and mouth are hosted; the thinking is not.
+#
+# That split is the whole point of this agent. Speech recognition and synthesis are commodity
+# services that need a GPU for milliseconds; the reasoning is the part that reads your sources,
+# runs for many seconds, and that you may not want leaving your network. So OpenAI hears and
+# speaks, and Qwen on your own cluster does the thinking in between.
+#
+# Needs OPENAI_API_KEY for speech only — the model above never touches it.
+voice:
+  framework: pipecat
+  # Streaming, not the plain `openai` REST Whisper. Both are OpenAI and both use the same key,
+  # but REST Whisper is SEGMENTED: it reports nothing until it has transcribed a whole chunk of
+  # audio, so an interruption is not noticed until a round trip has completed. The realtime
+  # service reports partial words as they are spoken, which is what makes cutting in feel
+  # immediate instead of considered.
+  stt: openai-realtime
+  tts: openai
+  language: en
+  # 700ms, down from 1500ms. The long wait was set when endpointing was the ONLY thing standing
+  # between a pause for thought and the agent talking over you. The smart-turn model now makes
+  # that judgement on meaning rather than duration, so buying the same protection with raw
+  # silence costs almost a second of dead air on every single turn.
+  endpoint_silence_ms: 700
+  allow_interruptions: true
+  # Two words, not one. One was tried and was a mistake: a streaming recogniser emits a partial
+  # transcript every few hundred milliseconds, so a one-word floor made almost every partial
+  # start a fresh turn, each cancelling the last. A session's logs filled with single-word
+  # triggers and "Empty user turn (interrupted), running LLM", and interruption stopped working
+  # altogether -- not because it was ignored, but because it never stopped happening.
+  interrupt_min_words: 2
+  greeting: Ask me something worth researching.
