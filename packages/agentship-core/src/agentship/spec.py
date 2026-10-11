@@ -194,6 +194,18 @@ class ModelParams(BaseModel):
     api_base: str | None = None
     #: Per-request timeout in seconds. ``None`` keeps the model default.
     timeout: float | None = None
+    #: Whether to ask the provider to stream. ``None`` means yes, which is right for every
+    #: hosted provider and is what makes ``--stream`` deliver words as they are generated.
+    #:
+    #: **Set this to ``false`` for an endpoint that does not really stream**, and the symptom
+    #: that tells you so is not slow output — it is **tool calls silently disappearing**. A
+    #: streamed tool call arrives in fragments that the client reassembles; an endpoint that
+    #: buffers its whole reply into one piece gives it nothing to reassemble, so the call is
+    #: dropped with no error and the agent answers as though it had no tools. Chat still works,
+    #: which is what makes it hard to spot.
+    #:
+    #: Measured against a buffering gateway: ``streaming`` on → 0 tool calls, off → 1.
+    streaming: bool | None = None
     #: How hard a reasoning model should think before answering. ``None`` keeps the
     #: provider's default (which for a non-reasoning model means: no thinking at all).
     #:
