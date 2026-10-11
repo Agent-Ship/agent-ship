@@ -31,6 +31,14 @@ they were written before the project cut tagged releases.
   the event never arrived, and the conversation showed only the agent's side. The whole voice
   suite passed throughout, because nothing asserted that the client is told what the human
   said; it does now, driven through the real pipeline.
+- **Cutting in on the agent was noticed a beat too late.** Barge-in is believed once the human
+  has produced real words, and `stt: openai` builds REST Whisper, which is segmented — it
+  reports nothing until a whole chunk of audio has been transcribed, so that round trip was the
+  floor on how fast an interruption could be seen. OpenAI's streaming transcription service is
+  now selectable as `openai-realtime`, which reports partial words as they are spoken. The one
+  knob that would have helped was also dead: `interrupt_min_words` was read off `VoiceSpec` with
+  a `getattr` default against a field that never existed, so the floor was 2 for every agent and
+  could not be lowered. It is a real field now.
 - **The agent talked over itself, and could not be interrupted.** Turn-taking was ours: the
   agent answered the moment a final transcript arrived, so anything that produced words started
   a reply — including its own voice coming back through the speakers. Nothing decided whether

@@ -108,7 +108,11 @@ def turn_taking(config=None, vad_analyzer=None):
     )
     from pipecat.turns.user_turn_strategies import UserTurnStrategies
 
-    min_words = getattr(config, "interrupt_min_words", None) or 2
+    # Was `getattr(config, "interrupt_min_words", None) or 2` against a field that did not
+    # exist, so the floor was always 2 and no agent could change it -- the same defect as the
+    # two below, a setting that looks configurable and is not. The field exists now; the
+    # fallback stays only for a stand-in config in a test.
+    min_words = getattr(config, "interrupt_min_words", 2)
     mute_until_greeted = bool(getattr(config, "greeting", None))
     # Where `allow_interruptions:` actually takes effect. It used to be passed nowhere and only
     # logged -- `_build_transport` even said it was "handed over here too" -- so an agent that

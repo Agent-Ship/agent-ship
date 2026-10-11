@@ -206,4 +206,11 @@ def test_every_provider_names_its_key_the_way_its_vendor_does(table) -> None:
     for name, provider in table.items():
         assert provider.env_var and provider.env_var.endswith("_API_KEY"), name
         stem = provider.env_var.removesuffix("_API_KEY").lower().replace("_", "")
-        assert stem == name.replace("_", ""), f"{name} reads {provider.env_var}"
+        # Compared against the VENDOR, which is the part before any hyphen. A vendor can offer
+        # the same service over more than one transport -- `openai` is REST Whisper and
+        # `openai-realtime` is the streaming WebSocket one -- and they share a key, because it
+        # is the same account. Requiring the whole provider name to match the variable would
+        # force a second variable for a second transport, and nobody exports
+        # OPENAI_REALTIME_API_KEY.
+        vendor = name.split("-")[0].replace("_", "")
+        assert stem == vendor, f"{name} reads {provider.env_var}"
