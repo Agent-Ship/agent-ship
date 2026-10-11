@@ -39,6 +39,15 @@ they were written before the project cut tagged releases.
   knob that would have helped was also dead: `interrupt_min_words` was read off `VoiceSpec` with
   a `getattr` default against a field that never existed, so the floor was 2 for every agent and
   could not be lowered. It is a real field now.
+- **Studio mangled most of what a model writes.** The reply renderer split on blank lines and
+  matched whole blocks, so a numbered list of sources arrived as `1. 1. **[Deep Dive...]**` run
+  together on one line — only `-`, `*` and `+` counted as list markers. A `## Heading` with no
+  blank line before it was not a heading, nesting was flattened, and an unterminated code fence
+  matched nothing, which is *every* fence while a reply streams, so readers watched
+  ```` ```javascript ```` sit on screen as text. It is a line-based renderer now: numbered and
+  bullet lists with valid nesting, headings anywhere, blockquotes, stream-safe fences, and bare
+  URLs as links. Covered by tests that run the page's own JavaScript rather than asserting on
+  its source, since the source was correct throughout.
 - **The agent talked over itself, and could not be interrupted.** Turn-taking was ours: the
   agent answered the moment a final transcript arrived, so anything that produced words started
   a reply — including its own voice coming back through the speakers. Nothing decided whether

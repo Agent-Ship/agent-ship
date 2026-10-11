@@ -8,6 +8,7 @@ contract a generated client should discover.
 
 from __future__ import annotations
 
+import pytest
 from agentship.auth import ApiKeyAuthProvider, EnvApiKeyStore
 from agentship_service import create_app
 from agentship_service.routers.studio import STUDIO_PAGE
@@ -210,3 +211,83 @@ def test_studio_only_offers_the_microphone_to_an_agent_that_declares_voice() -> 
         "agent on one engine shares those, which is how the badges got this wrong before"
     )
     assert "showVoiceAffordance(card)" in studio, "and it has to run on agent selection"
+
+
+def _render_markdown(text: str) -> str:
+    """Return what Studio's own renderer produces for ``text``.
+
+    The renderer is JavaScript inside the page, so it is extracted and run under node.
+    Asserting on the page SOURCE instead -- which is what the tests above do, for good reasons
+    of their own -- cannot catch a rendering bug: the strings were all present and correct the
+    whole time a numbered list was arriving on screen as "1. 1. **[Deep Dive...]**".
+    """
+    import json
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("needs node to run the page's own JavaScript")
+
+    page = STUDIO_PAGE.read_text(encoding="utf-8")
+    start = page.index("function renderMarkdown(text) {")
+    end = page.index("\n}\n", page.index("function inlineMarkdown(text) {")) + 2
+    escape = page[page.index("function escapeHtml") :]
+    escape = escape[: escape.index("\n}\n") + 2]
+    call = f"process.stdout.write(renderMarkdown({json.dumps(text)}))"
+    script = f"{escape}\n{page[start:end]}\n{call}"
+    return subprocess.run(
+        [node, "-e", script], capture_output=True, text=True, check=True, timeout=30
+    ).stdout
+
+
+def test_a_numbered_list_renders_as_a_list() -> None:
+    """Models number their sources, and a numbered list must not arrive as prose.
+
+    Only ``-``, ``*`` and ``+`` were recognised, so ``1.`` fell through to a paragraph and a
+    list of citations ran together on one line with its own markers showing.
+    """
+    html = _render_markdown("Sources:\n\n1. [One](https://a.example)\n2. Two")
+    assert "<ol>" in html and html.count("<li>") == 2
+    assert '<a href="https://a.example"' in html
+    assert "1." not in html, "the marker is the list's job to draw, not the text's"
+
+
+def test_an_unfinished_code_fence_still_renders_as_code() -> None:
+    """Every fence is unterminated while a reply streams, and must not leak its marker.
+
+    The closing ``` has not been generated yet, so a regex needing both ends matched nothing and
+    the reader watched "```javascript" sit on screen as literal text.
+    """
+    html = _render_markdown("Config:\n\n```javascript\nPods:\n  - name: vllm\n")
+    assert "<pre><code>" in html
+    assert "```" not in html
+
+
+def test_a_heading_does_not_need_a_blank_line_before_it() -> None:
+    """``## Heading`` on the line after prose is still a heading.
+
+    Blocks used to be split on blank lines and matched whole, so a heading that followed a
+    sentence directly was rendered as part of that sentence, hashes and all.
+    """
+    html = _render_markdown("Some text\n## A Heading\nmore text")
+    assert "<h2>A Heading</h2>" in html
+    assert "##" not in html
+
+
+def test_a_nested_list_is_nested_inside_its_parent_item() -> None:
+    """Nesting must produce valid HTML, not a list as a sibling of a list item.
+
+    A nested ``<ol>`` placed next to ``<li>`` rather than inside it is invalid, and browsers
+    indent it inconsistently instead of refusing it.
+    """
+    html = _render_markdown("1. Outer\n  - inner\n2. Second")
+    assert "<li>Outer<ul>" in html, "the child list must open inside the parent's item"
+    assert "</ul></li>" in html, "and closing it must close that item"
+
+
+def test_markup_in_a_reply_cannot_become_markup_on_the_page() -> None:
+    """Model output is escaped before any rule runs, so a reply cannot inject HTML."""
+    html = _render_markdown("<img src=x onerror=alert(1)> and <b>bold</b>")
+    assert "<img" not in html and "<b>" not in html
+    assert "&lt;img" in html

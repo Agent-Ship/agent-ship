@@ -204,7 +204,18 @@ main { flex: 1; display: flex; min-height: 0; }
 .bubble p { margin: 0 0 8px; }
 .bubble p:last-child { margin-bottom: 0; }
 .bubble ul, .bubble ol { margin: 0 0 8px; padding-left: 20px; }
-.bubble h1, .bubble h2, .bubble h3 { margin: 10px 0 6px; font-size: 15px; }
+.bubble h1, .bubble h2, .bubble h3,
+.bubble h4, .bubble h5, .bubble h6 { margin: 10px 0 6px; font-size: 15px; }
+/* A nested list sits inside its parent's item, so it needs no outer margin of
+   its own -- without this the indent compounds and a three-deep list drifts off
+   the right of the bubble. */
+.bubble li > ul, .bubble li > ol { margin: 4px 0 0; }
+.bubble blockquote {
+  margin: 0 0 8px;
+  padding: 2px 0 2px 10px;
+  border-left: 2px solid var(--line);
+  color: var(--muted);
+}
 .bubble a { color: var(--accent); }
 .bubble code {
   font-family: var(--mono); font-size: 12.5px;
@@ -918,37 +929,148 @@ function escapeHtml(text) {
 }
 
 /* Render a small, safe subset of Markdown: fenced code, inline code, bold,
-   italics, links, headings, bullet lists, paragraphs. Everything is escaped
-   first, so no model output can inject markup. */
+   italics, links, headings, numbered and bullet lists with nesting, blockquotes,
+   paragraphs. Everything is escaped first, so no model output can inject markup.
+
+   Line-based, rather than the paragraph-splitting this replaced. That version
+   split on blank lines and matched a whole chunk, which broke on most of what a
+   model actually writes: a numbered list fell through to a paragraph, because
+   only `-`, `*` and `+` were recognised and `1.` was not, so a list of sources
+   arrived as "1. 1. **[Deep Dive...]**" run together on one line. A `## Heading`
+   with no blank line before it was not a heading. Nesting was flattened. And an
+   unterminated fence -- which is EVERY fence mid-stream, the closing one not
+   having been generated yet -- matched nothing, so a reader watched
+   "```javascript" sit on screen as literal text until the block happened to
+   close. */
 function renderMarkdown(text) {
-  // Fenced code is lifted out first and put back last so none of the inline
-  // rules below rewrite anything inside a code block. The placeholder is a NUL
-  // sentinel, which escapeHtml can never produce, so it cannot collide.
-  const blocks = [];
-  let escaped = escapeHtml(text).replace(/```(\w*)\n?([\s\S]*?)```/g, (match, lang, code) => {
-    blocks.push('<pre><code>' + code.replace(/\n$/, "") + "</code></pre>");
-    return "\u0000" + (blocks.length - 1) + "\u0000";
+  const lines = escapeHtml(text || "").split("\n");
+  const out = [];
+  // One entry per open list, so nesting closes in the right order.
+  const lists = [];
+  let paragraph = [];
+
+  const closeParagraph = () => {
+    if (!paragraph.length) return;
+    out.push("<p>" + inlineMarkdown(paragraph.join("<br>")) + "</p>");
+    paragraph = [];
+  };
+  const closeLists = (toDepth) => {
+    while (lists.length > toDepth) {
+      out.push("</" + lists.pop() + ">");
+      // A nested list lives INSIDE its parent's item, so closing it has to close
+      // that item too. Emitting `<ol>` as a sibling of `<li>` is invalid, and
+      // browsers indent it inconsistently rather than refusing it.
+      if (lists.length) out.push("</li>");
+    }
+  };
+  const closeAll = () => { closeParagraph(); closeLists(0); };
+  /* Reopen the item just emitted, so something can be appended inside it. The
+     closing tag may be its own entry or the tail of a combined one, depending on
+     how the item was written, so both shapes are handled rather than assumed:
+     checking only for a standalone "</li>" silently matched nothing, and the
+     nesting it was meant to fix stayed broken while looking fixed. */
+  const reopenLastItem = () => {
+    const last = out[out.length - 1];
+    if (last === "</li>") { out.pop(); return true; }
+    if (typeof last === "string" && last.endsWith("</li>")) {
+      out[out.length - 1] = last.slice(0, -5);
+      return true;
+    }
+    return false;
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Fenced code, consumed by scanning forward rather than by regex, so a fence
+    // with no closing partner still renders as a code block instead of leaking
+    // its marker into the prose -- the normal case while a reply is streaming.
+    const fence = line.match(/^\s*```(\w*)\s*$/);
+    if (fence) {
+      closeAll();
+      const body = [];
+      i++;
+      while (i < lines.length && !/^\s*```\s*$/.test(lines[i])) body.push(lines[i++]);
+      out.push("<pre><code>" + body.join("\n") + "</code></pre>");
+      continue;
+    }
+
+    if (!line.trim()) { closeParagraph(); continue; }
+
+    const heading = line.match(/^\s{0,3}(#{1,6})\s+(.*)$/);
+    if (heading) {
+      closeAll();
+      const level = heading[1].length;
+      out.push("<h" + level + ">" + inlineMarkdown(heading[2].trim()) + "</h" + level + ">");
+      continue;
+    }
+
+    const quote = line.match(/^\s{0,3}>\s?(.*)$/);
+    if (quote) {
+      closeAll();
+      out.push("<blockquote>" + inlineMarkdown(quote[1]) + "</blockquote>");
+      continue;
+    }
+
+    // `1.` and `1)` as well as `-`, `*`, `+`. Indentation picks the nesting
+    // level at two spaces per level, which is what models emit.
+    const item = line.match(/^(\s*)(?:([-*+])|(\d+)[.)])\s+(.*)$/);
+    if (item) {
+      closeParagraph();
+      const depth = Math.floor(item[1].replace(/\t/g, "  ").length / 2) + 1;
+      const tag = item[2] ? "ul" : "ol";
+      closeLists(depth);
+      // A list that changes kind at the same depth is a new list, not a
+      // continuation -- otherwise bullets render numbered, or the reverse.
+      if (lists.length === depth && lists[depth - 1] !== tag) {
+        out.push("</" + lists.pop() + ">");
+      }
+      while (lists.length < depth) {
+        // Reopen the parent's item so the nested list sits inside it.
+        if (lists.length) reopenLastItem();
+        lists.push(tag);
+        out.push("<" + tag + ">");
+      }
+      out.push("<li>" + inlineMarkdown(item[4]) + "</li>");
+      continue;
+    }
+
+    // A plain line while a list is open continues the item above it, which is
+    // how a wrapped list item arrives.
+    if (lists.length) {
+      // Appended inside the item above rather than after it, so the wrap reads as
+      // part of that item instead of a stray line hanging off the list.
+      reopenLastItem();
+      out.push(" " + inlineMarkdown(line.trim()) + "</li>");
+      continue;
+    }
+
+    paragraph.push(line.trim());
+  }
+
+  closeAll();
+  return out.join("");
+}
+
+/* The inline rules, applied to one line of prose. Code spans are lifted out
+   first and put back last so the emphasis and link rules cannot rewrite their
+   contents: `**` inside a code span is not bold. The placeholder is a NUL
+   sentinel, which escapeHtml can never produce, so it cannot collide with real
+   text. */
+function inlineMarkdown(text) {
+  const spans = [];
+  let work = text.replace(/`([^`]+)`/g, (match, code) => {
+    spans.push("<code>" + code + "</code>");
+    return "\u0000" + (spans.length - 1) + "\u0000";
   });
-  escaped = escaped
-    .replace(/`([^`\n]+)`/g, "<code>$1</code>")
+  work = work
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>")
-    .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-
-  const html = escaped.split(/\n{2,}/).map((chunk) => {
-    const trimmed = chunk.trim();
-    if (!trimmed) return "";
-    if (/^\u0000\d+\u0000$/.test(trimmed)) return trimmed;
-    const heading = trimmed.match(/^(#{1,3})\s+(.*)$/);
-    if (heading) return "<h" + heading[1].length + ">" + heading[2] + "</h" + heading[1].length + ">";
-    if (/^\s*[-*+]\s+/.test(trimmed)) {
-      const items = trimmed.split("\n").map((line) => "<li>" + line.replace(/^\s*[-*+]\s+/, "") + "</li>");
-      return "<ul>" + items.join("") + "</ul>";
-    }
-    return "<p>" + trimmed.replace(/\n/g, "<br>") + "</p>";
-  }).join("");
-
-  return html.replace(/\u0000(\d+)\u0000/g, (match, index) => blocks[Number(index)]);
+    .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    // A bare URL is a link to the reader. Models cite sources that way about as
+    // often as they use proper link syntax.
+    .replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a href="$2" target="_blank" rel="noopener">$2</a>');
+  return work.replace(/\u0000(\d+)\u0000/g, (match, index) => spans[Number(index)]);
 }
 
 /* --- trace panel --------------------------------------------------------- */
