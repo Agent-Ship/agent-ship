@@ -23,7 +23,14 @@ they were written before the project cut tagged releases.
 
 ## [Unreleased]
 
-Nothing yet — `0.0.4` starts here.
+### Fixed
+- **Agents silently stopped using their tools against an endpoint that does not stream.**
+  `streaming=True` was hardcoded when building the model. A streamed tool call arrives in
+  fragments the client reassembles; an endpoint that buffers its whole reply into one piece
+  gives it nothing to reassemble, so the call was dropped with no error and the agent answered
+  as though it had no tools. Chat kept working, which is what made it hard to spot. `params`
+  now carries a `streaming` flag — on by default, so hosted providers are unaffected — and a
+  spec pointing at a buffering gateway can turn it off and get its tools back.
 
 ## [0.0.3] — 2026-10-05
 

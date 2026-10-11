@@ -73,3 +73,32 @@ def test_resolve_model_whitespace_model_raises_spec_error():
     """A whitespace-only model is also rejected as empty."""
     with pytest.raises(SpecError):
         resolve_model("   ")
+
+
+def test_streaming_is_on_by_default() -> None:
+    """Token-by-token output is the default, because every hosted provider supports it."""
+    assert resolve_model("openai/gpt-4o-mini").streaming is True
+
+
+def test_a_spec_can_turn_streaming_off() -> None:
+    """Required for endpoints that do not really stream, and the symptom is not slow output.
+
+    A streamed tool call arrives in fragments the client reassembles. An endpoint that buffers
+    its whole reply into one piece gives it nothing to reassemble, so the call is **dropped
+    with no error** and the agent answers as though it had no tools. Measured against a
+    buffering gateway: streaming on → 0 tool calls, off → 1.
+
+    Before this field existed `streaming=True` was hardcoded, so there was no way to use tools
+    against such an endpoint at all.
+    """
+    assert resolve_model("openai/gpt-4o-mini", streaming=False).streaming is False
+
+
+def test_turning_streaming_off_does_not_disturb_the_other_params() -> None:
+    """It travels as a constructor field, not into ``model_kwargs`` where it would be ignored."""
+    model = resolve_model(
+        "openai/gpt-4o-mini", streaming=False, temperature=0.2, api_base="http://gw/v1"
+    )
+    assert model.streaming is False
+    assert model.temperature == 0.2
+    assert model.api_base == "http://gw/v1"
