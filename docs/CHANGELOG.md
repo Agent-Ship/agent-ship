@@ -21,7 +21,7 @@ they were written before the project cut tagged releases.
      finished (P02/P03/P04/P11 done 2026-08-28). From here on, an entry lands WITH its phase as a
      DoD gate. See the phase-number note at the bottom. -->
 
-## [Unreleased]
+## [0.0.4] — 2026-10-11
 
 ### Fixed
 - **The agent heard itself, and interruption stopped working.** Its own voice came back through
