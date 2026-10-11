@@ -167,8 +167,13 @@ def _build_processors(turn: VoiceTurn, clock: _TurnClock):
                 if not said.strip():
                     logger.debug("empty turn — no agent call")
                     return
-                # No "heard" event here: the transcript branch below already sent it, the
-                # moment the words were recognised rather than once the turn was judged over.
+                # The client is told what was heard HERE, and only here. The turn aggregator
+                # upstream CONSUMES transcript frames -- it is what turns them into this
+                # context -- so the transcript branch below never runs in a real pipeline and
+                # the event it sends never arrives. Removing this as a duplicate of that one
+                # left the UI with no record of the human's side of the conversation at all:
+                # the agent heard and answered correctly, and the screen stayed blank.
+                await self._tell("heard", text=said)
                 asr_ms = (
                     (time.monotonic() - clock.silence_at) * 1000
                     if clock.silence_at is not None
@@ -196,10 +201,11 @@ def _build_processors(turn: VoiceTurn, clock: _TurnClock):
                 # What the agent HEARD, sent on to the client: a wrong answer to a MISHEARD
                 # question is a different problem from a wrong answer, and they are
                 # indistinguishable without showing the transcript.
-                # Recognition is a network call to another vendor, and on a slow turn it is
-                # often the reason. Shown to the client here; the agent itself is started by the
-                # LLMContextFrame above, once the aggregator agrees the turn is finished.
-                await self._tell("heard", text=frame.text)
+                # Passed through untouched. Reaching this branch at all means a transcript got
+                # past the turn aggregator, which does not happen in a pipeline we build -- the
+                # aggregator consumes them. It stays because the processor must not swallow a
+                # frame it does not understand, and because a pipeline assembled by hand
+                # without an aggregator is a legitimate thing to do.
                 await self.push_frame(frame, direction)
                 return
 

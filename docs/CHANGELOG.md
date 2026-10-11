@@ -24,6 +24,13 @@ they were written before the project cut tagged releases.
 ## [Unreleased]
 
 ### Fixed
+- **Voice replies worked but your own questions never appeared on screen.** A regression from
+  the turn-taking rework: the agent node announced what it heard from the branch handling
+  transcript frames, and the turn aggregator sits upstream of the node and *consumes* those
+  frames — that is what turns them into the context the agent answers. So the branch never ran,
+  the event never arrived, and the conversation showed only the agent's side. The whole voice
+  suite passed throughout, because nothing asserted that the client is told what the human
+  said; it does now, driven through the real pipeline.
 - **The agent talked over itself, and could not be interrupted.** Turn-taking was ours: the
   agent answered the moment a final transcript arrived, so anything that produced words started
   a reply — including its own voice coming back through the speakers. Nothing decided whether
