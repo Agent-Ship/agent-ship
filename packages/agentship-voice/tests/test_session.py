@@ -106,3 +106,26 @@ def test_the_greeting_is_queued_on_something_that_can_queue_frames() -> None:
         "must be queued on the worker"
     )
     assert hasattr(PipelineWorker(Pipeline([])), "queue_frames")
+
+
+def test_the_voice_block_reaches_the_turn_taking_strategies() -> None:
+    """A real session must build its strategies from the agent's ``voice:`` block.
+
+    Checked by reading the live session's own call. That is a blunt instrument, and it is here
+    because the omission it guards was invisible to every other kind of test:
+    ``build_pipecat_pipeline`` was called without the config, so real sessions quietly used
+    Pipecat's defaults -- while the pipeline tests, which pass a config directly, all agreed
+    the settings worked. Driving it behaviourally would mean stubbing the transport, both
+    providers and the preflight check, leaving a test that proves the stubs agree.
+    """
+    import inspect
+
+    from agentship_voice.adapters import pipecat_adapter
+
+    source = inspect.getsource(pipecat_adapter.PipecatAdapter.run)
+    build = source[source.index("build_pipecat_pipeline(") :]
+    build = build[: build.index("\n        )")]
+    assert "config=config" in build, (
+        "start_voice must hand the voice block to the pipeline, or the agent's turn-taking "
+        "settings are read, logged, and ignored"
+    )
