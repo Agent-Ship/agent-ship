@@ -288,3 +288,58 @@ async def test_talking_over_the_agent_stops_it() -> None:
         "history must stop at what was SPOKEN -- recording sentences the human talked over is "
         "the overstatement this correction exists to remove"
     )
+
+
+@pytest.mark.asyncio
+async def test_the_client_is_told_what_the_human_said() -> None:
+    """A turn must report the human's words to the UI, not only answer them.
+
+    Driven through the real pipeline because the defect this guards was invisible anywhere
+    else. The agent node sent its "heard" event from the transcript branch, and the turn
+    aggregator CONSUMES transcript frames -- that is what turns them into the context the agent
+    answers. So the branch never ran, the event never arrived, and the conversation on screen
+    showed the agent talking to itself while the audio worked perfectly.
+    """
+    turn = _turn()
+    spoken: list[str] = []
+    pipeline = build_pipecat_pipeline(turn, stt=_FakeEars("my balance"), tts=_FakeMouth(spoken))
+
+    heard = []
+    for processor in pipeline.processors:
+        if type(processor).__name__ != "AgentNodeProcessor":
+            continue
+        told = processor._tell
+
+        async def _noting(kind, _told=told, **data):
+            if kind == "heard":
+                heard.append(data.get("text"))
+            return await _told(kind, **data)
+
+        processor._tell = _noting
+
+    task = PipelineWorker(pipeline)
+    runner = WorkerRunner(handle_sigint=False)
+    await runner.add_workers(task)
+    runner_run = asyncio.create_task(runner.run())
+    await task.queue_frames(
+        [
+            UserStartedSpeakingFrame(),
+            InputAudioRawFrame(audio=b"\x00" * 640, sample_rate=16000, num_channels=1),
+            UserStoppedSpeakingFrame(),
+        ]
+    )
+
+    async def _spoke() -> None:
+        while not turn.spoken:
+            await asyncio.sleep(0.05)
+
+    try:
+        await asyncio.wait_for(_spoke(), timeout=15)
+    finally:
+        await task.queue_frame(EndFrame())
+        await asyncio.wait_for(runner_run, timeout=15)
+
+    assert heard == ["my balance"], (
+        "the client must be told what the human said, exactly once — the transcript is the "
+        "only way anyone can tell a wrong answer from a misheard question"
+    )
