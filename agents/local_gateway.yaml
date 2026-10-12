@@ -1,0 +1,40 @@
+# An agent whose model runs on YOUR hardware, not somebody's API.
+#
+# Everything below already works — no AgentShip feature was added for this. `params.api_base`
+# points LiteLLM at any OpenAI-compatible endpoint, which is what vLLM, a LiteLLM proxy, TGI,
+# SGLang and most corporate gateways all speak.
+#
+#   make gateway        # run one turn against the gateway
+#
+# Needs an OpenAI-compatible server on port 8080. This was developed against Dodona
+# (vLLM serving Qwen2.5-7B-Instruct-AWQ on k3s), but anything speaking
+# /v1/chat/completions will do:
+#
+#   vllm serve Qwen/Qwen2.5-7B-Instruct-AWQ --port 8080
+#
+# Verify the endpoint before blaming the agent:
+#   curl http://127.0.0.1:8080/v1/models
+
+name: local-gateway
+engine: langgraph
+
+# The `openai/` prefix is about the PROTOCOL, not the company: it tells LiteLLM to speak
+# OpenAI's wire format, and `api_base` tells it where. The rest is the model name your server
+# advertises — ask it with `/v1/models` rather than guessing, because a gateway serves models
+# under its own names.
+model: openai/Qwen/Qwen2.5-7B-Instruct-AWQ
+
+prompt: >-
+  You are running on a local inference server. Answer in one or two short sentences.
+
+params:
+  # host.docker.internal, not 127.0.0.1 — inside the container, localhost is the container.
+  # Running outside Docker (`agentship run`), use http://127.0.0.1:8080/v1 instead.
+  api_base: http://host.docker.internal:8080/v1
+  # Deliberately small. A 7B model on a shared card is not a frontier API, and a long answer
+  # is a long wait; keeping replies short is what makes the demo feel like a demo.
+  max_tokens: 256
+  temperature: 0.3
+
+# No API key appears here, and none is needed: most local servers do not enforce one. If yours
+# does, LiteLLM reads OPENAI_API_KEY from the environment — never from this file.

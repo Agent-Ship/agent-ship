@@ -190,6 +190,29 @@ ui:
 	@echo ""
 	@python3 -c "import webbrowser,sys; webbrowser.open(sys.argv[1])" $(STUDIO_URL)
 
+## gateway: run an agent whose model is served by YOUR OWN inference server.
+##   Needs an OpenAI-compatible endpoint on :8080 — vLLM, a LiteLLM proxy, TGI, SGLang —
+##   and the demo container running (`make docker-up`).
+##   Nothing in AgentShip was added for this: `params.api_base` has always pointed LiteLLM
+##   at a custom endpoint. See agents/local_gateway.yaml.
+gateway:
+	@if ! curl -fsS --max-time 3 http://127.0.0.1:8080/v1/models >/dev/null 2>&1; then \
+		echo "Nothing is serving on http://127.0.0.1:8080/v1"; \
+		echo "Start an OpenAI-compatible server, e.g.:"; \
+		echo "  vllm serve Qwen/Qwen2.5-7B-Instruct-AWQ --port 8080"; \
+		exit 1; \
+	fi
+	@echo "Models the gateway advertises:"
+	@curl -s --max-time 5 http://127.0.0.1:8080/v1/models | python3 -c "import sys,json;[print('  '+m['id']) for m in json.load(sys.stdin)['data']]"
+	@echo ""
+	@# Run INSIDE the container, because that is where the spec's api_base resolves:
+	@# host.docker.internal reaches your machine from Docker, and means nothing in your
+	@# shell. One URL that works in both places does not exist, so the command moves
+	@# rather than the config.
+	docker compose exec -T demo agentship run agents/local_gateway.yaml \
+		--input "$(if $(INPUT),$(INPUT),In one sentence: what runs you?)"
+.PHONY: gateway
+
 ## clean: remove the venv and caches
 clean:
 	rm -rf $(VENV) .pytest_cache tests/__pycache__
