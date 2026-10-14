@@ -2,7 +2,8 @@
 
 Each builder reads its endpoint/keys from the environment and returns an OTel ``SpanProcessor``
 wrapping an ``OTLPSpanExporter``. These tests reach through the processor to the exporter's
-``_endpoint``/``_headers`` to prove the config maps to the right wire target — without any network.
+``_endpoint``, and through ``_headers`` below for the headers, to prove the config maps to the
+right wire target — without any network.
 """
 
 from __future__ import annotations
@@ -20,6 +21,25 @@ from agentship_observability.exporters import phoenix as phoenix_mod
 def _exporter(processor):
     """Reach the underlying span exporter through a processor (attr name varies by version)."""
     return getattr(processor, "span_exporter", None) or processor._exporter
+
+
+def _headers(exporter) -> dict[str, str]:
+    """The exporter's outgoing headers, keyed in lower case.
+
+    Where these live moved in ``opentelemetry-exporter-otlp-proto-http`` 1.45: the exporter
+    grew an inner ``_client`` that owns the transport, and the headers went with it, so
+    ``exporter._headers`` raises ``AttributeError`` on 1.45+. We support both, the same way
+    ``_exporter`` above already absorbs a processor attribute rename.
+
+    1.45 also normalises header names to lower case, so this does too and callers compare
+    against lower-cased keys. That is the right comparison regardless of version: HTTP header
+    names are case-insensitive (RFC 9110 §5.1), so the casing a builder happens to pass is
+    not a property worth asserting on.
+    """
+    raw = getattr(exporter, "_headers", None)
+    if raw is None:
+        raw = exporter._client._headers
+    return {name.lower(): value for name, value in raw.items()}
 
 
 def test_console_needs_no_backend() -> None:
@@ -47,7 +67,7 @@ def test_langfuse_builds_endpoint_and_basic_auth(monkeypatch) -> None:
     exporter = _exporter(build_processor("langfuse", ObservabilityConfig()))
     assert exporter._endpoint == "https://lf.example.com/api/public/otel/v1/traces"
     expected = "Basic " + base64.b64encode(b"pk-1:sk-2").decode()
-    assert exporter._headers["Authorization"] == expected
+    assert _headers(exporter)["authorization"] == expected
 
 
 def test_langsmith_builds_endpoint_and_api_key_header(monkeypatch) -> None:
@@ -57,7 +77,7 @@ def test_langsmith_builds_endpoint_and_api_key_header(monkeypatch) -> None:
     monkeypatch.delenv("LANGSMITH_PROJECT", raising=False)
     exporter = _exporter(build_processor("langsmith", ObservabilityConfig()))
     assert exporter._endpoint.endswith("/otel/v1/traces")
-    assert exporter._headers["x-api-key"] == "ls-key"
+    assert _headers(exporter)["x-api-key"] == "ls-key"
 
 
 def test_opik_defaults_to_local_and_needs_no_auth(monkeypatch) -> None:
@@ -66,7 +86,7 @@ def test_opik_defaults_to_local_and_needs_no_auth(monkeypatch) -> None:
         monkeypatch.delenv(name, raising=False)
     exporter = _exporter(build_processor("opik", ObservabilityConfig()))
     assert exporter._endpoint == opik_mod.DEFAULT_ENDPOINT
-    assert "Authorization" not in exporter._headers
+    assert "authorization" not in _headers(exporter)
 
 
 def test_opik_cloud_sends_auth_and_workspace_headers(monkeypatch) -> None:
@@ -79,9 +99,9 @@ def test_opik_cloud_sends_auth_and_workspace_headers(monkeypatch) -> None:
     monkeypatch.setenv("OPIK_PROJECT_NAME", "agentship")
     exporter = _exporter(build_processor("opik", ObservabilityConfig()))
     assert exporter._endpoint.endswith("/otel/v1/traces")
-    assert exporter._headers["Authorization"] == "opik-key"
-    assert exporter._headers["Comet-Workspace"] == "my-workspace"
-    assert exporter._headers["projectName"] == "agentship"
+    assert _headers(exporter)["authorization"] == "opik-key"
+    assert _headers(exporter)["comet-workspace"] == "my-workspace"
+    assert _headers(exporter)["projectname"] == "agentship"
 
 
 def test_unknown_exporter_raises_capability_error() -> None:
