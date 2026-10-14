@@ -1,0 +1,71 @@
+/* AgentShip design tokens. Dark is the default; light via [data-theme="light"] or prefers-color-scheme. */
+:root {
+  --as-ink: #0D1317;
+  --as-panel: #141C22;
+  --as-harbor: #1B262D;
+  --as-line: #243039;
+  --as-line-strong: #2A3944;
+  --as-outline: #34454F;
+  --as-fog: #E8EEF0;
+  --as-text: #C9D5DB;
+  --as-muted: #9FB0B9;
+  --as-paper: #F3F5F4;
+  --as-accent: #A685EE;
+  --as-accent-hover: #C0AAF5;
+  --as-accent-on-light: #6A47C2;
+  --as-code-key: #5CCFC0;
+
+  /* semantic (dark) */
+  --as-bg: var(--as-ink);
+  --as-surface: var(--as-panel);
+  --as-surface-raised: var(--as-harbor);
+  --as-border: var(--as-line-strong);
+  --as-heading: var(--as-fog);
+  --as-body: var(--as-text);
+  --as-secondary: var(--as-muted);
+  --as-link: var(--as-accent);
+  --as-link-hover: var(--as-accent-hover);
+
+  --as-font-display: 'Bricolage Grotesque', system-ui, sans-serif;
+  --as-font-text: 'Instrument Sans', system-ui, sans-serif;
+  --as-font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --as-radius-chip: 6px;
+  --as-radius-card: 12px;
+  --as-radius-panel: 14px;
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --as-bg: var(--as-paper);
+  --as-surface: #FFFFFF;
+  --as-surface-raised: #E8EEF0;
+  --as-border: #CBD5DA;
+  --as-heading: var(--as-ink);
+  --as-body: #2B3840;
+  --as-secondary: #55656E;
+  --as-link: var(--as-accent-on-light);
+  --as-link-hover: #4F3A9E;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --as-bg: var(--as-paper);
+    --as-surface: #FFFFFF;
+    --as-surface-raised: #E8EEF0;
+    --as-border: #CBD5DA;
+    --as-heading: var(--as-ink);
+    --as-body: #2B3840;
+    --as-secondary: #55656E;
+    --as-link: var(--as-accent-on-light);
+    --as-link-hover: #4F3A9E;
+    color-scheme: light;
+  }
+}
+
+body { background: var(--as-bg); color: var(--as-body); font-family: var(--as-font-text); }
+h1, h2, h3 { color: var(--as-heading); font-family: var(--as-font-display); letter-spacing: -0.02em; }
+a { color: var(--as-link); } a:hover { color: var(--as-link-hover); }
+code, pre { font-family: var(--as-font-mono); }
+:focus-visible { outline: 2px solid var(--as-accent); outline-offset: 2px; }

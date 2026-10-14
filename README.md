@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="branding/banners/github-readme-banner@3x.png" alt="AgentShip – production plumbing for AI agents, without the rewrite" width="100%">
+  <img src="branding/banner/github-readme-banner@2x.png" alt="AgentShip — production plumbing for AI agents, without the rewrite" width="100%">
 </p>
 
 <p align="center">
@@ -8,12 +8,20 @@
 </p>
 
 <p align="center">
-  <a href="https://pypi.org/project/agentship-sdk/"><img src="https://img.shields.io/pypi/v/agentship-sdk?style=flat&color=3776AB" alt="PyPI"></a>
-  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.13+-3776AB?style=flat&logo=python&logoColor=white" alt="Python 3.13+"></a>
-  <a href="https://www.langchain.com/langgraph"><img src="https://img.shields.io/badge/LangGraph-engine-121212?style=flat&logo=langchain&logoColor=white" alt="LangGraph"></a>
-  <a href="https://modelcontextprotocol.io/"><img src="https://img.shields.io/badge/MCP-tools-FF6B35?style=flat" alt="MCP"></a>
-  <a href="https://opentelemetry.io/"><img src="https://img.shields.io/badge/OpenTelemetry-tracing-425CC7?style=flat&logo=opentelemetry&logoColor=white" alt="OpenTelemetry"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-yellow.svg" alt="License: Apache 2.0"></a>
+  <a href="https://pypi.org/project/agentship-sdk/"><img src="https://img.shields.io/pypi/v/agentship-sdk?label=PyPI&color=A685EE&labelColor=0D1317" alt="PyPI"></a>
+  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.13%2B-A685EE?labelColor=0D1317&logo=python&logoColor=E8EEF0" alt="Python 3.13+"></a>
+  <a href="https://www.langchain.com/langgraph"><img src="https://img.shields.io/badge/LangGraph-engine-A685EE?labelColor=0D1317&logo=langchain&logoColor=E8EEF0" alt="LangGraph"></a>
+  <a href="https://modelcontextprotocol.io/"><img src="https://img.shields.io/badge/MCP-tools-A685EE?labelColor=0D1317" alt="MCP"></a>
+  <a href="https://opentelemetry.io/"><img src="https://img.shields.io/badge/OpenTelemetry-traces-A685EE?labelColor=0D1317&logo=opentelemetry&logoColor=E8EEF0" alt="OpenTelemetry"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-A685EE?labelColor=0D1317" alt="License: Apache 2.0"></a>
+</p>
+
+<p align="center">
+  <a href="https://agent-ship.dev"><b>agent-ship.dev</b></a> ·
+  <a href="docs">Docs</a> ·
+  <a href="examples">Examples</a> ·
+  <a href="deploy/RAILWAY.md">Deploy</a> ·
+  <a href="postman">Postman</a>
 </p>
 
 ---
@@ -154,7 +162,7 @@ adapter is the single place that does — so replacing LangGraph is one package,
 no key, which is why the conformance matrix can tell a capability an engine *declares* from one
 it actually *has*.
 
-**Not in this picture, because it is not built yet:** voice, long-term memory, guardrails/PII,
+**Not in this picture, because it is not built yet:** long-term memory, guardrails/PII,
 sandboxing, evals, and the ADK / Pydantic AI adapters. See [Status](#status).
 
 ---
@@ -273,7 +281,7 @@ agentship db upgrade                   # apply checkpoint migrations (gated)
 ## Status
 
 **Early — `0.x`, so the API can change between minor versions.** Pin exactly if that matters
-to you (`agentship-sdk==0.0.2`, the latest on PyPI). The next release will be `0.0.3`; see
+to you (`agentship-sdk==0.0.4`, the latest on PyPI). See
 [RELEASING](docs/RELEASING.md#versioning).
 
 > **`0.0.1` is yanked.** It reserved the six names on PyPI but could not run an agent —
@@ -293,3 +301,8 @@ before anything is called done. Test first, one task per commit, CI green — se
 ## Licence
 
 [Apache 2.0](LICENSE).
+
+The fonts vendored under [`branding/fonts/`](branding/fonts/) and `docs/assets/fonts/` are
+redistributed under the SIL Open Font License 1.1, with each licence kept beside them. The
+AgentShip name and logo are project trademarks, which Apache 2.0 does not grant rights to — see
+[`branding/README.md`](branding/README.md#licensing).

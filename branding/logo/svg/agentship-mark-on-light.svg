@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="AgentShip">
+  <title>AgentShip</title>
+  <g>
+    <rect x="38" y="10" width="20" height="15" rx="3" fill="#6A47C2"/>
+    <rect x="26" y="29" width="20" height="15" rx="3" fill="#0D1317"/>
+    <rect x="50" y="29" width="20" height="15" rx="3" fill="#0D1317"/>
+    <rect x="14" y="48" width="20" height="15" rx="3" fill="#0D1317"/>
+    <rect x="38" y="48" width="20" height="15" rx="3" fill="#0D1317"/>
+    <rect x="62" y="48" width="20" height="15" rx="3" fill="#0D1317"/>
+    <path d="M6 67 H90 L79 84 H17 Z" fill="#0D1317" stroke="#0D1317" stroke-width="3" stroke-linejoin="round"/>
+  </g>
+</svg>

@@ -27,11 +27,9 @@ commits never touch a version, so it passes indefinitely while work continues.
 
 ### Where we are
 
-**The latest published release is `0.0.2`. The next release will be `0.0.3`.**
+**The latest published release is `0.0.4`. The next release will be `0.0.5`.**
 
-- The `pyproject.toml` files already say `0.0.3`. That release was prepared (its changelog
-  section exists) but never tagged or uploaded, so the number is still free. When it is cut,
-  `## [Unreleased]` is folded into the `[0.0.3]` section so the release notes cover both.
+- The `pyproject.toml` files say `0.0.4`, matching the published release.
 - The version is changed **only in the release commit**, right before tagging — never in a
   feature PR. Fixes collect under `## [Unreleased]` until then.
 

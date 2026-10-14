@@ -4,56 +4,65 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AgentShip Studio</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%237c6ff7'/><path d='M10 20l6-11 6 11z' fill='white'/></svg>">
+<!-- The brand mark, inlined: Studio is one self-contained file, so it carries no asset requests.
+     Geometry matches branding/logo/svg/favicon.svg — do not redraw it here. -->
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'><rect width='96' height='96' rx='22' fill='%230D1317'/><g transform='translate(9.6 9.6) scale(0.8)'><rect x='38' y='10' width='20' height='15' rx='3' fill='%23A685EE'/><rect x='26' y='29' width='20' height='15' rx='3' fill='%23E8EEF0'/><rect x='50' y='29' width='20' height='15' rx='3' fill='%23E8EEF0'/><rect x='14' y='48' width='20' height='15' rx='3' fill='%23E8EEF0'/><rect x='38' y='48' width='20' height='15' rx='3' fill='%23E8EEF0'/><rect x='62' y='48' width='20' height='15' rx='3' fill='%23E8EEF0'/><path d='M6 67H90L79 84H17Z' fill='%23E8EEF0' stroke='%23E8EEF0' stroke-width='3' stroke-linejoin='round'/></g></svg>">
+<meta name="theme-color" content="#0D1317">
 <style>
 /* ---------------------------------------------------------------------------
    Palette. Dark is the default (the <html> element carries `dark`); the light
    theme is expressed as an override on `html:not(.dark)` so the toggle only has
    to add/remove one class.
    --------------------------------------------------------------------------- */
+/* The values are the AgentShip brand tokens, inlined rather than imported from
+   branding/tokens/tokens.css: Studio is deliberately one no-build file with no
+   asset requests. If a token changes in the brand kit, change it here too.
+   The six surface/border steps map onto the kit's six greys in order —
+   Ink, Panel, Harbor, Line, Line strong, Outline. */
 :root {
-  --bg: #0d0d0f;
-  --surface: #131316;
-  --surface2: #16161a;
-  --surface3: #1c1c21;
-  --border: #26262c;
-  --borderh: #35353d;
-  --t1: #e8e8ea;
-  --t2: #9a9aa2;
-  --t3: #7d7d85;   /* 4.8:1 on --bg; #6b6b74 was 3.7:1, under AA */
-  --accent: #6e9fff;
-  --onaccent: #0d0d0f;          /* dark text on the light-blue accent: 7.3:1 */
-  --accentdim: rgba(110,159,255,.10);
-  --accentb: rgba(110,159,255,.30);
+  --bg: #0D1317;        /* Ink */
+  --surface: #141C22;   /* Panel */
+  --surface2: #1B262D;  /* Harbor */
+  --surface3: #243039;  /* Line */
+  --border: #2A3944;    /* Line strong */
+  --borderh: #34454F;   /* Outline */
+  --t1: #E8EEF0;        /* Fog — never pure white */
+  --t2: #9FB0B9;        /* Muted; 8.2:1 on --bg */
+  --t3: #8A979E;   /* 6.2:1 on --bg. The kit has no third text step; this sits between Muted and Outline */
+  --accent: #A685EE;            /* Violet. One accent colour, for emphasis only */
+  --onaccent: #0D1317;          /* Ink on the violet accent: 6.3:1 */
+  --accentdim: rgba(166,133,238,.10);
+  --accentb: rgba(166,133,238,.30);
   --green: #4ade80;
   --greendim: rgba(74,222,128,.10);
-  --purple: #9a9aa2;
-  --purpledim: rgba(255,255,255,.045);
+  --purple: #9FB0B9;
+  --purpledim: rgba(232,238,240,.045);   /* Fog at 4.5%, the kit's faint-texture tint */
   --red: #f87171;
   --reddim: rgba(248,113,113,.10);
   --amber: #fbbf24;
   --amberdim: rgba(251,191,36,.10);
-  --ui: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --display: 'Bricolage Grotesque', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --ui: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 }
 html:not(.dark) {
-  --bg: #ffffff;
-  --surface: #ffffff;
-  --surface2: #f7f7f8;
-  --surface3: #f0f0f2;
-  --border: #e4e4e7;
-  --borderh: #d0d0d6;
-  --t1: #18181b;
-  --t2: #71717a;
-  --t3: #8e8e97;   /* 4.6:1 on white */
-  --accent: #2563eb;
-  --onaccent: #ffffff;          /* white on the deep-blue accent: 5.5:1 */
-  --accentdim: rgba(37,99,235,.07);
-  --accentb: rgba(37,99,235,.25);
+  --bg: #F3F5F4;        /* Paper — never pure white as the ground */
+  --surface: #FFFFFF;
+  --surface2: #E8EEF0;
+  --surface3: #DDE5E8;
+  --border: #CBD5DA;
+  --borderh: #AEBCC3;
+  --t1: #0D1317;        /* Ink */
+  --t2: #55656E;   /* 5.5:1 on --bg */
+  --t3: #5F6D75;   /* 4.9:1 on --bg */
+  --accent: #6A47C2;            /* the on-light accent; #A685EE is too light for light grounds */
+  --onaccent: #E8EEF0;          /* Fog on the violet accent: 5.4:1 */
+  --accentdim: rgba(106,71,194,.07);
+  --accentb: rgba(106,71,194,.25);
   --green: #16a34a;
   --greendim: rgba(22,163,74,.08);
-  --purple: #71717a;
-  --purpledim: rgba(0,0,0,.035);
+  --purple: #55656E;
+  --purpledim: rgba(13,19,23,.035);
   --red: #dc2626;
   --reddim: rgba(220,38,38,.07);
   --amber: #d97706;
@@ -85,7 +94,12 @@ header {
   height: 52px; flex: none; padding: 0 16px;
   background: var(--surface); border-bottom: 1px solid var(--border);
 }
-.brand { display: flex; align-items: center; gap: 9px; font-weight: 650; letter-spacing: -.01em; }
+/* The wordmark is "Agent" at 500 and "Ship" at 800, set in the display face —
+   one word, never two, and never restyled. */
+.brand { display: flex; align-items: center; gap: 9px; font-family: var(--display); letter-spacing: -.01em; }
+.brand .wm { color: var(--t1); }
+.brand .wm b { font-weight: 800; }
+.brand .wm i { font-weight: 500; font-style: normal; }
 .brand svg { width: 22px; height: 22px; flex: none; }
 .brand small { color: var(--t2); font-weight: 500; letter-spacing: .04em; text-transform: uppercase; font-size: 10px; }
 .spacer { flex: 1; }
@@ -257,7 +271,7 @@ main { flex: 1; display: flex; min-height: 0; }
 
 .welcome { text-align: center; color: var(--t2); padding: 64px 20px; }
 .welcome svg { width: 46px; height: 46px; opacity: .75; }
-.welcome h2 { margin: 14px 0 6px; font-size: 19px; color: var(--t1); letter-spacing: -.02em; }
+.welcome h2 { margin: 14px 0 6px; font-family: var(--display); font-weight: 700; font-size: 19px; color: var(--t1); letter-spacing: -.02em; }
 
 /* --- composer ------------------------------------------------------------ */
 #talk.live { background: var(--bad, #c0392b); color: #fff; }
@@ -407,12 +421,16 @@ button.mic.hearing { animation: micpulse 1.2s ease-in-out infinite; }
 <div id="app">
   <header>
     <div class="brand">
-      <svg viewBox="0 0 32 32" aria-hidden="true">
-        <circle cx="16" cy="16" r="14" fill="var(--accent)"/>
-        <path d="M10 21l6-12 6 12z" fill="#fff"/>
-        <path d="M7 23h18" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+      <svg viewBox="0 0 96 96" aria-hidden="true">
+        <rect x="38" y="10" width="20" height="15" rx="3" fill="var(--accent)"/>
+        <rect x="26" y="29" width="20" height="15" rx="3" fill="var(--t1)"/>
+        <rect x="50" y="29" width="20" height="15" rx="3" fill="var(--t1)"/>
+        <rect x="14" y="48" width="20" height="15" rx="3" fill="var(--t1)"/>
+        <rect x="38" y="48" width="20" height="15" rx="3" fill="var(--t1)"/>
+        <rect x="62" y="48" width="20" height="15" rx="3" fill="var(--t1)"/>
+        <path d="M6 67 H90 L79 84 H17 Z" fill="var(--t1)" stroke="var(--t1)" stroke-width="3" stroke-linejoin="round"/>
       </svg>
-      <span>AgentShip</span>
+      <span class="wm"><i>Agent</i><b>Ship</b></span>
       <small>Studio</small>
     </div>
     <div class="spacer"></div>
@@ -458,10 +476,14 @@ button.mic.hearing { animation: micpulse 1.2s ease-in-out infinite; }
       <div id="transcript">
         <div class="turns" id="turns">
           <div class="welcome" id="welcome">
-            <svg viewBox="0 0 32 32" aria-hidden="true">
-              <circle cx="16" cy="16" r="14" fill="var(--accent)"/>
-              <path d="M10 21l6-12 6 12z" fill="#fff"/>
-              <path d="M7 23h18" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+            <svg viewBox="0 0 96 96" aria-hidden="true">
+              <rect x="38" y="10" width="20" height="15" rx="3" fill="var(--accent)"/>
+              <rect x="26" y="29" width="20" height="15" rx="3" fill="var(--t1)"/>
+              <rect x="50" y="29" width="20" height="15" rx="3" fill="var(--t1)"/>
+              <rect x="14" y="48" width="20" height="15" rx="3" fill="var(--t1)"/>
+              <rect x="38" y="48" width="20" height="15" rx="3" fill="var(--t1)"/>
+              <rect x="62" y="48" width="20" height="15" rx="3" fill="var(--t1)"/>
+              <path d="M6 67 H90 L79 84 H17 Z" fill="var(--t1)" stroke="var(--t1)" stroke-width="3" stroke-linejoin="round"/>
             </svg>
             <h2>AgentShip Studio</h2>
             <div>Pick an agent on the left to start a conversation.</div>

@@ -36,6 +36,10 @@ _DEFAULT_PUBLIC_PATHS = frozenset(
         "/docs",
         "/redoc",
         "/studio",
+        # The brand mark, requested by the browser chrome for every page above. A tab icon
+        # that 401s renders as a broken favicon on /docs and /studio alike, and it carries
+        # no tenant data — it is the same bytes for every caller.
+        "/favicon.svg",
     }
 )
 
