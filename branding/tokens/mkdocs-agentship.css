@@ -1,0 +1,28 @@
+/* MkDocs Material overrides for AgentShip. Use with palette.scheme: slate, primary: custom, accent: custom. */
+[data-md-color-scheme="slate"] {
+  --md-default-bg-color: #0D1317;
+  --md-default-fg-color: #C9D5DB;
+  --md-default-fg-color--light: #9FB0B9;
+  --md-default-fg-color--lighter: #55656E;
+  --md-default-fg-color--lightest: #243039;
+  --md-primary-fg-color: #141C22;
+  --md-primary-bg-color: #E8EEF0;
+  --md-accent-fg-color: #A685EE;
+  --md-typeset-color: #C9D5DB;
+  --md-typeset-a-color: #A685EE;
+  --md-code-bg-color: #141C22;
+  --md-code-fg-color: #E8EEF0;
+  --md-code-hl-keyword-color: #A685EE;
+  --md-code-hl-string-color: #E8EEF0;
+  --md-code-hl-name-color: #5CCFC0;
+  --md-footer-bg-color: #0D1317;
+}
+.md-typeset h1, .md-typeset h2, .md-typeset h3 {
+  font-family: 'Bricolage Grotesque', system-ui, sans-serif;
+  letter-spacing: -0.02em;
+  color: #E8EEF0;
+}
+.md-typeset { font-family: 'Instrument Sans', system-ui, sans-serif; }
+.md-typeset code, .md-typeset pre { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+.md-header { border-bottom: 1px solid #243039; box-shadow: none; }
+.md-typeset a:hover { color: #C0AAF5; }

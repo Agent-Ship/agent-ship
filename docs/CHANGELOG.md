@@ -23,7 +23,29 @@ they were written before the project cut tagged releases.
 
 ## [Unreleased]
 
+### Changed
+- **The project had two visual identities and no way to tell which was current.** `branding/`
+  carried a logo set that nothing in the tree referenced by the same name the README used, the
+  docs site was Material's stock teal with fonts fetched from Google, and Studio's tab icon was a
+  placeholder blue circle with a triangle in it. The AgentShip brand kit is now vendored under
+  `branding/` — logo, banner, fonts and tokens — and the superseded `logos/`, `icons/`,
+  `favicons/` and `banners/` directories are gone, so there is no second identity left to pick up
+  by mistake. The docs site serves the mark, the favicon, the brand palette and self-hosted
+  Bricolage Grotesque / Instrument Sans / JetBrains Mono, with no request to Google. Studio's
+  palette maps onto the kit's six greys and it draws the real mark. `branding/README.md` records
+  which file belongs where and why.
+- **`/docs` and `/redoc` were branded as FastAPI.** Both pages hard-code FastAPI's own favicon, so
+  a tab of AgentShip API documentation carried somebody else's logo. They are now built with
+  `get_swagger_ui_html` and `get_redoc_html` against a new public `GET /favicon.svg` — same URLs,
+  same Swagger and ReDoc assets, only the icon differs.
+
 ### Fixed
+- **The README contradicted itself about voice, and named a two-release-old version as current.**
+  One paragraph listed voice under "not built yet" while another listed it as shipped; voice has
+  been released since `0.0.3`. The Status section told readers to pin `agentship-sdk==0.0.2` as
+  "the latest on PyPI" and said the next release would be `0.0.3`. `docs/RELEASING.md` carried the
+  same stale claim at the top of the versioning section. Anyone following either would have pinned
+  two releases behind.
 - **CI went red on `main` without anyone changing it.** Four exporter tests began failing with
   `AttributeError: 'OTLPSpanExporter' object has no attribute '_headers'`. Nothing in the tree
   moved: `opentelemetry-exporter-otlp-proto-http` is constrained `>=1.27` with no upper bound, so
@@ -35,6 +57,12 @@ they were written before the project cut tagged releases.
   rename. The helper also lower-cases the names, because 1.45 normalises them and header names
   are case-insensitive anyway, so the casing a builder happens to pass was never the property
   worth asserting. Verified against both 1.44.0 and 1.45.1; no shipped code changed.
+
+### Licensing
+- The fonts vendored in `branding/fonts/` and `docs/assets/fonts/` are redistributed under the SIL
+  Open Font License 1.1, with each licence file kept beside them as the OFL requires. The README's
+  licence section and `branding/README.md` now state this, and note that Apache 2.0 grants no
+  rights in the AgentShip name or logo (section 6).
 
 ## [0.0.4] — 2026-10-11
 

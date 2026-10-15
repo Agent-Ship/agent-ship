@@ -17,6 +17,8 @@ from collections.abc import Sequence
 
 from agentship.auth import AuthProvider
 from fastapi import FastAPI
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
+from fastapi.responses import HTMLResponse
 from starlette.middleware.cors import CORSMiddleware
 
 from .build_info import build_info
@@ -60,7 +62,11 @@ def create_app(
     public ``GET /healthz`` liveness probe, the public ``GET /studio`` debug UI, the v1
     agent + task routers, and the problem+json error handlers installed.
     """
-    app = FastAPI(title=title, docs_url="/docs", redoc_url="/redoc")
+    # /docs and /redoc are rebuilt by hand below rather than taken from FastAPI's
+    # defaults, for one reason: the default pages hard-code FastAPI's own favicon, so a
+    # tab of AgentShip API docs was branded as somebody else's project. Same URLs, same
+    # Swagger/ReDoc assets — only the favicon differs.
+    app = FastAPI(title=title, docs_url=None, redoc_url=None)
     app.state.agents = agents if agents is not None else AgentRegistry()
     app.state.tasks = TaskStore()
     install_error_handlers(app)
@@ -74,6 +80,24 @@ def create_app(
         latest?" should be answerable from outside.
         """
         return {"status": "ok", **build_info()}
+
+    @app.get("/docs", include_in_schema=False)
+    async def swagger_ui() -> HTMLResponse:
+        """Swagger UI, wearing the AgentShip favicon."""
+        return get_swagger_ui_html(
+            openapi_url="/openapi.json",
+            title=f"{title} — API",
+            swagger_favicon_url="/favicon.svg",
+        )
+
+    @app.get("/redoc", include_in_schema=False)
+    async def redoc_ui() -> HTMLResponse:
+        """ReDoc, wearing the AgentShip favicon."""
+        return get_redoc_html(
+            openapi_url="/openapi.json",
+            title=f"{title} — API",
+            redoc_favicon_url="/favicon.svg",
+        )
 
     app.include_router(agents_router)
     app.include_router(live_router)

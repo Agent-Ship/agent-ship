@@ -19,17 +19,24 @@ use_directory_urls: false
 
 theme:
   name: material
+  logo: assets/agentship-mark-on-dark.svg
+  favicon: assets/favicon.svg
+  # Bricolage Grotesque / Instrument Sans / JetBrains Mono are self-hosted from
+  # assets/fonts (SIL OFL), so Material must not also pull its own from Google.
+  font: false
   palette:
-    # Light/dark toggle — the site follows the reader, not our preference.
+    # Light/dark toggle — the site follows the reader, not our preference. Both
+    # schemes are `custom`: the brand colours come from stylesheets/agentship.css
+    # rather than from a Material named palette.
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: teal
-      accent: teal
+      primary: custom
+      accent: custom
       toggle: {icon: material/weather-night, name: Switch to dark mode}
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: teal
-      accent: teal
+      primary: custom
+      accent: custom
       toggle: {icon: material/weather-sunny, name: Switch to light mode}
   features:
     - navigation.instant     # no full page reload between docs
@@ -49,7 +56,11 @@ theme:
   icon:
     repo: fontawesome/brands/github
 
+# Order matters: fonts first, then the brand palette, then extra.css so the
+# page-specific rules (capability pills, verify blocks) layer on top of it.
 extra_css:
+  - assets/fonts/fonts.css
+  - stylesheets/agentship.css
   - stylesheets/extra.css
 
 markdown_extensions:

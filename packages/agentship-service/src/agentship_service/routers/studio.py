@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 router = APIRouter()
@@ -21,6 +21,10 @@ router = APIRouter()
 #: The shipped page. Read per request rather than at import so editing it during
 #: development shows up on a refresh without restarting the server.
 STUDIO_PAGE = Path(__file__).resolve().parent.parent / "static" / "studio.html"
+
+#: The AgentShip brand mark, served for the browser tab on /studio, /docs and /redoc.
+#: Same copy as branding/logo/svg/favicon.svg.
+FAVICON = Path(__file__).resolve().parent.parent / "static" / "favicon.svg"
 
 
 @router.get("/studio", include_in_schema=False, response_class=HTMLResponse)
@@ -37,6 +41,21 @@ async def studio() -> HTMLResponse:
         # reasonably concluded the change had not shipped. Re-reading the file per request
         # (above) only defeats the server's cache; this defeats the browser's.
         headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.get("/favicon.svg", include_in_schema=False)
+async def favicon() -> Response:
+    """Return the brand mark for the browser tab.
+
+    Public, and out of the schema, for the same reasons /studio is: it is chrome rather
+    than contract, and the bytes are identical for every caller. Unlike the Studio page
+    this one is immutable, so it may be cached hard.
+    """
+    return Response(
+        FAVICON.read_bytes(),
+        media_type="image/svg+xml",
+        headers={"Cache-Control": "public, max-age=604800"},
     )
 
 
