@@ -14,6 +14,16 @@ VENV := .venv
 PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
 
+# One stamp per `make` invocation, baked into the image and reported by /healthz, so you
+# can tell which build is answering without shelling into the container. `:=` so every
+# target in one run agrees on it. It is the LAST thing the Dockerfile sets, so a new
+# stamp invalidates only that layer — passing a fresh one does not force a real rebuild.
+#
+# Every target that builds must pass it. docker-build and docker-reload did not, so a
+# reload left /healthz reporting `build: dev` and the staleness question unanswerable —
+# which is the whole reason the stamp exists.
+AGENTSHIP_BUILD := $(shell date +%Y%m%d-%H%M%S)
+
 .PHONY: help install test test-live test-docker record demo demo-multiagent demo-observability demo-service ask run ui docker-setup docker-build docker-build-clean docker-up docker-down docker-restart docker-logs docker-reload clean
 
 ## help: list every target with what it does (also what you get by running plain `make`).
@@ -83,7 +93,7 @@ demo-service:
 ##   it with a Postgres so durable agents keep their checkpoints across a restart.
 ##   Model keys are read from your .env; the echo-engine agents work without any key.
 docker-up:
-	AGENTSHIP_BUILD=$$(date +%Y%m%d-%H%M%S) docker compose up -d --build
+	AGENTSHIP_BUILD=$(AGENTSHIP_BUILD) docker compose up -d --build
 	@echo ""
 	@echo "  Studio   $(STUDIO_URL)   <- the UI; API key is 'dev'"
 	@echo "  API      http://localhost:7005"
@@ -102,13 +112,13 @@ docker-logs:
 
 ## docker-build: rebuild the image without starting anything.
 docker-build:
-	DOCKER_BUILDKIT=1 docker compose build
+	AGENTSHIP_BUILD=$(AGENTSHIP_BUILD) DOCKER_BUILDKIT=1 docker compose build
 
 ## docker-reload: hard reload — rebuild the image and restart everything.
 docker-reload:
 	docker compose down
-	DOCKER_BUILDKIT=1 docker compose build
-	docker compose up -d
+	AGENTSHIP_BUILD=$(AGENTSHIP_BUILD) DOCKER_BUILDKIT=1 docker compose build
+	AGENTSHIP_BUILD=$(AGENTSHIP_BUILD) docker compose up -d
 	@echo ""
 	@echo "  Studio   $(STUDIO_URL)   (hard-refresh once: the browser caches it)"
 
@@ -135,7 +145,7 @@ docker-restart:
 ##   Slow, and only needed when a cached layer is the problem — a dependency that
 ##   resolved differently, or a stale package copied into the image.
 docker-build-clean:
-	DOCKER_BUILDKIT=1 docker compose build --no-cache
+	AGENTSHIP_BUILD=$(AGENTSHIP_BUILD) DOCKER_BUILDKIT=1 docker compose build --no-cache
 
 ## test-docker: run the service tests against the CONTAINER, not an in-process app.
 ##   Proves the built image actually serves: it boots, binds, authenticates and streams.
@@ -165,25 +175,42 @@ run:
 ##   This used to open a browser unconditionally. With nothing listening on :7005 that is a
 ##   dead tab and no explanation — the target appeared broken when the only problem was that
 ##   nobody had run `make docker-up` yet.
+##
+##   It then used to SKIP the build whenever anything answered on :7005, printing "Service
+##   already up." A container from three days ago answers that check exactly as well as a
+##   current one, so the target happily opened Studio on a stale image — a framework change
+##   you had just made, or even a released version bump, was simply invisible. It now always
+##   builds. The image bakes the framework in at build time, so "is something listening?"
+##   was never the question worth asking; "is it running what is in the checkout?" is.
+##
+##   What that costs, measured, when nothing changed: the build itself is ~1s because every
+##   layer is cached, but the stamp below is new on each run, so the image is new, so compose
+##   recreates the container — about 4s — and the service then takes ~11s to answer /healthz.
+##   Call it 15-30s to open Studio, against 0s before.
+##
+##   That is the deliberate trade: the old behaviour cost nothing and was wrong, serving a
+##   three-day-old image with no hint it was doing so. If the restart becomes annoying while
+##   iterating on agents rather than the framework, `make docker-restart` still reuses the
+##   image, and deriving the stamp from the sibling checkout's content instead of the clock
+##   would make an unchanged run a true no-op.
 ui:
-	@if curl -fsS --max-time 2 http://localhost:7005/healthz >/dev/null 2>&1; then \
-		echo "Service already up."; \
-	else \
-		echo "Nothing on :7005 — starting the service (first run builds the image)…"; \
-		$(MAKE) --no-print-directory docker-up; \
-		printf "Waiting for the service"; \
-		for i in $$(seq 1 60); do \
-			if curl -fsS --max-time 2 http://localhost:7005/healthz >/dev/null 2>&1; then \
-				echo " ready."; break; \
-			fi; \
-			printf "."; sleep 2; \
-		done; \
-		if ! curl -fsS --max-time 2 http://localhost:7005/healthz >/dev/null 2>&1; then \
-			echo ""; \
-			echo "The service did not come up. See what it said:  make docker-logs"; \
-			exit 1; \
+	@echo "Building and starting the service (cached build ~1s; the service takes ~15s to boot)…"
+	@$(MAKE) --no-print-directory docker-up
+	@printf "Waiting for the service"
+	@for i in $$(seq 1 60); do \
+		if curl -fsS --max-time 2 http://localhost:7005/healthz >/dev/null 2>&1; then \
+			echo " ready."; break; \
 		fi; \
+		printf "."; sleep 2; \
+	done
+	@if ! curl -fsS --max-time 2 http://localhost:7005/healthz >/dev/null 2>&1; then \
+		echo ""; \
+		echo "The service did not come up. See what it said:  make docker-logs"; \
+		exit 1; \
 	fi
+	@printf "  Serving build "; \
+	curl -fsS --max-time 2 http://localhost:7005/healthz \
+		| sed -n 's/.*"build":"\([^"]*\)".*/\1/p'
 	@echo ""
 	@echo "  Studio   $(STUDIO_URL)"
 	@echo "  API key  dev        <- paste this when Studio asks"
