@@ -103,6 +103,26 @@ Add the `## [Unreleased]` changelog entry. That section *is* the next release's 
 missing entry means the work ships unannounced — and a tag with no matching section fails the
 release workflow outright.
 
+## Label it
+
+**Same two axes as an issue, applied to the PR too** — `--label` on `gh pr create`, not as an
+afterthought:
+
+- `type:` — bug · feature · docs · chore. This is not a judgement call: it is whatever the
+  conventional-commit prefix already says. `fix(voice):` is `type:bug` and `area:voice`.
+- `area:` — core · langgraph · voice · service · observability · cli · demo. Studio lives in
+  `agentship-service`, so a Studio change is `area:service`.
+- `release` as well, on a version bump or the release plumbing.
+
+This was missed on thirty-odd PRs because the skill did not ask for it, which is the only
+reason a mechanical step gets skipped. The labels are what make `gh pr list --label area:voice`
+answer "what have we changed about voice", and without them that history is only greppable by
+title.
+
+Use the `type:` vocabulary, never GitHub's stock `bug` / `documentation` / `enhancement`. Those
+exist because they ship with a new repo, and a repo with both has two names for one thing and
+neither filter returns everything.
+
 ## After opening
 
 Watch CI to completion (`gh pr checks <n> --watch`) and report the result honestly. Do not
