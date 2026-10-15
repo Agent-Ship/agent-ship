@@ -21,6 +21,21 @@ they were written before the project cut tagged releases.
      finished (P02/P03/P04/P11 done 2026-08-28). From here on, an entry lands WITH its phase as a
      DoD gate. See the phase-number note at the bottom. -->
 
+## [Unreleased]
+
+### Fixed
+- **CI went red on `main` without anyone changing it.** Four exporter tests began failing with
+  `AttributeError: 'OTLPSpanExporter' object has no attribute '_headers'`. Nothing in the tree
+  moved: `opentelemetry-exporter-otlp-proto-http` is constrained `>=1.27` with no upper bound, so
+  CI resolves whatever is newest, and 1.45 restructured the exporter — it grew an inner `_client`
+  that owns the transport, and the headers went with it. The tests reach into that private
+  attribute deliberately, to prove a builder's config maps to the right wire target without
+  opening a socket. They now read the headers through a `_headers` helper that accepts either
+  layout, exactly as the neighbouring `_exporter` helper already absorbs a processor attribute
+  rename. The helper also lower-cases the names, because 1.45 normalises them and header names
+  are case-insensitive anyway, so the casing a builder happens to pass was never the property
+  worth asserting. Verified against both 1.44.0 and 1.45.1; no shipped code changed.
+
 ## [0.0.4] — 2026-10-11
 
 ### Fixed
