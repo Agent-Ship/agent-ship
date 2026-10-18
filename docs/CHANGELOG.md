@@ -24,6 +24,22 @@ they were written before the project cut tagged releases.
 ## [Unreleased]
 
 ### Changed
+- **The README's own picture advertised four things AgentShip cannot do.** `branding/hero/image.png`
+  sat directly under "The problem" and showed Google ADK, OpenAI SDK and CrewAI as engines, plus
+  Memory and Guardrails as components — against a README that states a few sections later that
+  none of those are built. It also carried the pre-rebuild wordmark with a glow. It is deleted,
+  along with the unreferenced `branding/Architecture.png`, which showed a third wordmark and an
+  ADK sidecar, a vector-store memory layer, eval datasets and LLM-as-judge. The architecture
+  picture is now only the Mermaid diagram, which is held to the same facts as the prose.
+- **The badges were six identical violet pills, and the diagram was five pastel fills.** The
+  accent spent on everything is the accent spent on nothing, so the stack badges now carry each
+  tool's own colour over the shared Ink label, and the violet is kept for the two that are ours
+  (version, licence). The architecture diagram rendered as a bright light-mode block in the
+  middle of a dark-branded README; it is now Panel fills with Fog text, where only the border
+  carries meaning — the accent on the kernel, the code teal on the adapters. A Mermaid `init`
+  block sets the edge-label, cluster and line colours, which previously defaulted to light chips
+  and near-invisible arrows on a dark canvas. Checked by rendering it on both GitHub canvas
+  colours, which is also how the cluster titles were found to be colliding with their own nodes.
 - **The project had two visual identities and no way to tell which was current.** `branding/`
   carried a logo set that nothing in the tree referenced by the same name the README used, the
   docs site was Material's stock teal with fonts fetched from Google, and Studio's tab icon was a
