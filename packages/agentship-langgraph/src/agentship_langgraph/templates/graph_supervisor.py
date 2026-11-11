@@ -292,13 +292,15 @@ def build_supervisor_graph(
     return g
 
 
-def _member_agent(member: Any, default_model: str | None) -> Any:
+def _member_agent(member: Any, team: AgentSpec) -> Any:
     """Resolve one :class:`~agentship.spec.MemberSpec` into a built sub-agent.
 
     A member declared by ``ref`` loads its own agent YAML (already resolved to an absolute path by
     :func:`~agentship.spec.load_spec`); an inline member becomes a plain ``template: single`` agent
     over its ``prompt`` (or a sensible default) and its ``model`` (falling back to the team model).
     Either way the result is a full, independently-runnable agent the supervisor dispatches to.
+    An inline member inherits the team's ``params`` (``api_base``, ``reasoning_effort``, …), since
+    it has no way to declare its own; a ``ref`` member brings its own.
     """
     from agentship.runtime import build_agent
     from agentship.spec import AgentSpec
@@ -311,8 +313,9 @@ def _member_agent(member: Any, default_model: str | None) -> Any:
             name=member.name,
             engine="langgraph",
             template="single",
-            model=member.model or default_model,
+            model=member.model or team.model,
             prompt=prompt,
+            params=team.params,
         )
     )
 
@@ -332,7 +335,10 @@ def derive_graph_config(spec: AgentSpec) -> GraphConfig:
     routing["_default"] = RouteEntry(specialists=[names[0]], strategy="single")
     hints = {m.name: m.description for m in members if m.description}
     return GraphConfig(
-        classify=ClassifyConfig(model=spec.model or "", intents=names, hints=hints),
+        # No model of its own: classify falls back to the team's engine-wired model, which carries
+        # the team's params. Naming spec.model here re-resolved it without them, so a team pointed
+        # at a local server (api_base) or told not to think (reasoning_effort) classified elsewhere.
+        classify=ClassifyConfig(model="", intents=names, hints=hints),
         routing=routing,
         conflict_resolver=ConflictPolicy(priority=names),
     )
@@ -348,7 +354,7 @@ def build_declarative_supervisor(
     attaching any checkpointer) and the coordinated member names (surfaced on the built artifact so
     the ``multi_agent`` capability is inspectable).
     """
-    specialists = {m.name: _member_agent(m, spec.model) for m in (spec.members or [])}
+    specialists = {m.name: _member_agent(m, spec) for m in (spec.members or [])}
     config = derive_graph_config(spec)
     graph = build_supervisor_graph(model, config, specialists)
     return graph, list(specialists)

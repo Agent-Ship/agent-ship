@@ -78,3 +78,40 @@ async def test_each_turn_in_a_thread_is_routed_afresh(tmp_path, monkeypatch):
 
     assert "echo: I was double charged" in first.output
     assert "echo: How do I reset my password?" in second.output
+
+
+async def test_team_params_reach_the_classifier_and_inline_members(tmp_path, monkeypatch):
+    """A team's ``params`` apply to every model it builds: the classifier and inline members too.
+
+    The classifier used to re-resolve the team's model id without its params, and inline members
+    were built without them. A team pointed at a local server with ``api_base``, or told
+    ``reasoning_effort: none``, then classified and answered with the provider defaults.
+    """
+    calls = []
+
+    def fake_resolve(model, **params):
+        calls.append(params)
+        return FakeListChatModel(responses=["writer", "Hello there."])
+
+    monkeypatch.setattr(models_module, "resolve_model", fake_resolve)
+    team = tmp_path / "team.yaml"
+    team.write_text(
+        textwrap.dedent(
+            """
+            name: team
+            engine: langgraph
+            model: x
+            params:
+              api_base: http://localhost:9999/v1
+            members:
+              - name: writer
+                description: greetings and small talk
+                prompt: Answer in one sentence.
+            """
+        )
+    )
+    agent = build_agent(str(team))
+    await agent.run("Hi!", user_id="alice")
+
+    assert calls, "no model was resolved"
+    assert all(c.get("api_base") == "http://localhost:9999/v1" for c in calls), calls
