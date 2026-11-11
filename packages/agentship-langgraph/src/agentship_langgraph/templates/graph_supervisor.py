@@ -76,6 +76,21 @@ class SupervisorState(TypedDict, total=False):
     approved: bool | None
 
 
+#: The per-turn working fields, cleared by ``classify`` (the first node of every turn). A thread's
+#: state is checkpointed, so without this a follow-up turn inherits the previous turn's
+#: ``specialist_results``: ``dispatch`` reads them as a retry pass with nothing left to retry, runs
+#: no specialist, and ``resolve`` returns the previous turn's answer again. ``messages`` is the
+#: only field meant to carry across turns.
+_FRESH_TURN: dict[str, Any] = {
+    "route": None,
+    "specialist_results": [],
+    "attempts": {},
+    "resolved": None,
+    "pending_write": None,
+    "approved": None,
+}
+
+
 def _user_text(state: SupervisorState) -> str:
     """The user's request for this turn — the content of the latest inbound message."""
     return state["messages"][-1].content
@@ -115,7 +130,7 @@ def make_classify(agent_model: BaseChatModel, cfg: GraphConfig):
         label = (reply.content or "").strip().lower()
         intent = label if label in cfg.classify.intents else None
         logger.info("classify: %r -> intent=%s", _preview(_user_text(state)), intent)
-        return {"intent": intent}
+        return {"intent": intent, **_FRESH_TURN}
 
     return classify
 

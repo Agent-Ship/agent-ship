@@ -59,3 +59,22 @@ async def test_declarative_supervisor_exposes_members(tmp_path, monkeypatch):
     agent = build_agent(_team(tmp_path))
     assert agent.compiled.members  # non-empty coordinated team
     assert set(agent.compiled.members) == {"billing", "faq"}
+
+
+async def test_each_turn_in_a_thread_is_routed_afresh(tmp_path, monkeypatch):
+    """A follow-up turn in the same thread is classified, dispatched and answered on its own.
+
+    The supervisor's per-turn fields are checkpointed with the thread. Before they were reset at
+    the start of a turn, turn two inherited turn one's ``specialist_results``: dispatch saw a retry
+    pass with nothing to retry, ran no member, and the team returned turn one's answer again.
+    """
+    monkeypatch.setattr(
+        models_module, "resolve_model", lambda *a, **k: FakeListChatModel(responses=["billing", "faq"])
+    )
+    agent = build_agent(_team(tmp_path))
+
+    first = await agent.run("I was double charged", user_id="alice", session_id="thread-1")
+    second = await agent.run("How do I reset my password?", user_id="alice", session_id="thread-1")
+
+    assert "echo: I was double charged" in first.output
+    assert "echo: How do I reset my password?" in second.output

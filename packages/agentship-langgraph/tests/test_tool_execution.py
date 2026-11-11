@@ -300,3 +300,25 @@ async def test_a_raising_tool_reports_the_failure_when_invoked_directly():
     lc = to_langchain_tool(boom)
     out = await lc.ainvoke({"label": "x"})
     assert "boom" in str(out) and "upstream service refused" in str(out)
+
+
+async def test_tools_without_a_template_still_run(monkeypatch):
+    """``tools:`` with no ``template:`` builds an agent that calls them, as the quickstart promises.
+
+    The README's ``calc.yaml`` declares ``tools: [calculator]`` and no template. That used to take
+    the engine's default graph, which only calls the model: nothing was bound, the model answered
+    from its own arithmetic, and no error said the tool was ignored.
+    """
+    asks = AIMessage(
+        content="", tool_calls=[{"name": "calculator", "args": {"expression": "17 * 23"}, "id": "c1"}]
+    )
+    model = ScriptedModel(script=[asks, AIMessage(content="391")])
+    monkeypatch.setattr(models_module, "resolve_model", lambda *a, **k: model)
+
+    spec = AgentSpec(name="calc", engine="langgraph", model="x", tools=["calculator"])
+    engine = LangGraphEngine()
+    result = await engine.run(engine.build(spec), "What is 17 times 23?", _ctx("no-template-thread"))
+
+    assert result.output == "391"
+    tool_messages = [m for m in model.seen[1] if m.type == "tool"]
+    assert tool_messages and '"result": 391' in str(tool_messages[-1].content)
