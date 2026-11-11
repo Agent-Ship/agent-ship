@@ -310,14 +310,17 @@ async def test_tools_without_a_template_still_run(monkeypatch):
     from its own arithmetic, and no error said the tool was ignored.
     """
     asks = AIMessage(
-        content="", tool_calls=[{"name": "calculator", "args": {"expression": "17 * 23"}, "id": "c1"}]
+        content="",
+        tool_calls=[{"name": "calculator", "args": {"expression": "17 * 23"}, "id": "c1"}],
     )
     model = ScriptedModel(script=[asks, AIMessage(content="391")])
     monkeypatch.setattr(models_module, "resolve_model", lambda *a, **k: model)
 
     spec = AgentSpec(name="calc", engine="langgraph", model="x", tools=["calculator"])
     engine = LangGraphEngine()
-    result = await engine.run(engine.build(spec), "What is 17 times 23?", _ctx("no-template-thread"))
+    result = await engine.run(
+        engine.build(spec), "What is 17 times 23?", _ctx("no-template-thread")
+    )
 
     assert result.output == "391"
     tool_messages = [m for m in model.seen[1] if m.type == "tool"]

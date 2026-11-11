@@ -69,7 +69,9 @@ async def test_each_turn_in_a_thread_is_routed_afresh(tmp_path, monkeypatch):
     pass with nothing to retry, ran no member, and the team returned turn one's answer again.
     """
     monkeypatch.setattr(
-        models_module, "resolve_model", lambda *a, **k: FakeListChatModel(responses=["billing", "faq"])
+        models_module,
+        "resolve_model",
+        lambda *a, **k: FakeListChatModel(responses=["billing", "faq"]),
     )
     agent = build_agent(_team(tmp_path))
 

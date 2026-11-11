@@ -30,7 +30,7 @@ def test_an_agent_can_ask_for_more_or_less_thinking():
 
 @pytest.mark.parametrize("effort", ["none", "minimal", "low", "medium", "high"])
 def test_every_supported_effort_is_accepted(effort: str):
-    """The levels LiteLLM maps onto each provider's own scale, plus ``none`` to turn thinking off."""
+    """The levels LiteLLM maps to each provider's scale, plus ``none`` to turn thinking off."""
     assert ModelParams(reasoning_effort=effort).reasoning_effort == effort
 
 
