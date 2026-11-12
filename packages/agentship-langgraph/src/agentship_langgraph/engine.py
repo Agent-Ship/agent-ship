@@ -44,7 +44,7 @@ from typing_extensions import TypedDict
 from . import models
 from .agent import LangGraphAgent
 from .durability import open_checkpointer, open_turn_state
-from .templates import resolve_template
+from .templates import build_single, resolve_template
 from .templates.graph_supervisor import INTERNAL_NODES as SUPERVISOR_INTERNAL_NODES
 from .tools import ToolCallLogger
 from .tracing import ObservabilityCallback
@@ -337,6 +337,13 @@ class LangGraphEngine(Engine):
             prompt_owned_by_graph = True
         else:
             template_body = resolve_template(spec)
+            if template_body is None and tools:
+                # The default graph only calls the model; it has no node that executes a tool. A
+                # spec that declares tools (or MCP servers) but no template means "an agent with
+                # these tools", which is the `single` template. Falling through instead bound
+                # nothing, and the model answered from its own knowledge with no error.
+                _engine_logger.debug("tools declared without a template: using template=single")
+                template_body = build_single(spec)
             if template_body is not None:
                 _engine_logger.debug(
                     "build path=template template=%s model=%s tools=%d",

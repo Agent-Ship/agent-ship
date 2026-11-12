@@ -36,13 +36,22 @@ def _langgraph_offline() -> Iterator[None]:
     Replaces :func:`agentship_langgraph.models.resolve_model` with a factory that
     returns a token-streaming ``FakeListChatModel``, so the engine compiles and
     drives its graph with zero network calls. Restored on exit.
+
+    The fake accepts ``bind_tools`` (and ignores the tools): a spec that declares tools
+    builds a graph that binds them, and the stock fake raises ``NotImplementedError``
+    there, which would fail the ``tool_calling`` cell for the harness rather than the engine.
     """
     from langchain_core.language_models.fake_chat_models import FakeListChatModel
 
     import agentship_langgraph.models as models_module
 
+    class _ToolAcceptingFake(FakeListChatModel):
+        def bind_tools(self, tools, **kwargs):
+            """Accept the bound tools and return itself: the scripted reply calls none."""
+            return self
+
     original = models_module.resolve_model
-    fake = FakeListChatModel(responses=["conformance ok, streamed in pieces."])
+    fake = _ToolAcceptingFake(responses=["conformance ok, streamed in pieces."])
     models_module.resolve_model = lambda *args, **kwargs: fake  # type: ignore[assignment]
     try:
         yield

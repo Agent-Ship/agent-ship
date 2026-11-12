@@ -216,7 +216,11 @@ class ModelParams(BaseModel):
     #:
     #: Typed rather than a free string so ``reasoning_effort: hgih`` fails when the spec
     #: loads, not as a provider 400 in the middle of someone's turn.
-    reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = None
+    #:
+    #: ``none`` asks a reasoning model not to think at all (OpenAI GPT-5.1, and the
+    #: OpenAI-compatible servers that host Qwen3-style hybrid models), which is distinct from
+    #: leaving the field unset and getting the provider's default.
+    reasoning_effort: Literal["none", "minimal", "low", "medium", "high"] | None = None
 
 
 class ObservabilitySpec(BaseModel):

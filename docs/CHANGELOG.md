@@ -40,6 +40,20 @@ they were written before the project cut tagged releases.
   same Swagger and ReDoc assets, only the icon differs.
 
 ### Fixed
+- **A team answered every follow-up turn with its first answer.** The supervisor checkpoints its
+  per-turn fields (`route`, `specialist_results`, `attempts`, `resolved`, `pending_write`,
+  `approved`) with the thread, and nothing cleared them, so on turn two dispatch saw a result for
+  every routed member, ran none, and the turn returned the previous answer again. `classify` now
+  resets them at the start of each turn.
+- **A spec with `tools:` and no `template:` ran without its tools, silently.** The default graph
+  only calls the model, so the README's `calc.yaml` bound nothing and the model guessed at the
+  arithmetic. A spec that declares tools or MCP servers without a template now builds `single`.
+- **A team's `params` reached its specialists but not its classifier or inline members.** A team
+  pointed at a local server (`api_base`) or told `reasoning_effort: none` routed and answered with
+  provider defaults. Classify now uses the team's engine-wired model, and inline members inherit
+  the team's params.
+- **`reasoning_effort: none` was rejected.** It is the value that turns thinking off on GPT-5.1
+  and on OpenAI-compatible servers hosting Qwen3-style hybrid models.
 - **The README contradicted itself about voice, and named a two-release-old version as current.**
   One paragraph listed voice under "not built yet" while another listed it as shipped; voice has
   been released since `0.0.3`. The Status section told readers to pin `agentship-sdk==0.0.2` as
