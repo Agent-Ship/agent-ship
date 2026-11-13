@@ -8,11 +8,17 @@
 </p>
 
 <p align="center">
-  <a href="https://pypi.org/project/agentship-sdk/"><img src="https://img.shields.io/pypi/v/agentship-sdk?label=PyPI&color=A685EE&labelColor=0D1317" alt="PyPI"></a>
-  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.13%2B-A685EE?labelColor=0D1317&logo=python&logoColor=E8EEF0" alt="Python 3.13+"></a>
-  <a href="https://www.langchain.com/langgraph"><img src="https://img.shields.io/badge/LangGraph-engine-A685EE?labelColor=0D1317&logo=langchain&logoColor=E8EEF0" alt="LangGraph"></a>
-  <a href="https://modelcontextprotocol.io/"><img src="https://img.shields.io/badge/MCP-tools-A685EE?labelColor=0D1317" alt="MCP"></a>
-  <a href="https://opentelemetry.io/"><img src="https://img.shields.io/badge/OpenTelemetry-traces-A685EE?labelColor=0D1317&logo=opentelemetry&logoColor=E8EEF0" alt="OpenTelemetry"></a>
+  <!--
+    Ours are violet, so the accent still reads as "AgentShip"; the stack badges keep each
+    tool's own recognisable colour. Every badge shares labelColor=0D1317 (Ink), which is what
+    holds the row together. Six identical accent pills was the previous version, and it spent
+    the accent on everything, which is the same as spending it on nothing.
+  -->
+  <a href="https://pypi.org/project/agentship-sdk/"><img src="https://img.shields.io/pypi/v/agentship-sdk?label=PyPI&color=A685EE&labelColor=0D1317&logo=pypi&logoColor=E8EEF0" alt="PyPI"></a>
+  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.13%2B-3776AB?labelColor=0D1317&logo=python&logoColor=E8EEF0" alt="Python 3.13+"></a>
+  <a href="https://www.langchain.com/langgraph"><img src="https://img.shields.io/badge/LangGraph-engine-1C3C3C?labelColor=0D1317&logo=langchain&logoColor=E8EEF0" alt="LangGraph"></a>
+  <a href="https://modelcontextprotocol.io/"><img src="https://img.shields.io/badge/MCP-tools-D97757?labelColor=0D1317&logo=modelcontextprotocol&logoColor=E8EEF0" alt="MCP"></a>
+  <a href="https://opentelemetry.io/"><img src="https://img.shields.io/badge/OpenTelemetry-traces-425CC7?labelColor=0D1317&logo=opentelemetry&logoColor=E8EEF0" alt="OpenTelemetry"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-A685EE?labelColor=0D1317" alt="License: Apache 2.0"></a>
 </p>
 
@@ -40,10 +46,6 @@ you need something it lacks, you are rewriting.
 > LangGraph runs the graph. LiteLLM talks to models. MCP supplies tools. OpenTelemetry
 > carries traces. We reimplement none of them — we wire them together and add the plumbing
 > none of them ship.
-
-<p align="center">
-  <img src="branding/hero/image.png" alt="AgentShip architecture" width="100%">
-</p>
 
 ---
 
@@ -112,25 +114,36 @@ a kernel that imports no vendor library. Everything below is in the tree today �
 are seams with a contract and one implementation, not roadmap.
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{
+  "primaryColor":"#141C22","primaryTextColor":"#E8EEF0","primaryBorderColor":"#2A3944",
+  "lineColor":"#55656E","textColor":"#C9D5DB",
+  "clusterBkg":"#0D1317","clusterBorder":"#243039",
+  "edgeLabelBackground":"#141C22","tertiaryColor":"#141C22",
+  "fontFamily":"ui-sans-serif, system-ui, -apple-system, sans-serif","fontSize":"14px"
+}}}%%
 flowchart TB
-  classDef spec    fill:#fef3c7,stroke:#b45309,stroke-width:2px,color:#7c2d12
-  classDef system  fill:#ccfbf1,stroke:#0f766e,stroke-width:2.5px,color:#134e4a
-  classDef adapter fill:#dcfce7,stroke:#15803d,stroke-width:1.5px,color:#14532d
-  classDef ext     fill:#f1f5f9,stroke:#64748b,stroke-width:1.5px,color:#334155
-  classDef obs     fill:#dbeafe,stroke:#1e40af,stroke-width:1.5px,color:#1e3a8a
+  %% Brand palette. Every node is Panel (#141C22) with Fog text; only the STROKE carries
+  %% meaning, so the accent is spent once — on the kernel, which is what the diagram argues
+  %% for. Previously five pastel fills (amber, mint, green, slate, blue) rendered this as a
+  %% bright light-mode block in the middle of a dark-branded README.
+  classDef spec    fill:#141C22,stroke:#34454F,stroke-width:1.5px,color:#E8EEF0
+  classDef system  fill:#141C22,stroke:#A685EE,stroke-width:2px,color:#E8EEF0
+  classDef adapter fill:#141C22,stroke:#5CCFC0,stroke-width:1.5px,color:#E8EEF0
+  classDef ext     fill:#141C22,stroke:#34454F,stroke-width:1px,color:#9FB0B9
+  classDef obs     fill:#141C22,stroke:#34454F,stroke-width:1.5px,color:#C9D5DB
 
   SPEC["<b>agent.yaml</b><br/><i>[AgentSpec]</i><br/>name · engine · prompt<br/>tools · members"]:::spec
 
   CLI["<b>agentship-cli</b><br/><i>[Entry point]</i><br/>run · serve · doctor · verify"]:::spec
   SVC["<b>agentship-service</b><br/><i>[FastAPI]</i><br/>:invoke :resume :stream<br/>WS /live · /a2a · Studio"]:::spec
 
-  subgraph CORE["agentship-core — imports no vendor library"]
+  subgraph CORE["agentship-core · imports no vendor"]
     RT["<b>RunnableAgent</b><br/><i>[Runtime]</i><br/>one turn: run / stream / resume"]:::system
     SEAM["<b>Seams</b><br/><i>[Contracts]</i><br/>auth · tenancy · tools<br/>observability · A2A"]:::system
     CONF["<b>Conformance matrix</b><br/><i>[Build gate]</i><br/>fails on a capability<br/>declared but not held"]:::system
   end
 
-  subgraph ENG["engine adapters — the only code that names a vendor"]
+  subgraph ENG["engine adapters"]
     ECHO["<b>echo</b><br/><i>[Engine]</i><br/>no provider, no network"]:::adapter
     LG["<b>langgraph</b><br/><i>[Engine]</i><br/>single · graph · autonomous"]:::adapter
   end
@@ -153,6 +166,12 @@ flowchart TB
   LG --> X2
   LG --> X3
   CORE -->|emits spans| OBS
+
+  %% The three containers, matching their contents: accent for the kernel, teal for the
+  %% adapters, dim for what we consume and never reimplement.
+  style CORE fill:#0D1317,stroke:#A685EE,stroke-width:1px
+  style ENG  fill:#0D1317,stroke:#5CCFC0,stroke-width:1px
+  style EXT  fill:#0D1317,stroke:#243039,stroke-width:1px
 ```
 
 **Read it in one line:** your spec never names a vendor, the kernel never imports one, and the

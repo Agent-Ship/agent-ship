@@ -13,9 +13,15 @@ logo/favicon.ico 16/32/48
 banner/          1280x400 README banner (@2x) and 1280x640 social preview
 fonts/           self-hosted woff2/woff + fonts.css (SIL OFL — see Licensing)
 tokens/          tokens.json, tokens.css, tailwind.preset.js, mkdocs-agentship.css
-hero/image.png   architecture illustration used in the README (a diagram, not a logo)
-Architecture.png architecture illustration (a diagram, not a logo)
 ```
+
+Two architecture illustrations used to live here, `hero/image.png` and `Architecture.png`.
+Both are gone. They predated the rebuild and showed a system that does not exist — Google ADK,
+OpenAI SDK and CrewAI as engines, a memory layer with vector stores, guardrails, eval datasets,
+LLM-as-judge — and each carried a different old wordmark, one of them with a glow. The README's
+architecture picture is now the Mermaid diagram in the README itself, which is generated from
+the same facts the rest of the page is held to. If a raster diagram is needed again, draw it
+from `tokens/` and keep it in step with that one.
 
 ## Which logo
 
