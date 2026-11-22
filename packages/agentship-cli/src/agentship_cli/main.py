@@ -1283,10 +1283,16 @@ def voice_serve(file: str, env_file: str | None, dry_run: bool, debug: bool) -> 
             raise click.ClickException("voice cannot start:\n  - " + "\n  - ".join(problems))
 
         if dry_run:
+            # A LiveKit worker joins rooms the LiveKit server dispatches; `transport` only
+            # applies to Pipecat, so naming it there would misdescribe how audio arrives.
+            reached = (
+                "livekit rooms"
+                if spec.voice.framework == "livekit"
+                else f"transport={spec.voice.transport}"
+            )
             click.echo(
                 f"ok: {spec.name} would serve on {spec.voice.framework} "
-                f"({spec.voice.stt} → agent → {spec.voice.tts}, "
-                f"transport={spec.voice.transport})"
+                f"({spec.voice.stt} → agent → {spec.voice.tts}, {reached})"
             )
             return
 

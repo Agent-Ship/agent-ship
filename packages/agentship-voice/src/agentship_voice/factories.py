@@ -300,6 +300,13 @@ def preflight(config: VoiceSpec, *, check_environment: bool = True) -> list[str]
     what ``verify`` wants — otherwise "the spec is valid" would mean no more than "it parsed".
     ``doctor`` and ``serve`` run the lot, because they are about to actually start the thing.
     """
+    if config.framework == "livekit":
+        # Same names, different plugins: on LiveKit a provider is built from livekit-plugins-*,
+        # so checking for Pipecat's SDK would report the wrong install for a spec that is fine.
+        from . import livekit_providers
+
+        return livekit_providers.preflight(config, check_environment=check_environment)
+
     problems: list[str] = []
     for kind, name, table in (
         ("stt", config.stt, STT_PROVIDERS),

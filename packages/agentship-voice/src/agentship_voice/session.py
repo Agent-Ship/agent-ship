@@ -41,7 +41,8 @@ async def run_browser_session(websocket, agent, caller: Caller, sample_rate: int
     from .factories import make_stt, make_tts, make_vad, preflight
 
     spec = agent.spec
-    problems = preflight(spec.voice)
+    # This path is Pipecat whatever `voice.framework` says, so its providers are the ones to check.
+    problems = preflight(spec.voice.model_copy(update={"framework": "pipecat"}))
     if problems:
         # Close rather than accept a session that can only fail at the first word: the human
         # would hear silence and have nothing to report but "it didn't work".

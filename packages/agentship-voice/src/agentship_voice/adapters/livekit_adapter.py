@@ -18,7 +18,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 
+from agentship.errors import CapabilityError
 from agentship.spec import VoiceSpec
 
 from ..turn import VoiceTurn
@@ -143,7 +145,79 @@ class LiveKitAdapter(VoiceAdapter):
         session.on("conversation_item_added", _on_item)
 
     async def run(self, turn: VoiceTurn, config: VoiceSpec) -> None:
-        """Assemble a room session around ``turn`` and serve until cancelled."""
-        raise NotImplementedError(
-            "LiveKitAdapter.run lands with the transport task — host() and witness() work now."
+        """Register a LiveKit worker and host ``turn``'s agent in every room it is sent to.
+
+        Every problem with the setup — plugins, provider keys, the LiveKit credentials — is
+        reported before the worker starts, for the same reason as on Pipecat: a first run should
+        be one list of things to fix, not a worker that registers and then fails on the first
+        caller.
+
+        Jobs run as threads of this process rather than LiveKit's default of a process each. The
+        agent was built here, with its engine, tools and checkpoint store, and a forked or
+        spawned job process could not be handed it: the entrypoint would have to rebuild the
+        agent from scratch inside every job.
+        """
+        from livekit.agents import AgentServer, JobExecutorType
+
+        from ..factories import preflight
+
+        problems = preflight(config)
+        if problems:
+            raise CapabilityError("voice cannot start:\n  - " + "\n  - ".join(problems))
+
+        server = AgentServer(job_executor_type=JobExecutorType.THREAD)
+
+        async def entrypoint(ctx) -> None:
+            await self.serve_room(ctx, turn, config)
+
+        server.rtc_session(entrypoint, agent_name=os.environ.get("LIVEKIT_AGENT_NAME", ""))
+        logger.info(
+            "voice worker: livekit | %s → agent → %s (interruptions=%s, budget=%dms)",
+            config.stt,
+            config.tts,
+            config.allow_interruptions,
+            config.latency_budget_ms,
         )
+        try:
+            await server.run()
+        finally:
+            await server.aclose()
+
+    async def serve_room(self, ctx, turn: VoiceTurn, config: VoiceSpec) -> None:
+        """Run one conversation in the room LiveKit dispatched as ``ctx``.
+
+        Each room is its own conversation, so it gets its own :class:`VoiceTurn` — same agent,
+        same caller, a session id of its own. Sharing ``turn`` itself would mix two callers'
+        transcripts and let one caller's barge-in cancel the other's reply.
+        """
+        from livekit.agents import Agent, AgentSession
+
+        from .. import livekit_providers as providers
+
+        room_turn = VoiceTurn(
+            turn.agent,
+            caller=turn.caller,
+            session_id=f"{turn.session_id or 'voice'}-{ctx.room.name}",
+        )
+        await ctx.connect()
+        session = AgentSession(
+            stt=providers.make_stt(config),
+            tts=providers.make_tts(config),
+            vad=providers.make_vad(config),
+            llm=self.host(room_turn),
+            turn_handling=providers.turn_handling(config),
+        )
+        self.witness(session, room_turn)
+        # The agent's instructions live in its own spec and run inside the engine; LiveKit's
+        # Agent is only the slot holder, so it is given none of its own.
+        await session.start(Agent(instructions=""), room=ctx.room)
+
+        if config.max_session_seconds is not None:
+            # A normal ending, as on Pipecat: the room is left and the providers released.
+            asyncio.get_running_loop().call_later(
+                config.max_session_seconds, ctx.shutdown, "max_session_seconds"
+            )
+        if config.greeting:
+            # Not interruptible, matching Pipecat's mute-until-greeted: otherwise the greeting
+            # coming back through the caller's speakers cuts itself off.
+            session.say(config.greeting, allow_interruptions=False)
