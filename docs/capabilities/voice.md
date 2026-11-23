@@ -80,6 +80,48 @@ pip install "pipecat-ai[deepgram,cartesia,silero]"
 export DEEPGRAM_API_KEY=... CARTESIA_API_KEY=...
 ```
 
+### Over LiveKit
+
+Set `framework: livekit` and the same agent is hosted by a LiveKit worker instead: callers
+join a LiveKit room over WebRTC (any LiveKit client SDK), and LiveKit dispatches each room to
+the worker. The agent sits in the session's LLM slot; recognition, synthesis and VAD are
+LiveKit's own plugins, chosen by the same provider names.
+
+```yaml
+voice:
+  framework: livekit
+  stt: deepgram
+  tts: cartesia
+  greeting: Hi, what can I help with?
+```
+
+```bash
+pip install "agentship-voice[livekit]" "livekit-agents[deepgram,cartesia,silero]"
+export LIVEKIT_URL=wss://<project>.livekit.cloud LIVEKIT_API_KEY=... LIVEKIT_API_SECRET=...
+export DEEPGRAM_API_KEY=... CARTESIA_API_KEY=...
+agentship voice serve agents/assistant.yaml            # registers the worker
+```
+
+`livekit-server --dev` (URL `ws://localhost:7880`, key `devkey`, secret `secret`) is enough
+locally. Set `LIVEKIT_AGENT_NAME` to require explicit dispatch; left unset, the worker joins
+every new room.
+
+- **One conversation per room.** Each room gets its own `VoiceTurn` and session id
+  (`<session_id>-<room>`), so two callers on one worker never share a transcript or a
+  barge-in.
+- **The same settings mean the same thing.** `endpoint_silence_ms`, `allow_interruptions` and
+  `interrupt_min_words` become LiveKit's `turn_handling`; `greeting` is spoken uninterruptibly;
+  `max_session_seconds` shuts the job down. `voice_id`, `tts_model`, `tts_speed`, `stt_model`,
+  `stt_hint` and `language` are passed under each plugin's own argument name. A setting the
+  chosen plugin has no argument for is logged and skipped.
+- **Jobs run as threads of the worker process**, not a process each, because the agent is
+  built once by the caller and cannot be handed to another process. An agent whose engine
+  holds event-loop-bound connections (a pooled checkpoint store, say) must tolerate being
+  called from the job's own loop.
+- **`--dry-run` and `agentship verify` check LiveKit's plugins**, keys and the three
+  `LIVEKIT_*` credentials, not Pipecat's. `agentship serve`'s in-browser mic always runs
+  Pipecat, whatever `framework` says.
+
 ### The four settings that decide whether it feels right
 
 | Setting | Why it matters |
@@ -137,9 +179,17 @@ pin the budget, the trace, the span tree, REST/voice parity, framework parity an
 barge-in honesty — all keyless, driving a real pipeline with stand-in providers
 that subclass Pipecat's own service classes.
 
-**Not yet proven.** The LiveKit adapter is unit-tested and has never been run
-against a live LiveKit room — treat it as unproven until it has.
+**Proven on a local server.** On LiveKit, the worker has been run against a local
+`livekit-server --dev` with real Deepgram recognition and synthesis and a LangGraph agent: it
+registers, is dispatched when a caller joins a room, speaks the greeting, hears a spoken
+question and answers it aloud — the caller's own transcription of the reply was the right
+answer. Two callers in two rooms at once each got their own correct answer, through one worker
+and one agent on the thread executor. Time from the caller's last word to the first reply
+audio was 2.2–2.7 s measured at the caller, which includes endpointing, recognition and the
+model; the 850 ms first-audio budget has **not** been measured on LiveKit, and barge-in has
+only been proven by unit tests there, not against a live room.
 
-**Not built.** WebRTC and SIP transports (the browser is the microphone today);
+**Not built.** SIP transport (LiveKit's telephony has not been wired up), and WebRTC on
+Pipecat (on LiveKit, WebRTC is how callers join);
 the guardrail and safety-interrupt stages, which wait on the guardrails phase —
 `processor_order()` leaves their slots free, so adding them is one argument each.

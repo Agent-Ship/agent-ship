@@ -7,6 +7,7 @@ and what it exits with, using ``--dry-run`` — no port, no provider call, no ke
 
 from __future__ import annotations
 
+import pytest
 from agentship_cli.main import main
 from click.testing import CliRunner
 
@@ -29,6 +30,42 @@ def test_dry_run_reports_the_session_it_would_serve(tmp_path, monkeypatch) -> No
     assert "talker" in result.output
     assert "pipecat" in result.output, "say which framework would host the agent"
     assert "openai → agent → openai" in result.output, "show the cascade, not just 'ok'"
+
+
+def test_dry_run_on_livekit_checks_livekit_and_names_rooms_not_a_transport(
+    tmp_path, monkeypatch
+) -> None:
+    """A LiveKit agent is preflighted against LiveKit's providers and worker credentials.
+
+    ``transport`` is a Pipecat setting; reporting ``transport=websocket`` for a LiveKit worker
+    would tell the operator audio arrives over a socket the worker never opens.
+    """
+    pytest.importorskip("livekit.agents", reason="needs the [livekit] extra")
+    from agentship_voice import livekit_providers
+
+    # CI installs livekit-agents but not every provider plugin; the plugin import is the
+    # provider's concern, not this command's, so stand it in and keep the credential checks.
+    monkeypatch.setattr(livekit_providers, "_load", lambda plugin, kind, name: object)
+    for key in ("DEEPGRAM_API_KEY", "CARTESIA_API_KEY"):
+        monkeypatch.setenv(key, "test")
+    for key in ("LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"):
+        monkeypatch.delenv(key, raising=False)
+    spec = _spec(
+        tmp_path,
+        "name: lk\nengine: echo\nprompt: hi\nvoice:\n  framework: livekit\n"
+        "  stt: deepgram\n  tts: cartesia\n",
+    )
+    missing = CliRunner().invoke(main, ["voice", "serve", spec, "--dry-run"])
+    assert missing.exit_code == 1
+    assert "LIVEKIT_URL" in missing.output, "a worker without server credentials cannot register"
+
+    monkeypatch.setenv("LIVEKIT_URL", "ws://localhost:7880")
+    monkeypatch.setenv("LIVEKIT_API_KEY", "devkey")
+    monkeypatch.setenv("LIVEKIT_API_SECRET", "secret")
+    ready = CliRunner().invoke(main, ["voice", "serve", spec, "--dry-run"])
+    assert ready.exit_code == 0, ready.output
+    assert "livekit (deepgram → agent → cartesia, livekit rooms)" in ready.output
+    assert "transport=" not in ready.output
 
 
 def test_a_missing_key_is_reported_before_anything_binds(monkeypatch) -> None:

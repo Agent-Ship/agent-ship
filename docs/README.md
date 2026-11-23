@@ -154,15 +154,15 @@ its changelog entry and its decision record all land.
 | [Tools & MCP](capabilities/tools-and-mcp.md) | <span class="as-pill as-pill--pass">shipped</span> |
 | [Observability](capabilities/observability.md) | <span class="as-pill as-pill--pass">shipped</span> |
 | [Service & security](capabilities/service-and-security.md) | <span class="as-pill as-pill--pass">shipped</span> |
-| [Voice](capabilities/voice.md) | <span class="as-pill as-pill--partial">shipped · LiveKit unproven live</span> |
+| [Voice](capabilities/voice.md) | <span class="as-pill as-pill--partial">shipped · LiveKit latency unmeasured</span> |
 | [Durable resume](capabilities/durable-resume.md) | <span class="as-pill as-pill--partial">seam only</span> |
 | [Agent gateway / A2A](capabilities/agent-gateway-a2a.md) | <span class="as-pill as-pill--partial">partial</span> |
 | Long-term memory | <span class="as-pill as-pill--open">not started</span> |
 
 **Durable resume** is the one to read carefully: the seam is built and tested, but there is no
 proof yet that a run killed mid-execution resumes to an identical result. That test exists and
-is marked as expected-to-fail rather than deleted. **Voice on LiveKit** is unit-tested and has
-never been run against a live room. Both are labelled this way everywhere, on purpose — the
+is marked as expected-to-fail rather than deleted. **Voice on LiveKit** has answered spoken questions in a
+local room with real providers, but its first-audio latency has not been measured against the budget. Both are labelled this way everywhere, on purpose — the
 whole point of a framework that checks its own claims is losing the right to round up.
 
 ## Why it is built this way

@@ -23,6 +23,17 @@ they were written before the project cut tagged releases.
 
 ## [Unreleased]
 
+### Added
+
+- **Voice runs on LiveKit.** `framework: livekit` now serves: `agentship voice serve`
+  registers a LiveKit worker (`LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`), and
+  every room it is dispatched to gets its own conversation with the agent in the session's LLM
+  slot. The provider names in `voice:` map to LiveKit's plugins, settings are passed under each
+  plugin's own argument name, and `endpoint_silence_ms`, `allow_interruptions`,
+  `interrupt_min_words`, `greeting` and `max_session_seconds` behave as on Pipecat.
+  `preflight` (and so `--dry-run` and `agentship verify`) checks LiveKit's plugins and
+  credentials for a LiveKit spec. Set `LIVEKIT_AGENT_NAME` for explicit dispatch.
+
 ### Changed
 - **The project had two visual identities and no way to tell which was current.** `branding/`
   carried a logo set that nothing in the tree referenced by the same name the README used, the
